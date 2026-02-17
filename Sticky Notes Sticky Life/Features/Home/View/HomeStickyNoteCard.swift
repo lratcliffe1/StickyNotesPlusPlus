@@ -88,12 +88,12 @@ struct HomeStickyNoteCard: View {
                 )
             }
 
-            if vm.dailyTasks.isEmpty {
+            if prioritizedDailyTasks.isEmpty {
                 Text("No tasks for this day.")
                     .foregroundStyle(.secondary)
                     .font(.callout)
             } else {
-                ForEach(vm.dailyTasks) { task in
+                ForEach(prioritizedDailyTasks) { task in
                     InkStrikeRow(
                         title: task.title,
                         subtitle: dailySubtitle(for: task),
@@ -121,6 +121,21 @@ struct HomeStickyNoteCard: View {
                     }
                 }
             }
+        }
+    }
+
+    private var prioritizedDailyTasks: [DailyTask] {
+        vm.dailyTasks.sorted { lhs, rhs in
+            if lhs.isBumpable != rhs.isBumpable {
+                return lhs.isBumpable == false
+            }
+
+            let titleOrder = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
+            if titleOrder != .orderedSame {
+                return titleOrder == .orderedAscending
+            }
+
+            return lhs.id.uuidString < rhs.id.uuidString
         }
     }
 

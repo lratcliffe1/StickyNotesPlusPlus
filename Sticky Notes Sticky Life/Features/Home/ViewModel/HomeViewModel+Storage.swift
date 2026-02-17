@@ -8,7 +8,7 @@ extension HomeViewModel {
         let day = HomeModel.normalizedDay(day)
         let descriptor = FetchDescriptor<MorningRoutineEntry>(
             predicate: #Predicate { $0.date == day },
-            sortBy: [SortDescriptor(\.titleSnapshot)]
+            sortBy: [SortDescriptor(\.sortOrderSnapshot), SortDescriptor(\.titleSnapshot)]
         )
         return (try? context.fetch(descriptor)) ?? []
     }
@@ -49,7 +49,7 @@ extension HomeViewModel {
 
         let descriptor = FetchDescriptor<MorningRoutineEntry>(
             predicate: #Predicate { $0.date >= startDay && $0.date <= endDay },
-            sortBy: [SortDescriptor(\.date), SortDescriptor(\.titleSnapshot)]
+            sortBy: [SortDescriptor(\.date), SortDescriptor(\.sortOrderSnapshot), SortDescriptor(\.titleSnapshot)]
         )
 
         return (try? context.fetch(descriptor)) ?? []
@@ -84,11 +84,35 @@ extension HomeViewModel {
             let entry = MorningRoutineEntry(
                 date: day,
                 titleSnapshot: template.title,
+                sortOrderSnapshot: template.sortOrder,
                 targetTimeSnapshot: template.targetTime
             )
             context.insert(entry)
         }
         save(context: context)
+    }
+
+    func syncMorningEntryOrder(for day: Date, context: ModelContext) {
+        let entries = fetchMorningEntries(for: day, context: context)
+        guard !entries.isEmpty else { return }
+
+        let templates = fetchTemplates(context: context)
+        guard !templates.isEmpty else { return }
+
+        var didChange = false
+
+        for entry in entries {
+            guard let matchingTemplate = templates.first(where: { $0.title == entry.titleSnapshot }) else { continue }
+
+            if entry.sortOrderSnapshot != matchingTemplate.sortOrder {
+                entry.sortOrderSnapshot = matchingTemplate.sortOrder
+                didChange = true
+            }
+        }
+
+        if didChange {
+            save(context: context)
+        }
     }
 
     func upsertDayRecord(for day: Date, context: ModelContext) {

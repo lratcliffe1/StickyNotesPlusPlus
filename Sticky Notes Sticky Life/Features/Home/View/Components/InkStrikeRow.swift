@@ -14,17 +14,6 @@ struct InkStrikeRow<Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Button {
-                toggle()
-            } label: {
-                Image(systemName: isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isCompleted ? .green : .secondary)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canEdit)
-            .accessibilityLabel(isCompleted ? "Undo completion" : "Mark complete")
-
             VStack(alignment: .leading, spacing: 3) {
                 InkStrikeText(
                     title: title,
@@ -49,6 +38,10 @@ struct InkStrikeRow<Trailing: View>: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                toggle()
             }
 
             Spacer(minLength: 0)

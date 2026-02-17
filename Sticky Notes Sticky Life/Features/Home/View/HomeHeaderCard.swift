@@ -52,7 +52,8 @@ struct HomeHeaderCard: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
             .frame(height: 66)
-            .padding(.horizontal, 10)
+            .padding(.leading, 4)
+            .padding(.trailing, 10)
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
@@ -69,10 +70,10 @@ struct HomeHeaderCard: View {
     }
 
     private func headerMetrics(for width: CGFloat) -> HeaderMetrics {
-        let horizontalSpacing: CGFloat = 5
-        let streakWidth = max(72, min(90, width * 0.27))
+        let horizontalSpacing: CGFloat = 0
+        let streakWidth = max(48, min(62, width * 0.18))
         let rowAvailable = max(120, width - streakWidth - horizontalSpacing)
-        let daySpacing = max(2, min(4, rowAvailable * 0.015))
+        let daySpacing = max(1, min(3, rowAvailable * 0.012))
         let daySize = max(15, min(24, (rowAvailable - (daySpacing * 6)) / 7))
 
         return HeaderMetrics(

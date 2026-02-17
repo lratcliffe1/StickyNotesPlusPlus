@@ -30,20 +30,29 @@ final class HomeViewModel: ObservableObject {
     var wakeUpTime: DateComponents = DateComponents(hour: 7, minute: 0)
     var morningWindowDurationMinutes: Int = 90
     var nowOverride: Date?
+    private let defaults: UserDefaults
 
     private var now: Date {
         nowOverride ?? Date()
     }
 
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        loadMorningSettings()
+    }
+
     // MARK: - Public API
 
     func refresh(context: ModelContext) {
+        loadMorningSettings()
+
         let calendar = Calendar.current
         let day = HomeModel.normalizedDay(selectedDay, calendar: calendar)
         selectedDay = day
 
         if HomeModel.isToday(day, now: now, calendar: calendar) {
             ensureMorningEntriesExist(for: day, context: context)
+            syncMorningEntryOrder(for: day, context: context)
         }
 
         morningEntries = fetchMorningEntries(for: day, context: context)
@@ -273,6 +282,19 @@ final class HomeViewModel: ObservableObject {
 
     private func canEdit(day: Date) -> Bool {
         !HomeModel.isPastDay(day, now: now)
+    }
+
+    private func loadMorningSettings() {
+        let modeRaw = defaults.string(forKey: AppSettings.morningModeKey) ?? AppSettings.defaultMorningMode.rawValue
+        morningModeSelection = modeRaw == AppSettings.MorningMode.sinceWakeUp.rawValue ? .sinceWakeUp : .cutoff
+
+        let cutoffMinutes = defaults.object(forKey: AppSettings.morningCutoffMinutesKey) as? Int ?? AppSettings.defaultMorningCutoffMinutes
+        let wakeMinutes = defaults.object(forKey: AppSettings.wakeUpMinutesKey) as? Int ?? AppSettings.defaultWakeUpMinutes
+        let duration = defaults.object(forKey: AppSettings.morningWindowDurationMinutesKey) as? Int ?? AppSettings.defaultMorningWindowDurationMinutes
+
+        morningCutoffTime = AppSettings.dateComponents(fromMinutes: cutoffMinutes)
+        wakeUpTime = AppSettings.dateComponents(fromMinutes: wakeMinutes)
+        morningWindowDurationMinutes = min(240, max(15, duration))
     }
 
     var morningMode: HomeModel.MorningMode {
