@@ -1,10 +1,3 @@
-//
-//  Sticky_Notes_Sticky_LifeApp.swift
-//  Sticky Notes Sticky Life
-//
-//  Created by Liam Ratcliffe on 17/02/2026.
-//
-
 import SwiftUI
 import SwiftData
 
@@ -13,11 +6,19 @@ struct Sticky_Notes_Sticky_LifeApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
+            MorningRoutineTemplateItem.self,
+            MorningRoutineEntry.self,
+            DailyTask.self,
+            DayRecord.self,
         ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+
+        let config = ModelConfiguration(
+            schema: schema,
+            cloudKitDatabase: .automatic
+        )
 
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            return try ModelContainer(for: schema, configurations: [config])
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
