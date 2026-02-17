@@ -192,4 +192,3 @@ Supports light and dark mode.
 
 ## Change Log
 - 2026-02-17 — Initial product spec completed
-
