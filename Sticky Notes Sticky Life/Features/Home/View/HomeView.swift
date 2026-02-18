@@ -147,6 +147,7 @@ struct HomeView: View {
                 morningStreakCount: vm.morningStreakCount,
                 dailyTaskStreakCount: vm.dailyTaskStreakCount,
                 sevenDayProgress: vm.sevenDayProgress,
+                selectedDay: vm.selectedDay,
                 onTap: openCalendar
             )
             .frame(maxWidth: .infinity)
@@ -156,6 +157,7 @@ struct HomeView: View {
                 morningStreakCount: vm.morningStreakCount,
                 dailyTaskStreakCount: vm.dailyTaskStreakCount,
                 sevenDayProgress: vm.sevenDayProgress,
+                selectedDay: vm.selectedDay,
                 onTap: openCalendar
             )
             .frame(maxWidth: .infinity)

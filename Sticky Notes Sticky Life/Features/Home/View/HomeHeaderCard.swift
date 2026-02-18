@@ -4,6 +4,7 @@ struct HomeHeaderCard: View {
     let morningStreakCount: Int
     let dailyTaskStreakCount: Int
     let sevenDayProgress: [HomeModel.DayProgress]
+    let selectedDay: Date
     let onTap: () -> Void
 
     private let calendar = Calendar.current
@@ -41,6 +42,7 @@ struct HomeHeaderCard: View {
                             ForEach(sevenDayProgress) { day in
                                 DayProgressCell(
                                     day: day,
+                                    isSelected: calendar.isDate(day.date, inSameDayAs: selectedDay),
                                     isToday: calendar.isDateInToday(day.date),
                                     diameter: metrics.daySize
                                 )
@@ -117,6 +119,7 @@ private struct StreakValue: View {
 
 private struct DayProgressCell: View {
     let day: HomeModel.DayProgress
+    let isSelected: Bool
     let isToday: Bool
     let diameter: CGFloat
 
@@ -128,16 +131,19 @@ private struct DayProgressCell: View {
             )
             .frame(width: diameter, height: diameter)
             .overlay {
-                if isToday {
+                if isSelected {
                     Circle()
                         .stroke(.blue, lineWidth: 2)
+                } else if isToday {
+                    Circle()
+                        .stroke(.blue.opacity(0.45), lineWidth: 1)
                 }
             }
 
             Text(label)
                 .font(.system(size: max(7, diameter * 0.33)))
-                .foregroundStyle(isToday ? .primary : .secondary)
-                .fontWeight(isToday ? .bold : .regular)
+                .foregroundStyle(isSelected ? .primary : .secondary)
+                .fontWeight(isSelected ? .bold : .regular)
         }
         .frame(width: max(diameter + 2, 18))
         .accessibilityElement(children: .ignore)
@@ -151,7 +157,8 @@ private struct DayProgressCell: View {
     private var accessibilityLabel: String {
         let morningPercent = Int((day.morning.value * 100).rounded())
         let dailyPercent = Int((day.daily.value * 100).rounded())
+        let selectedPrefix = isSelected ? "Selected, " : ""
         let todayPrefix = isToday ? "Today, " : ""
-        return "\(todayPrefix)\(day.date.formatted(date: .abbreviated, time: .omitted)), morning \(morningPercent) percent, daily \(dailyPercent) percent"
+        return "\(selectedPrefix)\(todayPrefix)\(day.date.formatted(date: .abbreviated, time: .omitted)), morning \(morningPercent) percent, daily \(dailyPercent) percent"
     }
 }

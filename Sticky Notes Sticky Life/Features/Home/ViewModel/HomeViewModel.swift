@@ -215,6 +215,7 @@ final class HomeViewModel: ObservableObject {
     private func recalculateDerivedState(context: ModelContext) {
         let calendar = Calendar.current
         isReadOnly = HomeModel.isPastDay(selectedDay, now: now, calendar: calendar)
+        let anchorDay = HomeModel.normalizedDay(selectedDay, calendar: calendar)
 
         let autoContextualList: HomeModel.ContextualList
         if HomeModel.shouldShowMorningList(
@@ -230,15 +231,17 @@ final class HomeViewModel: ObservableObject {
 
         contextualList = manualContextualListOverride ?? autoContextualList
 
-        refreshSevenDayProgress(context: context)
-        refreshMorningStreak(context: context)
-        refreshDailyTaskStreak(context: context)
+        refreshSevenDayProgress(anchoredOn: anchorDay, context: context)
+        refreshMorningStreak(through: anchorDay, context: context)
+        refreshDailyTaskStreak(through: anchorDay, context: context)
         refreshNeverMissTwiceState(context: context)
     }
 
-    private func refreshSevenDayProgress(context: ModelContext) {
+    private func refreshSevenDayProgress(
+        anchoredOn endDay: Date,
+        context: ModelContext
+    ) {
         let calendar = Calendar.current
-        let endDay = HomeModel.normalizedDay(now, calendar: calendar)
         guard let startRaw = calendar.date(byAdding: .day, value: -6, to: endDay) else {
             sevenDayProgress = []
             return
@@ -267,9 +270,11 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    private func refreshMorningStreak(context: ModelContext) {
+    private func refreshMorningStreak(
+        through endDay: Date,
+        context: ModelContext
+    ) {
         let calendar = Calendar.current
-        let endDay = HomeModel.normalizedDay(now, calendar: calendar)
         guard let startRaw = calendar.date(byAdding: .day, value: -365, to: endDay) else {
             morningStreakCount = 0
             return
@@ -289,9 +294,11 @@ final class HomeViewModel: ObservableObject {
         )
     }
 
-    private func refreshDailyTaskStreak(context: ModelContext) {
+    private func refreshDailyTaskStreak(
+        through endDay: Date,
+        context: ModelContext
+    ) {
         let calendar = Calendar.current
-        let endDay = HomeModel.normalizedDay(now, calendar: calendar)
         guard let startRaw = calendar.date(byAdding: .day, value: -365, to: endDay) else {
             dailyTaskStreakCount = 0
             return
