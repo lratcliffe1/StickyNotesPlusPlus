@@ -14,7 +14,11 @@ struct HomeNeverMissTwiceBanner: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.white.opacity(0.68))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .glassCard(
+            cornerRadius: 14,
+            fill: AnyShapeStyle(AppTheme.cardSurface),
+            shadowOpacity: 0.02
+        )
+        .accessibilityElement(children: .combine)
     }
 }

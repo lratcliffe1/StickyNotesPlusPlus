@@ -5,7 +5,6 @@ import SwiftData
 struct Sticky_Notes_Sticky_LifeApp: App {
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
             MorningRoutineTemplateItem.self,
             MorningRoutineEntry.self,
             DailyTask.self,

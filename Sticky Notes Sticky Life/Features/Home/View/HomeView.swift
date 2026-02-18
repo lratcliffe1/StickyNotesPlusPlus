@@ -37,6 +37,10 @@ struct HomeView: View {
 
                     selectedDayControls
 
+                    if let bannerText = vm.neverMissTwiceBannerText {
+                        HomeNeverMissTwiceBanner(text: bannerText)
+                    }
+
                     HomeStickyNoteCard(
                         vm: vm,
                         modelContext: modelContext,
@@ -49,8 +53,9 @@ struct HomeView: View {
                 .padding(.bottom, 12)
             }
             .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
             .simultaneousGesture(daySwipeGesture)
-            .background(screenBackground.ignoresSafeArea())
+            .background(AppTheme.pageBackground.ignoresSafeArea())
             .task {
                 if refreshOnAppear {
                     vm.refresh(context: modelContext)
@@ -73,13 +78,13 @@ struct HomeView: View {
     private var selectedDayControls: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(relativeDayLabel(for: vm.selectedDay))
+                Text(vm.selectedDayRelativeLabel)
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
                 ZStack(alignment: .leading) {
-                    Text(vm.selectedDay.formatted(.dateTime.month(.abbreviated).day().year()))
+                    Text(vm.selectedDayTitle)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -90,8 +95,12 @@ struct HomeView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(.white.opacity(0.8))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .glassCard(
+                cornerRadius: 12,
+                fill: AnyShapeStyle(AppTheme.chipSurface),
+                border: AppTheme.cardBorder,
+                shadowOpacity: 0.04
+            )
 
             if !isViewingToday {
                 Button("Today") {
@@ -100,7 +109,7 @@ struct HomeView: View {
                 .font(.caption.weight(.semibold))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
-                .background(.white.opacity(0.8))
+                .background(AppTheme.chipSurface)
                 .clipShape(Capsule())
                 .buttonStyle(.plain)
             }
@@ -117,11 +126,11 @@ struct HomeView: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 30, height: 30)
-                .background(.white.opacity(0.85))
+                .background(AppTheme.chipSurface)
                 .clipShape(Circle())
                 .overlay {
                     Circle()
-                        .stroke(.white.opacity(0.95), lineWidth: 1)
+                        .stroke(AppTheme.cardBorder, lineWidth: 1)
                 }
                 .shadow(color: .black.opacity(0.08), radius: 8, y: 3)
         }
@@ -180,21 +189,6 @@ struct HomeView: View {
                 isShowingCalendar = false
             }
         )
-    }
-
-    private func relativeDayLabel(for day: Date) -> String {
-        let calendar = Calendar.current
-        if calendar.isDateInToday(day) {
-            return "Today"
-        }
-        if calendar.isDateInTomorrow(day) {
-            return "Tomorrow"
-        }
-        if calendar.isDateInYesterday(day) {
-            return "Yesterday"
-        }
-
-        return day.formatted(.dateTime.weekday(.wide))
     }
 
     private var dayAnimation: Animation {
@@ -266,17 +260,6 @@ struct HomeView: View {
         withAnimation(dayAnimation) {
             vm.goToToday(context: modelContext)
         }
-    }
-
-    private var screenBackground: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(red: 0.95, green: 0.97, blue: 1.00),
-                Color(red: 0.89, green: 0.92, blue: 0.98)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
     }
 }
 

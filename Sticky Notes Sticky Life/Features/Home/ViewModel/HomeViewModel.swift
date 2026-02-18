@@ -13,7 +13,6 @@ final class HomeViewModel: ObservableObject {
     @Published var selectedDay: Date = HomeModel.normalizedDay(Date())
     @Published var morningEntries: [MorningRoutineEntry] = []
     @Published var dailyTasks: [DailyTask] = []
-    @Published var dayRecord: DayRecord?
     @Published var newTaskTitle: String = ""
 
     @Published private(set) var contextualList: HomeModel.ContextualList = .daily
@@ -32,6 +31,8 @@ final class HomeViewModel: ObservableObject {
     var nowOverride: Date?
     private let defaults: UserDefaults
     private var manualContextualListOverride: HomeModel.ContextualList?
+    private let streakLookbackDays = 365
+    private let progressWindowDays = 7
 
     private var now: Date {
         nowOverride ?? Date()
@@ -58,7 +59,6 @@ final class HomeViewModel: ObservableObject {
         morningEntries = fetchMorningEntries(for: day, context: context)
         dailyTasks = fetchDailyTasks(for: day, context: context)
         upsertDayRecord(for: day, context: context)
-        dayRecord = fetchDayRecord(for: day, context: context)
 
         recalculateDerivedState(context: context)
     }
@@ -179,20 +179,77 @@ final class HomeViewModel: ObservableObject {
         HomeModel.isToday(selectedDay, now: now)
     }
 
+    var canAddNewTask: Bool {
+        !newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var selectedDayTitle: String {
+        selectedDay.formatted(.dateTime.month(.abbreviated).day().year())
+    }
+
+    var selectedDayRelativeLabel: String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(selectedDay) {
+            return "Today"
+        }
+        if calendar.isDateInTomorrow(selectedDay) {
+            return "Tomorrow"
+        }
+        if calendar.isDateInYesterday(selectedDay) {
+            return "Yesterday"
+        }
+        return selectedDay.formatted(.dateTime.weekday(.wide))
+    }
+
     var morningProgress: Double {
-        HomeModel.morningCompletion(entries: morningEntries).value
+        morningCompletionState.value
     }
 
     var isMorningProgressImplicit: Bool {
-        HomeModel.morningCompletion(entries: morningEntries).isImplicitlyComplete
+        morningCompletionState.isImplicitlyComplete
     }
 
     var dailyProgress: Double {
-        HomeModel.dailyCompletion(tasks: dailyTasks).value
+        dailyCompletionState.value
     }
 
     var isDailyProgressImplicit: Bool {
-        HomeModel.dailyCompletion(tasks: dailyTasks).isImplicitlyComplete
+        dailyCompletionState.isImplicitlyComplete
+    }
+
+    var activeListProgressPercent: Int {
+        Int((activeListProgress * 100).rounded())
+    }
+
+    var activeListProgress: Double {
+        isMorningMode ? morningProgress : dailyProgress
+    }
+
+    var activeListProgressIsImplicit: Bool {
+        isMorningMode ? isMorningProgressImplicit : isDailyProgressImplicit
+    }
+
+    var activeListTitle: String {
+        isMorningMode ? "Morning Routine" : "Daily Tasks"
+    }
+
+    var sortedDailyTasks: [DailyTask] {
+        dailyTasks.sorted { lhs, rhs in
+            if lhs.isBumpable != rhs.isBumpable {
+                return lhs.isBumpable == false
+            }
+
+            let titleOrder = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
+            if titleOrder != .orderedSame {
+                return titleOrder == .orderedAscending
+            }
+
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
+    func updateNewTaskTitle(_ value: String) {
+        newTaskTitle = value
     }
 
     var neverMissTwiceBannerText: String? {
@@ -242,7 +299,7 @@ final class HomeViewModel: ObservableObject {
         context: ModelContext
     ) {
         let calendar = Calendar.current
-        guard let startRaw = calendar.date(byAdding: .day, value: -6, to: endDay) else {
+        guard let startRaw = calendar.date(byAdding: .day, value: -(progressWindowDays - 1), to: endDay) else {
             sevenDayProgress = []
             return
         }
@@ -259,7 +316,7 @@ final class HomeViewModel: ObservableObject {
             HomeModel.normalizedDay($0.date, calendar: calendar)
         }
 
-        sevenDayProgress = (0..<7).compactMap { offset in
+        sevenDayProgress = (0..<progressWindowDays).compactMap { offset in
             guard let dayRaw = calendar.date(byAdding: .day, value: offset, to: startDay) else { return nil }
             let day = HomeModel.normalizedDay(dayRaw, calendar: calendar)
 
@@ -275,7 +332,7 @@ final class HomeViewModel: ObservableObject {
         context: ModelContext
     ) {
         let calendar = Calendar.current
-        guard let startRaw = calendar.date(byAdding: .day, value: -365, to: endDay) else {
+        guard let startRaw = calendar.date(byAdding: .day, value: -streakLookbackDays, to: endDay) else {
             morningStreakCount = 0
             return
         }
@@ -299,7 +356,7 @@ final class HomeViewModel: ObservableObject {
         context: ModelContext
     ) {
         let calendar = Calendar.current
-        guard let startRaw = calendar.date(byAdding: .day, value: -365, to: endDay) else {
+        guard let startRaw = calendar.date(byAdding: .day, value: -streakLookbackDays, to: endDay) else {
             dailyTaskStreakCount = 0
             return
         }
@@ -385,6 +442,14 @@ final class HomeViewModel: ObservableObject {
                 durationMinutes: morningWindowDurationMinutes
             )
         }
+    }
+
+    private var morningCompletionState: HomeModel.CompletionState {
+        HomeModel.morningCompletion(entries: morningEntries)
+    }
+
+    private var dailyCompletionState: HomeModel.CompletionState {
+        HomeModel.dailyCompletion(tasks: dailyTasks)
     }
 
 #if DEBUG

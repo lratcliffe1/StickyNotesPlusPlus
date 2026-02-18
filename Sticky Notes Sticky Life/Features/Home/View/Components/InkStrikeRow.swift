@@ -52,14 +52,14 @@ struct InkStrikeRow<Trailing: View>: View {
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
-        .background(.white.opacity(0.62))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(.white.opacity(0.7), lineWidth: 1)
-        )
+        .glassCard(cornerRadius: 18, fill: AnyShapeStyle(AppTheme.cardSurface), shadowOpacity: 0)
         .contentShape(Rectangle())
         .simultaneousGesture(dragGesture)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(canEdit ? .isButton : [])
+        .accessibilityAction {
+            toggle()
+        }
         .onDisappear {
             endHorizontalDragIfNeeded(notifyAsynchronously: false)
         }
@@ -135,6 +135,7 @@ private struct InkStrikeText: View {
         Text(title)
             .font(.subheadline)
             .foregroundStyle(isCompleted ? .secondary : .primary)
+            .animation(.easeInOut(duration: 0.2), value: dragProgress)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in
                     Capsule()

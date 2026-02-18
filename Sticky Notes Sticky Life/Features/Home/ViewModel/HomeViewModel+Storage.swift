@@ -157,11 +157,9 @@ extension HomeViewModel {
         if let record = fetchDayRecord(for: day, context: context) {
             record.morningCompletion = morning
             record.dailyCompletion = daily
-            dayRecord = record
         } else {
             let record = DayRecord(date: day, morningCompletion: morning, dailyCompletion: daily)
             context.insert(record)
-            dayRecord = record
         }
         save(context: context)
     }

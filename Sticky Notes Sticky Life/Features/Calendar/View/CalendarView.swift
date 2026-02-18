@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct CalendarView: View {
     @Query(sort: \MorningRoutineEntry.date) private var morningEntries: [MorningRoutineEntry]
@@ -24,13 +24,13 @@ struct CalendarView: View {
                             )
                         }
                     }
-                    .padding(.horizontal, 16)
                 }
             }
+            .padding(.horizontal, 16)
             .padding(.vertical, 14)
         }
         .scrollIndicators(.hidden)
-        .background(screenBackground.ignoresSafeArea())
+        .background(AppTheme.pageBackground.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
     }
 
@@ -63,10 +63,7 @@ struct CalendarView: View {
 
         for entry in morningEntries {
             let normalized = HomeModel.normalizedDay(entry.date, calendar: calendar)
-            let year = calendar.component(
-                .year,
-                from: normalized
-            )
+            let year = calendar.component(.year, from: normalized)
             guard year >= lowerBound && year <= upperBound else { continue }
             minYear = min(minYear, year)
             maxYear = max(maxYear, year)
@@ -74,10 +71,7 @@ struct CalendarView: View {
 
         for task in dailyTasks {
             let normalized = HomeModel.normalizedDay(task.date, calendar: calendar)
-            let year = calendar.component(
-                .year,
-                from: normalized
-            )
+            let year = calendar.component(.year, from: normalized)
             guard year >= lowerBound && year <= upperBound else { continue }
             minYear = min(minYear, year)
             maxYear = max(maxYear, year)
@@ -107,8 +101,7 @@ struct CalendarView: View {
             return allMonths
         }
 
-        // Start the rendered sequence at today's month so it appears immediately
-        // without a post-present scroll animation.
+        // Start at today's month so the entry point is immediately useful.
         return Array(allMonths[startIndex...]) + Array(allMonths[..<startIndex])
     }
 
@@ -200,12 +193,8 @@ struct CalendarView: View {
             }
         }
         .padding(12)
-        .background(.white.opacity(0.72))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(.white.opacity(0.78), lineWidth: 1)
-        }
+        .glassCard(cornerRadius: 16, fill: AnyShapeStyle(AppTheme.cardSurface), shadowOpacity: 0.03)
+        .id(monthID(year: year, month: month))
     }
 
     private func dayCell(
@@ -235,12 +224,12 @@ struct CalendarView: View {
             .padding(.vertical, 2)
             .background(
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? .blue.opacity(0.2) : .clear)
+                    .fill(isSelected ? AppTheme.selectedDayTint : .clear)
             )
             .overlay {
                 if isToday {
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(.blue.opacity(0.8), lineWidth: 1.5)
+                        .stroke(AppTheme.todayStroke, lineWidth: 1.5)
                 }
             }
         }
@@ -309,17 +298,6 @@ struct CalendarView: View {
     private var gridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
     }
-
-    private var screenBackground: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(red: 0.95, green: 0.97, blue: 1.00),
-                Color(red: 0.90, green: 0.93, blue: 0.98)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
 }
 
 private struct CalendarMonthRef: Identifiable {
@@ -345,7 +323,7 @@ private struct CalendarSlot: Identifiable {
 #Preview {
     let schema = Schema([
         MorningRoutineEntry.self,
-        DailyTask.self
+        DailyTask.self,
     ])
 
     let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)

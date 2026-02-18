@@ -53,19 +53,11 @@ struct HomeHeaderCard: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
-            .frame(height: 66)
-            .padding(.leading, 4)
-            .padding(.trailing, 10)
-            .padding(.vertical, 6)
+            .frame(height: 60)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(.white.opacity(0.74))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(.white.opacity(0.75), lineWidth: 1)
-            )
+            .glassCard(cornerRadius: 18, fill: AnyShapeStyle(AppTheme.cardSurface), shadowOpacity: 0.05)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open calendar")
@@ -76,7 +68,7 @@ struct HomeHeaderCard: View {
         let streakWidth = max(48, min(62, width * 0.18))
         let rowAvailable = max(120, width - streakWidth - horizontalSpacing)
         let daySpacing = max(1, min(3, rowAvailable * 0.012))
-        let daySize = max(15, min(24, (rowAvailable - (daySpacing * 6)) / 7))
+        let daySize = max(15, min(22, (rowAvailable - (daySpacing * 6)) / 7))
 
         return HeaderMetrics(
             streakWidth: streakWidth,
@@ -107,12 +99,12 @@ private struct StreakValue: View {
             Text("\(value)")
                 .font(.caption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.primary)
+                .contentTransition(.numericText())
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 2)
-        .background(.white.opacity(0.55))
         .clipShape(Capsule())
     }
 }
@@ -133,7 +125,7 @@ private struct DayProgressCell: View {
             .overlay {
                 if isSelected {
                     Circle()
-                        .stroke(.blue, lineWidth: 2)
+                        .stroke(AppTheme.todayStroke, lineWidth: 2)
                 } else if isToday {
                     Circle()
                         .stroke(.blue.opacity(0.45), lineWidth: 1)

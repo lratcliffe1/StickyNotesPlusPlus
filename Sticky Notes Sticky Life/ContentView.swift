@@ -18,7 +18,6 @@ struct ContentView: View {
     ContentView()
         .modelContainer(
             for: [
-                Item.self,
                 MorningRoutineTemplateItem.self,
                 MorningRoutineEntry.self,
                 DailyTask.self,

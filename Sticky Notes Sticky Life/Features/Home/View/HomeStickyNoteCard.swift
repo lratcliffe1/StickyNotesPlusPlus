@@ -12,31 +12,13 @@ struct HomeStickyNoteCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(vm.isMorningMode ? "Morning Routine" : "Daily Tasks")
-                    .font(.headline.weight(.bold))
-                Spacer()
-                HStack(spacing: 8) {
-                    Text("\(Int((vm.isMorningMode ? vm.morningProgress : vm.dailyProgress) * 100))%")
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
+            cardHeader
 
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            vm.flipStickyNoteList()
-                        }
-                    } label: {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.white.opacity(0.78))
-                            .clipShape(Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(vm.isMorningMode ? "Flip to daily tasks" : "Flip to morning routine")
-                }
-            }
+            ProgressView(value: vm.activeListProgress)
+                .progressViewStyle(.linear)
+                .tint(vm.isMorningMode ? .blue : .orange)
+                .opacity(vm.activeListProgressIsImplicit ? 0.45 : 1)
+                .accessibilityLabel("\(vm.activeListTitle) progress \(vm.activeListProgressPercent) percent")
 
             if vm.isMorningMode {
                 morningList
@@ -47,13 +29,43 @@ struct HomeStickyNoteCard: View {
         .animation(.easeInOut(duration: 0.2), value: vm.isMorningMode)
         .frame(maxWidth: .infinity, minHeight: 420, alignment: .topLeading)
         .padding(16)
-        .background(stickyBackground)
-        .clipShape(Rectangle())
-        .overlay(
-            Rectangle()
-                .stroke(.white.opacity(0.75), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.08), radius: 14, y: 6)
+        .background(AppTheme.stickyNoteBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(AppTheme.cardBorder, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.1), radius: 18, y: 8)
+    }
+
+    private var cardHeader: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(vm.activeListTitle)
+                .font(.headline.weight(.bold))
+
+            Spacer()
+
+            HStack(spacing: 8) {
+                Text("\(vm.activeListProgressPercent)%")
+                    .font(.subheadline.monospacedDigit())
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        vm.flipStickyNoteList()
+                    }
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(AppTheme.chipSurface)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(vm.isMorningMode ? "Flip to daily tasks" : "Flip to morning routine")
+            }
+        }
     }
 
     private var morningList: some View {
@@ -84,37 +96,15 @@ struct HomeStickyNoteCard: View {
     private var dailyList: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !vm.isReadOnly {
-                HStack(spacing: 8) {
-                    TextField("Add a task...", text: $vm.newTaskTitle)
-                        .textFieldStyle(.plain)
-                        .font(.subheadline)
-
-                    Button("Add") {
-                        vm.addDailyTask(context: modelContext)
-                    }
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(.white.opacity(0.8))
-                    .clipShape(Capsule())
-                    .disabled(vm.newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(.white.opacity(0.62))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(.white.opacity(0.7), lineWidth: 1)
-                )
+                addTaskComposer
             }
 
-            if prioritizedDailyTasks.isEmpty {
+            if vm.sortedDailyTasks.isEmpty {
                 Text("No tasks for this day.")
                     .foregroundStyle(.secondary)
                     .font(.footnote)
             } else {
-                ForEach(prioritizedDailyTasks) { task in
+                ForEach(vm.sortedDailyTasks) { task in
                     InkStrikeRow(
                         title: task.title,
                         subtitle: dailySubtitle(for: task),
@@ -159,19 +149,36 @@ struct HomeStickyNoteCard: View {
         }
     }
 
-    private var prioritizedDailyTasks: [DailyTask] {
-        vm.dailyTasks.sorted { lhs, rhs in
-            if lhs.isBumpable != rhs.isBumpable {
-                return lhs.isBumpable == false
-            }
+    private var addTaskComposer: some View {
+        HStack(spacing: 8) {
+            TextField("Add a task...", text: newTaskTitleBinding)
+                .textFieldStyle(.plain)
+                .font(.subheadline)
+                .submitLabel(.done)
+                .onSubmit {
+                    vm.addDailyTask(context: modelContext)
+                }
 
-            let titleOrder = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
-            if titleOrder != .orderedSame {
-                return titleOrder == .orderedAscending
+            Button("Add") {
+                vm.addDailyTask(context: modelContext)
             }
-
-            return lhs.id.uuidString < rhs.id.uuidString
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(AppTheme.chipSurface)
+            .clipShape(Capsule())
+            .disabled(!vm.canAddNewTask)
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .glassCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.cardSurface), shadowOpacity: 0)
+    }
+
+    private var newTaskTitleBinding: Binding<String> {
+        Binding(
+            get: { vm.newTaskTitle },
+            set: { vm.updateNewTaskTitle($0) }
+        )
     }
 
     private func timeLabel(from components: DateComponents?) -> String? {
@@ -266,12 +273,7 @@ struct HomeStickyNoteCard: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.white.opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(.white.opacity(0.75), lineWidth: 1)
-        )
+        .glassCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.cardSurface), shadowOpacity: 0)
         .padding(.horizontal, 14)
         .padding(.top, 14)
         .onAppear {
@@ -279,16 +281,5 @@ struct HomeStickyNoteCard: View {
                 isBumpTitleFieldFocused = true
             }
         }
-    }
-
-    private var stickyBackground: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(red: 1.00, green: 0.97, blue: 0.78),
-                Color(red: 0.99, green: 0.93, blue: 0.67)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
     }
 }
