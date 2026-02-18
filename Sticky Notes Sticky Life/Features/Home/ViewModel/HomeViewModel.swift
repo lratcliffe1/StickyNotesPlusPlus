@@ -9,21 +9,6 @@ final class HomeViewModel: ObservableObject {
         case sinceWakeUp
     }
 
-    private struct BumpedTaskSnapshot {
-        let id: UUID
-        let date: Date
-        let title: String
-        let isCompleted: Bool
-        let completedAt: Date?
-        let bumpCount: Int
-        let isBumpable: Bool
-    }
-
-    private struct LastBumpAction {
-        let originalTask: BumpedTaskSnapshot
-        let bumpedTaskID: UUID
-    }
-
     // UI state
     @Published var selectedDay: Date = HomeModel.normalizedDay(Date())
     @Published var morningEntries: [MorningRoutineEntry] = []
@@ -47,7 +32,6 @@ final class HomeViewModel: ObservableObject {
     var nowOverride: Date?
     private let defaults: UserDefaults
     private var manualContextualListOverride: HomeModel.ContextualList?
-    private var lastBumpAction: LastBumpAction?
 
     private var now: Date {
         nowOverride ?? Date()
@@ -119,6 +103,20 @@ final class HomeViewModel: ObservableObject {
     func toggleDailyTask(_ task: DailyTask, context: ModelContext) {
         guard canComplete(day: task.date) else { return }
 
+        if task.isCompleted, let bumpedTaskID = task.bumpedTaskID {
+            task.isCompleted = false
+            task.completedAt = nil
+            task.bumpedTaskID = nil
+
+            if let bumpedTask = fetchDailyTask(id: bumpedTaskID, context: context) {
+                context.delete(bumpedTask)
+            }
+
+            save(context: context)
+            refresh(context: context)
+            return
+        }
+
         task.isCompleted.toggle()
         task.completedAt = task.isCompleted ? now : nil
         save(context: context)
@@ -138,26 +136,25 @@ final class HomeViewModel: ObservableObject {
         refresh(context: context)
     }
 
-    func bumpTaskToTomorrow(_ task: DailyTask, context: ModelContext) {
+    func bumpTaskToTomorrow(
+        _ task: DailyTask,
+        bumpedTitle: String,
+        context: ModelContext
+    ) {
         guard canManage(day: task.date) else { return }
         guard task.isBumpable, !task.isCompleted else { return }
+        guard task.bumpedTaskID == nil else { return }
+
+        let bumpedTitle = bumpedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !bumpedTitle.isEmpty else { return }
 
         let cal = Calendar.current
         let taskDay = HomeModel.normalizedDay(task.date, calendar: cal)
         let tomorrow = cal.date(byAdding: .day, value: 1, to: taskDay) ?? taskDay
-        let snapshot = BumpedTaskSnapshot(
-            id: task.id,
-            date: taskDay,
-            title: task.title,
-            isCompleted: task.isCompleted,
-            completedAt: task.completedAt,
-            bumpCount: task.bumpCount,
-            isBumpable: task.isBumpable
-        )
 
         let bumpedTask = DailyTask(
             date: HomeModel.normalizedDay(tomorrow, calendar: cal),
-            title: task.title,
+            title: bumpedTitle,
             isCompleted: false,
             completedAt: nil,
             bumpCount: task.bumpCount + 1,
@@ -165,37 +162,9 @@ final class HomeViewModel: ObservableObject {
         )
 
         context.insert(bumpedTask)
-        context.delete(task)
-        lastBumpAction = LastBumpAction(
-            originalTask: snapshot,
-            bumpedTaskID: bumpedTask.id
-        )
-        save(context: context)
-        refresh(context: context)
-    }
-
-    func undoLastBump(context: ModelContext) {
-        guard let action = lastBumpAction else { return }
-        let snapshot = action.originalTask
-
-        if let bumpedTask = fetchDailyTask(id: action.bumpedTaskID, context: context) {
-            context.delete(bumpedTask)
-        }
-
-        if fetchDailyTask(id: snapshot.id, context: context) == nil {
-            let restoredTask = DailyTask(
-                id: snapshot.id,
-                date: snapshot.date,
-                title: snapshot.title,
-                isCompleted: snapshot.isCompleted,
-                completedAt: snapshot.completedAt,
-                bumpCount: snapshot.bumpCount,
-                isBumpable: snapshot.isBumpable
-            )
-            context.insert(restoredTask)
-        }
-
-        lastBumpAction = nil
+        task.isCompleted = true
+        task.completedAt = now
+        task.bumpedTaskID = bumpedTask.id
         save(context: context)
         refresh(context: context)
     }
@@ -208,10 +177,6 @@ final class HomeViewModel: ObservableObject {
 
     var canCompleteSelectedDay: Bool {
         HomeModel.isToday(selectedDay, now: now)
-    }
-
-    var canUndoLastBump: Bool {
-        lastBumpAction != nil
     }
 
     var morningProgress: Double {

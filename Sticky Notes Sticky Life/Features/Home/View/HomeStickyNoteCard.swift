@@ -4,6 +4,10 @@ import SwiftUI
 struct HomeStickyNoteCard: View {
     @ObservedObject var vm: HomeViewModel
     let modelContext: ModelContext
+    @State private var isShowingBumpPopup = false
+    @State private var pendingBumpTaskID: UUID?
+    @State private var pendingBumpTitle: String = ""
+    @FocusState private var isBumpTitleFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -102,21 +106,6 @@ struct HomeStickyNoteCard: View {
                 )
             }
 
-            if vm.canUndoLastBump {
-                Button {
-                    vm.undoLastBump(context: modelContext)
-                } label: {
-                    Label("Undo last bump", systemImage: "arrow.uturn.backward.circle")
-                        .font(.subheadline.weight(.semibold))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.white.opacity(0.75))
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Undo last bump")
-            }
-
             if prioritizedDailyTasks.isEmpty {
                 Text("No tasks for this day.")
                     .foregroundStyle(.secondary)
@@ -134,7 +123,7 @@ struct HomeStickyNoteCard: View {
                     } trailing: {
                         if task.isBumpable, !task.isCompleted, !vm.isReadOnly {
                             Button {
-                                vm.bumpTaskToTomorrow(task, context: modelContext)
+                                presentBumpComposer(for: task)
                             } label: {
                                 Image(systemName: "arrowshape.right.circle.fill")
                                     .font(.title3)
@@ -150,6 +139,19 @@ struct HomeStickyNoteCard: View {
                     }
                 }
             }
+        }
+        .onChange(of: vm.dailyTasks.map(\.id)) { _, ids in
+            guard let pendingBumpTaskID else { return }
+            guard !ids.contains(pendingBumpTaskID) else { return }
+            clearPendingBumpComposer()
+        }
+        .sheet(
+            isPresented: $isShowingBumpPopup,
+            onDismiss: clearPendingBumpComposer
+        ) {
+            bumpPopupContent
+                .presentationDetents([.height(210)])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -174,6 +176,9 @@ struct HomeStickyNoteCard: View {
     }
 
     private func dailySubtitle(for task: DailyTask) -> String? {
+        if task.bumpedTaskID != nil {
+            return "Bumped to tomorrow"
+        }
         if task.bumpCount > 0 {
             return "Bumped \(task.bumpCount)x"
         }
@@ -190,6 +195,85 @@ struct HomeStickyNoteCard: View {
             saturation: 0.82,
             brightness: 0.95
         )
+    }
+
+    private var pendingBumpTask: DailyTask? {
+        guard let pendingBumpTaskID else { return nil }
+        return vm.dailyTasks.first { $0.id == pendingBumpTaskID }
+    }
+
+    private func presentBumpComposer(for task: DailyTask) {
+        pendingBumpTaskID = task.id
+        pendingBumpTitle = ""
+        isShowingBumpPopup = true
+    }
+
+    private func clearPendingBumpComposer() {
+        pendingBumpTaskID = nil
+        pendingBumpTitle = ""
+        isBumpTitleFieldFocused = false
+        isShowingBumpPopup = false
+    }
+
+    private func submitPendingBump() {
+        guard let task = pendingBumpTask else {
+            clearPendingBumpComposer()
+            return
+        }
+
+        let title = pendingBumpTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+
+        vm.bumpTaskToTomorrow(task, bumpedTitle: title, context: modelContext)
+        clearPendingBumpComposer()
+    }
+
+    private var bumpPopupContent: some View {
+        let task = pendingBumpTask
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Bump \"\(task?.title ?? "")\"")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    clearPendingBumpComposer()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .font(.body)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel bump")
+            }
+
+            TextField("Task for tomorrow...", text: $pendingBumpTitle)
+                .textFieldStyle(.plain)
+                .submitLabel(.done)
+                .focused($isBumpTitleFieldFocused)
+                .onSubmit(submitPendingBump)
+                .disabled(task == nil)
+
+            Text("Press Enter to bump this task to tomorrow.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.white.opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(.white.opacity(0.75), lineWidth: 1)
+        )
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .onAppear {
+            DispatchQueue.main.async {
+                isBumpTitleFieldFocused = true
+            }
+        }
     }
 
     private var stickyBackground: LinearGradient {
