@@ -13,11 +13,11 @@ struct HomeStickyNoteCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text(vm.isMorningMode ? "Morning Routine" : "Daily Tasks")
-                    .font(.title3.weight(.bold))
+                    .font(.headline.weight(.bold))
                 Spacer()
                 HStack(spacing: 8) {
                     Text("\(Int((vm.isMorningMode ? vm.morningProgress : vm.dailyProgress) * 100))%")
-                        .font(.headline.monospacedDigit())
+                        .font(.subheadline.monospacedDigit())
                         .foregroundStyle(.secondary)
 
                     Button {
@@ -26,7 +26,7 @@ struct HomeStickyNoteCard: View {
                         }
                     } label: {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(.caption.weight(.semibold))
+                            .font(.caption2.weight(.semibold))
                             .padding(.horizontal, 10)
                             .padding(.vertical, 6)
                             .background(.white.opacity(0.78))
@@ -47,9 +47,9 @@ struct HomeStickyNoteCard: View {
         .frame(maxWidth: .infinity, minHeight: 420, alignment: .topLeading)
         .padding(16)
         .background(stickyBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+        .clipShape(Rectangle())
         .overlay(
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
+            Rectangle()
                 .stroke(.white.opacity(0.75), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.08), radius: 14, y: 6)
@@ -60,7 +60,7 @@ struct HomeStickyNoteCard: View {
             if vm.morningEntries.isEmpty {
                 Text("No morning items yet. Add routine templates in Settings.")
                     .foregroundStyle(.secondary)
-                    .font(.callout)
+                    .font(.footnote)
             } else {
                 ForEach(vm.morningEntries) { entry in
                     InkStrikeRow(
@@ -85,11 +85,12 @@ struct HomeStickyNoteCard: View {
                 HStack(spacing: 8) {
                     TextField("Add a task...", text: $vm.newTaskTitle)
                         .textFieldStyle(.plain)
+                        .font(.subheadline)
 
                     Button("Add") {
                         vm.addDailyTask(context: modelContext)
                     }
-                    .font(.subheadline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(.white.opacity(0.8))
@@ -109,7 +110,7 @@ struct HomeStickyNoteCard: View {
             if prioritizedDailyTasks.isEmpty {
                 Text("No tasks for this day.")
                     .foregroundStyle(.secondary)
-                    .font(.callout)
+                    .font(.footnote)
             } else {
                 ForEach(prioritizedDailyTasks) { task in
                     InkStrikeRow(
@@ -126,14 +127,14 @@ struct HomeStickyNoteCard: View {
                                 presentBumpComposer(for: task)
                             } label: {
                                 Image(systemName: "arrowshape.right.circle.fill")
-                                    .font(.title3)
+                                    .font(.body)
                                     .foregroundStyle(urgencyColor(for: task.bumpCount))
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Bump to tomorrow")
                         } else if !task.isBumpable {
                             Text("Must do")
-                                .font(.caption.weight(.semibold))
+                                .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -234,7 +235,7 @@ struct HomeStickyNoteCard: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Bump \"\(task?.title ?? "")\"")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .lineLimit(1)
                 Spacer()
                 Button {
@@ -242,7 +243,7 @@ struct HomeStickyNoteCard: View {
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
-                        .font(.body)
+                        .font(.footnote)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Cancel bump")
@@ -250,13 +251,14 @@ struct HomeStickyNoteCard: View {
 
             TextField("Task for tomorrow...", text: $pendingBumpTitle)
                 .textFieldStyle(.plain)
+                .font(.subheadline)
                 .submitLabel(.done)
                 .focused($isBumpTitleFieldFocused)
                 .onSubmit(submitPendingBump)
                 .disabled(task == nil)
 
             Text("Press Enter to bump this task to tomorrow.")
-                .font(.caption)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)

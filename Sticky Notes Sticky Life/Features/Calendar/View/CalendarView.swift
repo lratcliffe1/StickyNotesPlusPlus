@@ -187,7 +187,7 @@ struct CalendarView: View {
 
     private func yearHeader(_ year: Int) -> some View {
         Text(String(year))
-            .font(.headline.weight(.semibold))
+            .font(.subheadline.weight(.semibold))
             .foregroundStyle(.primary)
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -202,13 +202,13 @@ struct CalendarView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(monthTitle(year: year, month: month))
-                .font(.subheadline.weight(.bold))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.primary)
 
             LazyVGrid(columns: gridColumns, spacing: 8) {
                 ForEach(weekdaySymbols, id: \.self) { symbol in
                     Text(symbol)
-                        .font(.caption2.weight(.semibold))
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity)
                 }
@@ -252,7 +252,7 @@ struct CalendarView: View {
                 .frame(width: 25, height: 25)
 
                 Text("\(calendar.component(.day, from: normalized))")
-                    .font(.caption2.weight(.semibold))
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.primary)
             }
             .frame(maxWidth: .infinity, minHeight: 52)

@@ -100,10 +100,10 @@ private struct StreakValue: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.footnote.weight(.bold))
+                .font(.caption2.weight(.bold))
                 .foregroundStyle(tint)
             Text("\(value)")
-                .font(.subheadline.monospacedDigit().weight(.semibold))
+                .font(.caption.monospacedDigit().weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -135,7 +135,7 @@ private struct DayProgressCell: View {
             }
 
             Text(label)
-                .font(.system(size: max(8, diameter * 0.38)))
+                .font(.system(size: max(7, diameter * 0.33)))
                 .foregroundStyle(isToday ? .primary : .secondary)
                 .fontWeight(isToday ? .bold : .regular)
         }

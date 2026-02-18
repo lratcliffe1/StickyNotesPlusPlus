@@ -35,7 +35,7 @@ struct InkStrikeRow<Trailing: View>: View {
 
                 if let subtitle {
                     Text(subtitle)
-                        .font(.caption)
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -101,6 +101,7 @@ private struct InkStrikeText: View {
 
     var body: some View {
         Text(title)
+            .font(.subheadline)
             .foregroundStyle(isCompleted ? .secondary : .primary)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in

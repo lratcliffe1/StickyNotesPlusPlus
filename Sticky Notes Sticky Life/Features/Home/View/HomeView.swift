@@ -36,10 +36,6 @@ struct HomeView: View {
 
                     selectedDayControls
 
-                    if let bannerText = vm.neverMissTwiceBannerText {
-                        HomeNeverMissTwiceBanner(text: bannerText)
-                    }
-
                     HomeStickyNoteCard(vm: vm, modelContext: modelContext)
                 }
                 .padding(.horizontal, 16)
@@ -68,23 +64,19 @@ struct HomeView: View {
     }
 
     private var selectedDayControls: some View {
-        HStack(spacing: 10) {
-            dayStepButton(systemImage: "chevron.left") {
-                shiftSelectedDay(by: -1, direction: .previous)
-            }
-
+        HStack(spacing: 8) {
             Button {
                 openCalendar()
             } label: {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(relativeDayLabel(for: vm.selectedDay))
-                        .font(.caption.weight(.semibold))
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
                     ZStack(alignment: .leading) {
                         Text(vm.selectedDay.formatted(.dateTime.month(.abbreviated).day().year()))
-                            .font(.footnote.weight(.semibold))
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .id(vm.selectedDay.timeIntervalSinceReferenceDate)
@@ -100,15 +92,11 @@ struct HomeView: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Open calendar")
 
-            dayStepButton(systemImage: "chevron.right") {
-                shiftSelectedDay(by: 1, direction: .next)
-            }
-
             if !isViewingToday {
                 Button("Today") {
                     goToTodayAnimated()
                 }
-                .font(.subheadline.weight(.semibold))
+                .font(.caption.weight(.semibold))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(.white.opacity(0.8))
@@ -125,7 +113,7 @@ struct HomeView: View {
             isShowingSettings = true
         } label: {
             Image(systemName: "gearshape.fill")
-                .font(.caption.weight(.semibold))
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(.primary)
                 .frame(width: 30, height: 30)
                 .background(.white.opacity(0.85))
@@ -189,18 +177,6 @@ struct HomeView: View {
                 isShowingCalendar = false
             }
         )
-    }
-
-    private func dayStepButton(systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.footnote.weight(.bold))
-                .foregroundStyle(.primary)
-                .frame(width: 34, height: 34)
-                .background(.white.opacity(0.82))
-                .clipShape(Circle())
-        }
-        .buttonStyle(.plain)
     }
 
     private func relativeDayLabel(for day: Date) -> String {
