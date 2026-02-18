@@ -19,6 +19,8 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var isReadOnly: Bool = false
     @Published private(set) var morningStreakCount: Int = 0
     @Published private(set) var dailyTaskStreakCount: Int = 0
+    @Published private(set) var isMorningStreakFrozen: Bool = false
+    @Published private(set) var isDailyTaskStreakFrozen: Bool = false
     @Published private(set) var sevenDayProgress: [HomeModel.DayProgress] = []
     @Published private(set) var isNeverMissTwiceMorningRisk: Bool = false
     @Published private(set) var isNeverMissTwiceDailyRisk: Bool = false
@@ -339,6 +341,7 @@ final class HomeViewModel: ObservableObject {
         let calendar = Calendar.current
         guard let startRaw = calendar.date(byAdding: .day, value: -streakLookbackDays, to: endDay) else {
             morningStreakCount = 0
+            isMorningStreakFrozen = false
             return
         }
 
@@ -348,12 +351,14 @@ final class HomeViewModel: ObservableObject {
             HomeModel.normalizedDay($0.date, calendar: calendar)
         }
 
-        morningStreakCount = HomeModel.morningStreak(
+        let streakState = HomeModel.morningStreakState(
             through: endDay,
             entriesByDay: entriesByDay,
             mode: morningMode,
             calendar: calendar
         )
+        morningStreakCount = streakState.count
+        isMorningStreakFrozen = streakState.isFrozen
     }
 
     private func refreshDailyTaskStreak(
@@ -363,6 +368,7 @@ final class HomeViewModel: ObservableObject {
         let calendar = Calendar.current
         guard let startRaw = calendar.date(byAdding: .day, value: -streakLookbackDays, to: endDay) else {
             dailyTaskStreakCount = 0
+            isDailyTaskStreakFrozen = false
             return
         }
 
@@ -372,11 +378,13 @@ final class HomeViewModel: ObservableObject {
             HomeModel.normalizedDay($0.date, calendar: calendar)
         }
 
-        dailyTaskStreakCount = HomeModel.dailyStreak(
+        let streakState = HomeModel.dailyStreakState(
             through: endDay,
             tasksByDay: tasksByDay,
             calendar: calendar
         )
+        dailyTaskStreakCount = streakState.count
+        isDailyTaskStreakFrozen = streakState.isFrozen
     }
 
     private func refreshNeverMissTwiceState(context: ModelContext) {
@@ -463,6 +471,8 @@ final class HomeViewModel: ObservableObject {
         isReadOnly: Bool,
         morningStreakCount: Int,
         dailyTaskStreakCount: Int,
+        isMorningStreakFrozen: Bool,
+        isDailyTaskStreakFrozen: Bool,
         sevenDayProgress: [HomeModel.DayProgress],
         isNeverMissTwiceMorningRisk: Bool,
         isNeverMissTwiceDailyRisk: Bool
@@ -471,6 +481,8 @@ final class HomeViewModel: ObservableObject {
         self.isReadOnly = isReadOnly
         self.morningStreakCount = morningStreakCount
         self.dailyTaskStreakCount = dailyTaskStreakCount
+        self.isMorningStreakFrozen = isMorningStreakFrozen
+        self.isDailyTaskStreakFrozen = isDailyTaskStreakFrozen
         self.sevenDayProgress = sevenDayProgress
         self.isNeverMissTwiceMorningRisk = isNeverMissTwiceMorningRisk
         self.isNeverMissTwiceDailyRisk = isNeverMissTwiceDailyRisk

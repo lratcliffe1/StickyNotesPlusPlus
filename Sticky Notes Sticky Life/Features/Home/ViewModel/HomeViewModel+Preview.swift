@@ -6,6 +6,9 @@ extension HomeViewModel {
         case morningActive
         case dailyAfterMorningWindow
         case dailyAfterMorningCompleted
+        case morningStreakFrozen
+        case dailyStreakFrozen
+        case streakReset
     }
 
     static func preview(_ scenario: PreviewScenario) -> HomeViewModel {
@@ -21,6 +24,8 @@ extension HomeViewModel {
             scenarioNow = calendar.date(bySettingHour: 11, minute: 0, second: 0, of: baseDay) ?? baseDay
         case .dailyAfterMorningCompleted:
             scenarioNow = calendar.date(bySettingHour: 8, minute: 30, second: 0, of: baseDay) ?? baseDay
+        case .morningStreakFrozen, .dailyStreakFrozen, .streakReset:
+            scenarioNow = calendar.date(bySettingHour: 11, minute: 0, second: 0, of: baseDay) ?? baseDay
         }
         let today = HomeModel.normalizedDay(scenarioNow, calendar: calendar)
 
@@ -50,6 +55,12 @@ extension HomeViewModel {
                 MorningRoutineEntry(date: today, titleSnapshot: "Stretch for 5 minutes", targetTimeSnapshot: DateComponents(hour: 7, minute: 10), isCompleted: true, completedAt: calendar.date(bySettingHour: 7, minute: 8, second: 0, of: today)),
                 MorningRoutineEntry(date: today, titleSnapshot: "Read 10 pages", targetTimeSnapshot: DateComponents(hour: 7, minute: 20), isCompleted: true, completedAt: calendar.date(bySettingHour: 7, minute: 18, second: 0, of: today))
             ]
+        case .morningStreakFrozen, .dailyStreakFrozen, .streakReset:
+            vm.morningEntries = [
+                MorningRoutineEntry(date: today, titleSnapshot: "Drink water", targetTimeSnapshot: DateComponents(hour: 7, minute: 0), isCompleted: true, completedAt: calendar.date(bySettingHour: 7, minute: 4, second: 0, of: today)),
+                MorningRoutineEntry(date: today, titleSnapshot: "Stretch for 5 minutes", targetTimeSnapshot: DateComponents(hour: 7, minute: 10), isCompleted: false, completedAt: nil),
+                MorningRoutineEntry(date: today, titleSnapshot: "Read 10 pages", targetTimeSnapshot: DateComponents(hour: 7, minute: 20), isCompleted: false, completedAt: nil)
+            ]
         }
 
         let contextualList: HomeModel.ContextualList = HomeModel.shouldShowMorningList(
@@ -60,11 +71,29 @@ extension HomeViewModel {
             calendar: calendar
         ) ? .morning : .daily
 
+        let streakState: (morningCount: Int, dailyCount: Int, morningFrozen: Bool, dailyFrozen: Bool)
+        switch scenario {
+        case .morningActive:
+            streakState = (morningCount: 4, dailyCount: 2, morningFrozen: false, dailyFrozen: false)
+        case .dailyAfterMorningWindow:
+            streakState = (morningCount: 3, dailyCount: 5, morningFrozen: false, dailyFrozen: false)
+        case .dailyAfterMorningCompleted:
+            streakState = (morningCount: 6, dailyCount: 4, morningFrozen: false, dailyFrozen: false)
+        case .morningStreakFrozen:
+            streakState = (morningCount: 6, dailyCount: 4, morningFrozen: true, dailyFrozen: false)
+        case .dailyStreakFrozen:
+            streakState = (morningCount: 5, dailyCount: 7, morningFrozen: false, dailyFrozen: true)
+        case .streakReset:
+            streakState = (morningCount: 0, dailyCount: 0, morningFrozen: false, dailyFrozen: false)
+        }
+
         vm.applyPreviewDerivedState(
             contextualList: contextualList,
             isReadOnly: HomeModel.isPastDay(today, now: scenarioNow, calendar: calendar),
-            morningStreakCount: 0,
-            dailyTaskStreakCount: 0,
+            morningStreakCount: streakState.morningCount,
+            dailyTaskStreakCount: streakState.dailyCount,
+            isMorningStreakFrozen: streakState.morningFrozen,
+            isDailyTaskStreakFrozen: streakState.dailyFrozen,
             sevenDayProgress: previewWeek(endingOn: today, calendar: calendar),
             isNeverMissTwiceMorningRisk: false,
             isNeverMissTwiceDailyRisk: false

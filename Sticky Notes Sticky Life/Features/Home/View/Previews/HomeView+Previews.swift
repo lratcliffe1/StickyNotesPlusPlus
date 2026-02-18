@@ -29,4 +29,19 @@ private func makeHomePreviewContainer() -> ModelContainer {
     HomeView(viewModel: .preview(.dailyAfterMorningCompleted), refreshOnAppear: false)
         .modelContainer(makeHomePreviewContainer())
 }
+
+#Preview("Streak - Morning Frozen") {
+    HomeView(viewModel: .preview(.morningStreakFrozen), refreshOnAppear: false)
+        .modelContainer(makeHomePreviewContainer())
+}
+
+#Preview("Streak - Daily Frozen") {
+    HomeView(viewModel: .preview(.dailyStreakFrozen), refreshOnAppear: false)
+        .modelContainer(makeHomePreviewContainer())
+}
+
+#Preview("Streak - Reset to Zero") {
+    HomeView(viewModel: .preview(.streakReset), refreshOnAppear: false)
+        .modelContainer(makeHomePreviewContainer())
+}
 #endif

@@ -3,6 +3,8 @@ import SwiftUI
 struct HomeHeaderCard: View {
     let morningStreakCount: Int
     let dailyTaskStreakCount: Int
+    let isMorningStreakFrozen: Bool
+    let isDailyTaskStreakFrozen: Bool
     let sevenDayProgress: [HomeModel.DayProgress]
     let selectedDay: Date
     let onTap: () -> Void
@@ -21,11 +23,13 @@ struct HomeHeaderCard: View {
                         StreakValue(
                             icon: "sun.max.fill",
                             value: morningStreakCount,
+                            isFrozen: isMorningStreakFrozen,
                             tint: .yellow
                         )
                         StreakValue(
                             icon: "flame.fill",
                             value: dailyTaskStreakCount,
+                            isFrozen: isDailyTaskStreakFrozen,
                             tint: .orange
                         )
                     }
@@ -65,7 +69,7 @@ struct HomeHeaderCard: View {
 
     private func headerMetrics(for width: CGFloat) -> HeaderMetrics {
         let horizontalSpacing: CGFloat = 0
-        let streakWidth = max(48, min(62, width * 0.18))
+        let streakWidth = max(56, min(74, width * 0.21))
         let rowAvailable = max(120, width - streakWidth - horizontalSpacing)
         let daySpacing = max(1, min(3, rowAvailable * 0.012))
         let daySize = max(15, min(22, (rowAvailable - (daySpacing * 6)) / 7))
@@ -89,23 +93,63 @@ private struct HeaderMetrics {
 private struct StreakValue: View {
     let icon: String
     let value: Int
+    let isFrozen: Bool
     let tint: Color
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 5) {
             Image(systemName: icon)
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(tint)
-            Text("\(value)")
-                .font(.caption.monospacedDigit().weight(.semibold))
-                .foregroundStyle(.primary)
-                .contentTransition(.numericText())
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+
+            if isFrozen {
+                Text("\(value)")
+                    .font(.caption2.monospacedDigit().weight(.bold))
+                    .foregroundStyle(Color(red: 0.10, green: 0.37, blue: 0.57))
+                    .contentTransition(.numericText())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(minWidth: 14)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background {
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.96, green: 0.99, blue: 1.0),
+                                        Color(red: 0.79, green: 0.91, blue: 1.0),
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                                    .stroke(Color.white.opacity(0.95), lineWidth: 0.8)
+                            )
+                    }
+            } else {
+                Text("\(value)")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .contentTransition(.numericText())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(minWidth: 14, alignment: .leading)
+            }
         }
-        .padding(.horizontal, 7)
+        .padding(.horizontal, 6)
         .padding(.vertical, 2)
-        .clipShape(Capsule())
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            Capsule(style: .continuous)
+                .fill(AppTheme.chipSurface.opacity(0.65))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(AppTheme.cardBorder.opacity(0.6), lineWidth: 0.8)
+                )
+        }
     }
 }
 

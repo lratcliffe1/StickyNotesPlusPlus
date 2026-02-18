@@ -161,6 +161,8 @@ struct HomeView: View {
             HomeHeaderCard(
                 morningStreakCount: vm.morningStreakCount,
                 dailyTaskStreakCount: vm.dailyTaskStreakCount,
+                isMorningStreakFrozen: vm.isMorningStreakFrozen,
+                isDailyTaskStreakFrozen: vm.isDailyTaskStreakFrozen,
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
                 onTap: openCalendar
@@ -171,6 +173,8 @@ struct HomeView: View {
             HomeHeaderCard(
                 morningStreakCount: vm.morningStreakCount,
                 dailyTaskStreakCount: vm.dailyTaskStreakCount,
+                isMorningStreakFrozen: vm.isMorningStreakFrozen,
+                isDailyTaskStreakFrozen: vm.isDailyTaskStreakFrozen,
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
                 onTap: openCalendar
