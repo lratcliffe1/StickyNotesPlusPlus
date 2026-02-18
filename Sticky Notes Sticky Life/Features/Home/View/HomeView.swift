@@ -8,6 +8,7 @@ struct HomeView: View {
     @State private var isShowingCalendar = false
     @State private var isShowingSettings = false
     @State private var dayTransitionDirection: DayTransitionDirection = .next
+    @State private var isTaskRowSwipeActive = false
 
     private let onOpenCalendar: () -> Void
     private let refreshOnAppear: Bool
@@ -36,7 +37,13 @@ struct HomeView: View {
 
                     selectedDayControls
 
-                    HomeStickyNoteCard(vm: vm, modelContext: modelContext)
+                    HomeStickyNoteCard(
+                        vm: vm,
+                        modelContext: modelContext,
+                        onTaskRowSwipeActiveChange: { isActive in
+                            isTaskRowSwipeActive = isActive
+                        }
+                    )
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
@@ -216,6 +223,8 @@ struct HomeView: View {
     private var daySwipeGesture: some Gesture {
         DragGesture(minimumDistance: 20, coordinateSpace: .local)
             .onEnded { value in
+                guard !isTaskRowSwipeActive else { return }
+
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
 

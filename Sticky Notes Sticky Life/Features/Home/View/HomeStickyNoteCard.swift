@@ -4,6 +4,7 @@ import SwiftUI
 struct HomeStickyNoteCard: View {
     @ObservedObject var vm: HomeViewModel
     let modelContext: ModelContext
+    var onTaskRowSwipeActiveChange: (Bool) -> Void = { _ in }
     @State private var isShowingBumpPopup = false
     @State private var pendingBumpTaskID: UUID?
     @State private var pendingBumpTitle: String = ""
@@ -68,7 +69,8 @@ struct HomeStickyNoteCard: View {
                         subtitle: timeLabel(from: entry.targetTimeSnapshot),
                         isCompleted: entry.isCompleted,
                         canEdit: vm.canCompleteSelectedDay,
-                        strikeColor: .blue
+                        strikeColor: .blue,
+                        onHorizontalSwipeActivityChange: onTaskRowSwipeActiveChange
                     ) {
                         vm.toggleMorningEntry(entry, context: modelContext)
                     } trailing: {
@@ -118,7 +120,8 @@ struct HomeStickyNoteCard: View {
                         subtitle: dailySubtitle(for: task),
                         isCompleted: task.isCompleted,
                         canEdit: vm.canCompleteSelectedDay,
-                        strikeColor: urgencyColor(for: task.bumpCount)
+                        strikeColor: urgencyColor(for: task.bumpCount),
+                        onHorizontalSwipeActivityChange: onTaskRowSwipeActiveChange
                     ) {
                         vm.toggleDailyTask(task, context: modelContext)
                     } trailing: {

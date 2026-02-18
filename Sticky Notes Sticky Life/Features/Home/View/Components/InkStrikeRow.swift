@@ -6,11 +6,13 @@ struct InkStrikeRow<Trailing: View>: View {
     let isCompleted: Bool
     let canEdit: Bool
     let strikeColor: Color
+    var onHorizontalSwipeActivityChange: ((Bool) -> Void)? = nil
     let onToggle: () -> Void
     @ViewBuilder var trailing: Trailing
 
     @State private var textWidth: CGFloat = 1
     @State private var dragProgress: CGFloat = 0
+    @State private var isHorizontalDragActive = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -58,22 +60,33 @@ struct InkStrikeRow<Trailing: View>: View {
         )
         .contentShape(Rectangle())
         .gesture(dragGesture)
+        .onDisappear {
+            endHorizontalDragIfNeeded(notifyAsynchronously: false)
+        }
     }
 
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
-                guard canEdit else { return }
-                guard isHorizontal(value) else {
+                if isHorizontal(value) {
+                    beginHorizontalDragIfNeeded()
+                } else {
                     dragProgress = 0
+                    endHorizontalDragIfNeeded(notifyAsynchronously: false)
                     return
                 }
+
+                guard canEdit else { return }
 
                 let progress = abs(value.translation.width) / max(textWidth, 1)
                 dragProgress = min(max(progress, 0), 1)
             }
             .onEnded { value in
-                defer { dragProgress = 0 }
+                defer {
+                    dragProgress = 0
+                    endHorizontalDragIfNeeded(notifyAsynchronously: true)
+                }
+
                 guard canEdit else { return }
                 guard isHorizontal(value) else { return }
 
@@ -90,6 +103,25 @@ struct InkStrikeRow<Trailing: View>: View {
     private func toggle() {
         guard canEdit else { return }
         onToggle()
+    }
+
+    private func beginHorizontalDragIfNeeded() {
+        guard !isHorizontalDragActive else { return }
+        isHorizontalDragActive = true
+        onHorizontalSwipeActivityChange?(true)
+    }
+
+    private func endHorizontalDragIfNeeded(notifyAsynchronously: Bool) {
+        guard isHorizontalDragActive else { return }
+        isHorizontalDragActive = false
+
+        if notifyAsynchronously {
+            DispatchQueue.main.async {
+                onHorizontalSwipeActivityChange?(false)
+            }
+        } else {
+            onHorizontalSwipeActivityChange?(false)
+        }
     }
 }
 
