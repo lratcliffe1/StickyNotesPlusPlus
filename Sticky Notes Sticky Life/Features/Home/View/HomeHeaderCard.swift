@@ -35,7 +35,7 @@ struct HomeHeaderCard: View {
                         if sevenDayProgress.isEmpty {
                             ForEach(0..<7, id: \.self) { _ in
                                 Circle()
-                                    .fill(.white.opacity(0.45))
+                                    .fill(AppTheme.progressCircleBase)
                                     .frame(width: metrics.daySize, height: metrics.daySize)
                             }
                         } else {

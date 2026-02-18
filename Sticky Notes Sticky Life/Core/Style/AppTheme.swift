@@ -1,10 +1,17 @@
 import SwiftUI
+import UIKit
 
 enum AppTheme {
     static let pageBackground = LinearGradient(
         colors: [
-            Color(red: 0.95, green: 0.97, blue: 1.00),
-            Color(red: 0.88, green: 0.92, blue: 0.98),
+            Color(
+                light: UIColor(red: 0.95, green: 0.97, blue: 1.00, alpha: 1.0),
+                dark: UIColor(red: 0.08, green: 0.10, blue: 0.14, alpha: 1.0)
+            ),
+            Color(
+                light: UIColor(red: 0.88, green: 0.92, blue: 0.98, alpha: 1.0),
+                dark: UIColor(red: 0.04, green: 0.06, blue: 0.10, alpha: 1.0)
+            ),
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
@@ -12,18 +19,61 @@ enum AppTheme {
 
     static let stickyNoteBackground = LinearGradient(
         colors: [
-            Color(red: 1.00, green: 0.97, blue: 0.78),
-            Color(red: 0.99, green: 0.93, blue: 0.67),
+            Color(
+                light: UIColor(red: 1.00, green: 0.97, blue: 0.78, alpha: 1.0),
+                dark: UIColor(red: 0.33, green: 0.28, blue: 0.13, alpha: 1.0)
+            ),
+            Color(
+                light: UIColor(red: 0.99, green: 0.93, blue: 0.67, alpha: 1.0),
+                dark: UIColor(red: 0.22, green: 0.19, blue: 0.09, alpha: 1.0)
+            ),
         ],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    static let cardSurface = Color.white.opacity(0.74)
-    static let cardBorder = Color.white.opacity(0.82)
-    static let chipSurface = Color.white.opacity(0.82)
-    static let selectedDayTint = Color.blue.opacity(0.18)
-    static let todayStroke = Color.blue.opacity(0.82)
+    static let cardSurface = Color(
+        light: UIColor.white.withAlphaComponent(0.74),
+        dark: UIColor.white.withAlphaComponent(0.12)
+    )
+    static let cardBorder = Color(
+        light: UIColor.white.withAlphaComponent(0.82),
+        dark: UIColor.white.withAlphaComponent(0.20)
+    )
+    static let chipSurface = Color(
+        light: UIColor.white.withAlphaComponent(0.82),
+        dark: UIColor.white.withAlphaComponent(0.16)
+    )
+    static let selectedDayTint = Color(
+        light: UIColor.systemBlue.withAlphaComponent(0.18),
+        dark: UIColor.systemBlue.withAlphaComponent(0.35)
+    )
+    static let todayStroke = Color(
+        light: UIColor.systemBlue.withAlphaComponent(0.82),
+        dark: UIColor.systemBlue.withAlphaComponent(0.72)
+    )
+    static let progressCircleBase = Color(
+        light: UIColor.white.withAlphaComponent(0.45),
+        dark: UIColor.white.withAlphaComponent(0.16)
+    )
+    static let progressCircleDivider = Color(
+        light: UIColor.white.withAlphaComponent(0.80),
+        dark: UIColor.white.withAlphaComponent(0.32)
+    )
+    static let progressCircleStroke = Color(
+        light: UIColor.white.withAlphaComponent(0.85),
+        dark: UIColor.white.withAlphaComponent(0.36)
+    )
+}
+
+private extension Color {
+    init(light: UIColor, dark: UIColor) {
+        self.init(
+            uiColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark ? dark : light
+            }
+        )
+    }
 }
 
 struct GlassCardModifier: ViewModifier {

@@ -7,7 +7,7 @@ struct DiagonalSplitCircle: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(.white.opacity(0.45))
+                .fill(AppTheme.progressCircleBase)
 
             Rectangle()
                 .fill(progressColor(for: morning))
@@ -20,11 +20,11 @@ struct DiagonalSplitCircle: View {
         .clipShape(Circle())
         .overlay {
             DiagonalLine()
-                .stroke(.white.opacity(0.8), lineWidth: 1)
+                .stroke(AppTheme.progressCircleDivider, lineWidth: 1)
         }
         .overlay {
             Circle()
-                .stroke(.white.opacity(0.85), lineWidth: 1)
+                .stroke(AppTheme.progressCircleStroke, lineWidth: 1)
         }
     }
 
