@@ -9,53 +9,41 @@ struct CalendarView: View {
     let onSelectDay: (Date) -> Void
     let onToday: () -> Void
 
-    @State private var hasScrolledToSelection = false
-
     var body: some View {
         let progressLookup = dayProgressLookup
 
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 22, pinnedViews: [.sectionHeaders]) {
-                    ForEach(yearRange, id: \.self) { year in
-                        Section {
-                            VStack(alignment: .leading, spacing: 16) {
-                                ForEach(1...12, id: \.self) { month in
-                                    monthCard(
-                                        year: year,
-                                        month: month,
-                                        progressLookup: progressLookup
-                                    )
-                                        .id(monthID(year: year, month: month))
-                                }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 22, pinnedViews: [.sectionHeaders]) {
+                ForEach(displayYearSections) { section in
+                    Section {
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach(section.months, id: \.self) { month in
+                                monthCard(
+                                    year: section.year,
+                                    month: month,
+                                    progressLookup: progressLookup
+                                )
                             }
-                            .padding(.horizontal, 16)
-                        } header: {
-                            yearHeader(year)
                         }
+                        .padding(.horizontal, 16)
+                    } header: {
+                        yearHeader(section.year)
                     }
                 }
-                .padding(.vertical, 14)
             }
-            .scrollIndicators(.hidden)
-            .background(screenBackground.ignoresSafeArea())
-            .onAppear {
-                hasScrolledToSelection = false
-                scrollToInitialMonth(using: proxy)
-            }
-            .onChange(of: yearRange) { _ in
-                scrollToInitialMonth(using: proxy)
-            }
-            .navigationTitle("Calendar")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Today") {
-                        onToday()
-                    }
-                    .accessibilityLabel("Go to today")
+            .padding(.vertical, 14)
+        }
+        .scrollIndicators(.hidden)
+        .background(screenBackground.ignoresSafeArea())
+        .navigationTitle("Calendar")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Today") {
+                    onToday()
                 }
+                .accessibilityLabel("Go to today")
             }
         }
     }
@@ -120,6 +108,58 @@ struct CalendarView: View {
             let index = (calendar.firstWeekday - 1 + offset) % 7
             return symbols[index]
         }
+    }
+
+    private var displayMonthRefs: [CalendarMonthRef] {
+        let allMonths = yearRange.flatMap { year in
+            (1...12).map { month in
+                CalendarMonthRef(year: year, month: month)
+            }
+        }
+
+        guard let startIndex = allMonths.firstIndex(where: { $0.id == initialMonthID }) else {
+            return allMonths
+        }
+
+        // Start the rendered sequence at today's month so it appears immediately
+        // without a post-present scroll animation.
+        return Array(allMonths[startIndex...]) + Array(allMonths[..<startIndex])
+    }
+
+    private var displayYearSections: [CalendarYearSection] {
+        guard let first = displayMonthRefs.first else { return [] }
+
+        var sections: [CalendarYearSection] = []
+        var currentYear = first.year
+        var currentMonths: [Int] = []
+        var chunk = 0
+
+        for ref in displayMonthRefs {
+            if ref.year != currentYear {
+                sections.append(
+                    CalendarYearSection(
+                        id: "year-\(currentYear)-chunk-\(chunk)",
+                        year: currentYear,
+                        months: currentMonths
+                    )
+                )
+                chunk += 1
+                currentYear = ref.year
+                currentMonths = []
+            }
+
+            currentMonths.append(ref.month)
+        }
+
+        sections.append(
+            CalendarYearSection(
+                id: "year-\(currentYear)-chunk-\(chunk)",
+                year: currentYear,
+                months: currentMonths
+            )
+        )
+
+        return sections
     }
 
     private var dayProgressLookup: [Date: HomeModel.DayProgress] {
@@ -282,19 +322,6 @@ struct CalendarView: View {
         return monthID(year: year, month: month)
     }
 
-    private func scrollToInitialMonth(using proxy: ScrollViewProxy) {
-        guard !hasScrolledToSelection else { return }
-        let target = initialMonthID
-
-        DispatchQueue.main.async {
-            proxy.scrollTo(target, anchor: .top)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                proxy.scrollTo(target, anchor: .top)
-                hasScrolledToSelection = true
-            }
-        }
-    }
-
     private func emptyProgress(for day: Date) -> HomeModel.DayProgress {
         HomeModel.DayProgress(
             date: day,
@@ -317,6 +344,21 @@ struct CalendarView: View {
             endPoint: .bottom
         )
     }
+}
+
+private struct CalendarMonthRef: Identifiable {
+    let year: Int
+    let month: Int
+
+    var id: String {
+        "month-\(year)-\(month)"
+    }
+}
+
+private struct CalendarYearSection: Identifiable {
+    let id: String
+    let year: Int
+    let months: [Int]
 }
 
 private struct CalendarSlot: Identifiable {

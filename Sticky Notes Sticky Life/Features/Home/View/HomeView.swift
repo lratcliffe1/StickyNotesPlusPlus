@@ -4,11 +4,14 @@ import SwiftUI
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @StateObject private var vm: HomeViewModel
+    @Namespace private var calendarTransition
     @State private var isShowingCalendar = false
     @State private var isShowingSettings = false
+    @State private var dayTransitionDirection: DayTransitionDirection = .next
 
     private let onOpenCalendar: () -> Void
     private let refreshOnAppear: Bool
+    private let calendarTransitionSourceID = "home-calendar-header"
 
     @MainActor
     init(
@@ -26,20 +29,12 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: 10) {
                     HStack(alignment: .center, spacing: 8) {
-                        HomeHeaderCard(
-                            morningStreakCount: vm.morningStreakCount,
-                            dailyTaskStreakCount: vm.dailyTaskStreakCount,
-                            sevenDayProgress: vm.sevenDayProgress,
-                            onTap: openCalendar
-                        )
-                        .frame(maxWidth: .infinity)
+                        headerCard
 
                         settingsButton
                     }
 
-                    if !isViewingToday {
-                        selectedDayControls
-                    }
+                    selectedDayControls
 
                     if let bannerText = vm.neverMissTwiceBannerText {
                         HomeNeverMissTwiceBanner(text: bannerText)
@@ -51,6 +46,7 @@ struct HomeView: View {
                 .padding(.bottom, 12)
             }
             .scrollIndicators(.hidden)
+            .simultaneousGesture(daySwipeGesture)
             .background(screenBackground.ignoresSafeArea())
             .task {
                 if refreshOnAppear {
@@ -58,17 +54,7 @@ struct HomeView: View {
                 }
             }
             .navigationDestination(isPresented: $isShowingCalendar) {
-                CalendarView(
-                    selectedDay: vm.selectedDay,
-                    onSelectDay: { day in
-                        vm.setSelectedDay(day, context: modelContext, preferredList: .daily)
-                        isShowingCalendar = false
-                    },
-                    onToday: {
-                        vm.goToToday(context: modelContext)
-                        isShowingCalendar = false
-                    }
-                )
+                calendarDestination
             }
             .navigationDestination(isPresented: $isShowingSettings) {
                 SettingsView()
@@ -83,36 +69,54 @@ struct HomeView: View {
 
     private var selectedDayControls: some View {
         HStack(spacing: 10) {
+            dayStepButton(systemImage: "chevron.left") {
+                shiftSelectedDay(by: -1, direction: .previous)
+            }
+
             Button {
                 openCalendar()
             } label: {
-                Label("Back", systemImage: "chevron.left")
-                    .font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.white.opacity(0.8))
-                    .clipShape(Capsule())
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(relativeDayLabel(for: vm.selectedDay))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    ZStack(alignment: .leading) {
+                        Text(vm.selectedDay.formatted(.dateTime.month(.abbreviated).day().year()))
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .id(vm.selectedDay.timeIntervalSinceReferenceDate)
+                            .transition(dayLabelTransition)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.white.opacity(0.8))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Back to calendar")
+            .accessibilityLabel("Open calendar")
 
-            Button("Today") {
-                vm.goToToday(context: modelContext)
+            dayStepButton(systemImage: "chevron.right") {
+                shiftSelectedDay(by: 1, direction: .next)
             }
-            .font(.subheadline.weight(.semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.white.opacity(0.8))
-            .clipShape(Capsule())
-            .buttonStyle(.plain)
 
-            Spacer()
-
-            Text(vm.selectedDay.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year()))
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            if !isViewingToday {
+                Button("Today") {
+                    goToTodayAnimated()
+                }
+                .font(.subheadline.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.white.opacity(0.8))
+                .clipShape(Capsule())
+                .buttonStyle(.plain)
+            }
         }
+        .animation(dayAnimation, value: vm.selectedDay)
         .padding(.horizontal, 2)
     }
 
@@ -141,6 +145,148 @@ struct HomeView: View {
         onOpenCalendar()
     }
 
+    @ViewBuilder
+    private var headerCard: some View {
+        if #available(iOS 18.0, *) {
+            HomeHeaderCard(
+                morningStreakCount: vm.morningStreakCount,
+                dailyTaskStreakCount: vm.dailyTaskStreakCount,
+                sevenDayProgress: vm.sevenDayProgress,
+                onTap: openCalendar
+            )
+            .frame(maxWidth: .infinity)
+            .matchedTransitionSource(id: calendarTransitionSourceID, in: calendarTransition)
+        } else {
+            HomeHeaderCard(
+                morningStreakCount: vm.morningStreakCount,
+                dailyTaskStreakCount: vm.dailyTaskStreakCount,
+                sevenDayProgress: vm.sevenDayProgress,
+                onTap: openCalendar
+            )
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var calendarDestination: some View {
+        if #available(iOS 18.0, *) {
+            calendarView
+                .navigationTransition(.zoom(sourceID: calendarTransitionSourceID, in: calendarTransition))
+        } else {
+            calendarView
+        }
+    }
+
+    private var calendarView: some View {
+        CalendarView(
+            selectedDay: vm.selectedDay,
+            onSelectDay: { day in
+                setSelectedDay(day, preferredList: .daily)
+                isShowingCalendar = false
+            },
+            onToday: {
+                goToTodayAnimated()
+                isShowingCalendar = false
+            }
+        )
+    }
+
+    private func dayStepButton(systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(.primary)
+                .frame(width: 34, height: 34)
+                .background(.white.opacity(0.82))
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func relativeDayLabel(for day: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(day) {
+            return "Today"
+        }
+        if calendar.isDateInTomorrow(day) {
+            return "Tomorrow"
+        }
+        if calendar.isDateInYesterday(day) {
+            return "Yesterday"
+        }
+
+        return day.formatted(.dateTime.weekday(.wide))
+    }
+
+    private var dayAnimation: Animation {
+        .spring(response: 0.34, dampingFraction: 0.86, blendDuration: 0.2)
+    }
+
+    private var dayLabelTransition: AnyTransition {
+        switch dayTransitionDirection {
+        case .next:
+            return .asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            )
+        case .previous:
+            return .asymmetric(
+                insertion: .move(edge: .leading).combined(with: .opacity),
+                removal: .move(edge: .trailing).combined(with: .opacity)
+            )
+        }
+    }
+
+    private var daySwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 20, coordinateSpace: .local)
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+
+                guard abs(horizontal) > 44 else { return }
+                guard abs(horizontal) > abs(vertical) * 1.25 else { return }
+
+                if horizontal < 0 {
+                    shiftSelectedDay(by: 1, direction: .next)
+                } else {
+                    shiftSelectedDay(by: -1, direction: .previous)
+                }
+            }
+    }
+
+    private func shiftSelectedDay(by value: Int, direction: DayTransitionDirection) {
+        guard let target = Calendar.current.date(byAdding: .day, value: value, to: vm.selectedDay) else { return }
+        setSelectedDay(target, direction: direction)
+    }
+
+    private func setSelectedDay(
+        _ day: Date,
+        preferredList: HomeModel.ContextualList? = nil,
+        direction: DayTransitionDirection? = nil
+    ) {
+        let normalizedDay = HomeModel.normalizedDay(day)
+        let currentDay = HomeModel.normalizedDay(vm.selectedDay)
+        guard normalizedDay != currentDay else { return }
+
+        dayTransitionDirection = direction ?? (normalizedDay > currentDay ? .next : .previous)
+
+        withAnimation(dayAnimation) {
+            vm.setSelectedDay(normalizedDay, context: modelContext, preferredList: preferredList)
+        }
+    }
+
+    private func goToTodayAnimated() {
+        let today = HomeModel.normalizedDay(Date())
+        let currentDay = HomeModel.normalizedDay(vm.selectedDay)
+        guard today != currentDay else { return }
+
+        dayTransitionDirection = today > currentDay ? .next : .previous
+
+        withAnimation(dayAnimation) {
+            vm.goToToday(context: modelContext)
+        }
+    }
+
     private var screenBackground: LinearGradient {
         LinearGradient(
             colors: [
@@ -151,4 +297,9 @@ struct HomeView: View {
             endPoint: .bottom
         )
     }
+}
+
+private enum DayTransitionDirection {
+    case previous
+    case next
 }
