@@ -59,14 +59,14 @@ struct InkStrikeRow<Trailing: View>: View {
                 .stroke(.white.opacity(0.7), lineWidth: 1)
         )
         .contentShape(Rectangle())
-        .gesture(dragGesture)
+        .simultaneousGesture(dragGesture)
         .onDisappear {
             endHorizontalDragIfNeeded(notifyAsynchronously: false)
         }
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 12)
+        DragGesture(minimumDistance: 24)
             .onChanged { value in
                 if isHorizontal(value) {
                     beginHorizontalDragIfNeeded()
@@ -97,7 +97,7 @@ struct InkStrikeRow<Trailing: View>: View {
     }
 
     private func isHorizontal(_ value: DragGesture.Value) -> Bool {
-        abs(value.translation.width) > abs(value.translation.height)
+        abs(value.translation.width) > abs(value.translation.height) * 1.25
     }
 
     private func toggle() {
