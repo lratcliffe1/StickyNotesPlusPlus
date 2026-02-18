@@ -51,9 +51,9 @@ struct InkStrikeRow<Trailing: View>: View {
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
         .background(.white.opacity(0.62))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(.white.opacity(0.7), lineWidth: 1)
         )
         .contentShape(Rectangle())

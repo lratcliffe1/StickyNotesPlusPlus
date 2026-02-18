@@ -11,9 +11,26 @@ struct HomeStickyNoteCard: View {
                 Text(vm.isMorningMode ? "Morning Routine" : "Daily Tasks")
                     .font(.title3.weight(.bold))
                 Spacer()
-                Text("\(Int((vm.isMorningMode ? vm.morningProgress : vm.dailyProgress) * 100))%")
-                    .font(.headline.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Text("\(Int((vm.isMorningMode ? vm.morningProgress : vm.dailyProgress) * 100))%")
+                        .font(.headline.monospacedDigit())
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            vm.flipStickyNoteList()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 6)
+                            .background(.white.opacity(0.78))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(vm.isMorningMode ? "Flip to daily tasks" : "Flip to morning routine")
+                }
             }
 
             if vm.isMorningMode {
@@ -22,12 +39,13 @@ struct HomeStickyNoteCard: View {
                 dailyList
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: vm.isMorningMode)
         .frame(maxWidth: .infinity, minHeight: 420, alignment: .topLeading)
         .padding(16)
         .background(stickyBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
                 .stroke(.white.opacity(0.75), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.08), radius: 14, y: 6)
@@ -45,16 +63,12 @@ struct HomeStickyNoteCard: View {
                         title: entry.titleSnapshot,
                         subtitle: timeLabel(from: entry.targetTimeSnapshot),
                         isCompleted: entry.isCompleted,
-                        canEdit: !vm.isReadOnly,
+                        canEdit: vm.canCompleteSelectedDay,
                         strikeColor: .blue
                     ) {
                         vm.toggleMorningEntry(entry, context: modelContext)
                     } trailing: {
-                        if entry.isCompleted {
-                            Text("Done")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.green)
-                        }
+                        EmptyView()
                     }
                 }
             }
@@ -88,6 +102,21 @@ struct HomeStickyNoteCard: View {
                 )
             }
 
+            if vm.canUndoLastBump {
+                Button {
+                    vm.undoLastBump(context: modelContext)
+                } label: {
+                    Label("Undo last bump", systemImage: "arrow.uturn.backward.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.white.opacity(0.75))
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Undo last bump")
+            }
+
             if prioritizedDailyTasks.isEmpty {
                 Text("No tasks for this day.")
                     .foregroundStyle(.secondary)
@@ -98,7 +127,7 @@ struct HomeStickyNoteCard: View {
                         title: task.title,
                         subtitle: dailySubtitle(for: task),
                         isCompleted: task.isCompleted,
-                        canEdit: !vm.isReadOnly,
+                        canEdit: vm.canCompleteSelectedDay,
                         strikeColor: urgencyColor(for: task.bumpCount)
                     ) {
                         vm.toggleDailyTask(task, context: modelContext)

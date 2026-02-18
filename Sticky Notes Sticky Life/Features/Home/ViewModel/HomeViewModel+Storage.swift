@@ -24,6 +24,13 @@ extension HomeViewModel {
         return (try? context.fetch(descriptor)) ?? []
     }
 
+    func fetchDailyTask(id: UUID, context: ModelContext) -> DailyTask? {
+        let descriptor = FetchDescriptor<DailyTask>(
+            predicate: #Predicate { $0.id == id }
+        )
+        return (try? context.fetch(descriptor))?.first
+    }
+
     func fetchDayRecord(for day: Date, context: ModelContext) -> DayRecord? {
         let day = HomeModel.normalizedDay(day)
         let descriptor = FetchDescriptor<DayRecord>(
@@ -73,41 +80,68 @@ extension HomeViewModel {
 
     // MARK: - Ensure / Upsert logic
 
-    func ensureMorningEntriesExist(for day: Date, context: ModelContext) {
+    func reconcileMorningEntries(for day: Date, context: ModelContext) {
+        let day = HomeModel.normalizedDay(day)
+        let templates = fetchTemplates(context: context)
         let existing = fetchMorningEntries(for: day, context: context)
-        if !existing.isEmpty { return }
-
-        let templates = fetchTemplates(context: context)
-        guard !templates.isEmpty else { return }
-
-        for template in templates {
-            let entry = MorningRoutineEntry(
-                date: day,
-                titleSnapshot: template.title,
-                sortOrderSnapshot: template.sortOrder,
-                targetTimeSnapshot: template.targetTime
-            )
-            context.insert(entry)
-        }
-        save(context: context)
-    }
-
-    func syncMorningEntryOrder(for day: Date, context: ModelContext) {
-        let entries = fetchMorningEntries(for: day, context: context)
-        guard !entries.isEmpty else { return }
-
-        let templates = fetchTemplates(context: context)
-        guard !templates.isEmpty else { return }
-
         var didChange = false
 
-        for entry in entries {
-            guard let matchingTemplate = templates.first(where: { $0.title == entry.titleSnapshot }) else { continue }
+        if templates.isEmpty {
+            if !existing.isEmpty {
+                for entry in existing {
+                    context.delete(entry)
+                }
+                save(context: context)
+            }
+            return
+        }
 
-            if entry.sortOrderSnapshot != matchingTemplate.sortOrder {
-                entry.sortOrderSnapshot = matchingTemplate.sortOrder
+        var unmatchedByTitle: [String: [MorningRoutineEntry]] = [:]
+        for entry in existing {
+            unmatchedByTitle[entry.titleSnapshot, default: []].append(entry)
+        }
+
+        for (title, entries) in unmatchedByTitle {
+            unmatchedByTitle[title] = entries.sorted {
+                if $0.sortOrderSnapshot != $1.sortOrderSnapshot {
+                    return $0.sortOrderSnapshot < $1.sortOrderSnapshot
+                }
+                return $0.id.uuidString < $1.id.uuidString
+            }
+        }
+
+        var keptEntryIDs: Set<UUID> = []
+
+        for template in templates {
+            if var bucket = unmatchedByTitle[template.title], let entry = bucket.first {
+                bucket.removeFirst()
+                unmatchedByTitle[template.title] = bucket
+                keptEntryIDs.insert(entry.id)
+
+                if entry.sortOrderSnapshot != template.sortOrder {
+                    entry.sortOrderSnapshot = template.sortOrder
+                    didChange = true
+                }
+
+                if entry.targetTimeSnapshot != template.targetTime {
+                    entry.targetTimeSnapshot = template.targetTime
+                    didChange = true
+                }
+            } else {
+                let entry = MorningRoutineEntry(
+                    date: day,
+                    titleSnapshot: template.title,
+                    sortOrderSnapshot: template.sortOrder,
+                    targetTimeSnapshot: template.targetTime
+                )
+                context.insert(entry)
                 didChange = true
             }
+        }
+
+        for entry in existing where !keptEntryIDs.contains(entry.id) {
+            context.delete(entry)
+            didChange = true
         }
 
         if didChange {

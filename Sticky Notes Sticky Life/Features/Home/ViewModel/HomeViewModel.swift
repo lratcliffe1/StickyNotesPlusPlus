@@ -9,6 +9,21 @@ final class HomeViewModel: ObservableObject {
         case sinceWakeUp
     }
 
+    private struct BumpedTaskSnapshot {
+        let id: UUID
+        let date: Date
+        let title: String
+        let isCompleted: Bool
+        let completedAt: Date?
+        let bumpCount: Int
+        let isBumpable: Bool
+    }
+
+    private struct LastBumpAction {
+        let originalTask: BumpedTaskSnapshot
+        let bumpedTaskID: UUID
+    }
+
     // UI state
     @Published var selectedDay: Date = HomeModel.normalizedDay(Date())
     @Published var morningEntries: [MorningRoutineEntry] = []
@@ -31,6 +46,8 @@ final class HomeViewModel: ObservableObject {
     var morningWindowDurationMinutes: Int = 90
     var nowOverride: Date?
     private let defaults: UserDefaults
+    private var manualContextualListOverride: HomeModel.ContextualList?
+    private var lastBumpAction: LastBumpAction?
 
     private var now: Date {
         nowOverride ?? Date()
@@ -51,8 +68,7 @@ final class HomeViewModel: ObservableObject {
         selectedDay = day
 
         if HomeModel.isToday(day, now: now, calendar: calendar) {
-            ensureMorningEntriesExist(for: day, context: context)
-            syncMorningEntryOrder(for: day, context: context)
+            reconcileMorningEntries(for: day, context: context)
         }
 
         morningEntries = fetchMorningEntries(for: day, context: context)
@@ -63,22 +79,45 @@ final class HomeViewModel: ObservableObject {
         recalculateDerivedState(context: context)
     }
 
-    func goToToday(context: ModelContext) {
-        selectedDay = HomeModel.normalizedDay(now)
+    func setSelectedDay(
+        _ day: Date,
+        context: ModelContext,
+        preferredList: HomeModel.ContextualList? = nil
+    ) {
+        selectedDay = HomeModel.normalizedDay(day)
+        manualContextualListOverride = preferredList
         refresh(context: context)
     }
 
+    func goToToday(context: ModelContext) {
+        selectedDay = HomeModel.normalizedDay(now)
+        manualContextualListOverride = nil
+        refresh(context: context)
+    }
+
+    func flipStickyNoteList() {
+        let nextList: HomeModel.ContextualList = isMorningMode ? .daily : .morning
+        manualContextualListOverride = nextList
+        contextualList = nextList
+    }
+
     func toggleMorningEntry(_ entry: MorningRoutineEntry, context: ModelContext) {
-        guard canEdit(day: entry.date) else { return }
+        guard canComplete(day: entry.date) else { return }
 
         entry.isCompleted.toggle()
         entry.completedAt = entry.isCompleted ? now : nil
         save(context: context)
         refresh(context: context)
+
+        if HomeModel.isToday(selectedDay, now: now),
+           HomeModel.morningCompletion(entries: morningEntries).value >= 1.0 {
+            manualContextualListOverride = nil
+            contextualList = .daily
+        }
     }
 
     func toggleDailyTask(_ task: DailyTask, context: ModelContext) {
-        guard canEdit(day: task.date) else { return }
+        guard canComplete(day: task.date) else { return }
 
         task.isCompleted.toggle()
         task.completedAt = task.isCompleted ? now : nil
@@ -87,7 +126,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     func addDailyTask(context: ModelContext) {
-        guard canEdit(day: selectedDay) else { return }
+        guard canManage(day: selectedDay) else { return }
 
         let title = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
@@ -100,12 +139,21 @@ final class HomeViewModel: ObservableObject {
     }
 
     func bumpTaskToTomorrow(_ task: DailyTask, context: ModelContext) {
-        guard canEdit(day: task.date) else { return }
+        guard canManage(day: task.date) else { return }
         guard task.isBumpable, !task.isCompleted else { return }
 
         let cal = Calendar.current
         let taskDay = HomeModel.normalizedDay(task.date, calendar: cal)
         let tomorrow = cal.date(byAdding: .day, value: 1, to: taskDay) ?? taskDay
+        let snapshot = BumpedTaskSnapshot(
+            id: task.id,
+            date: taskDay,
+            title: task.title,
+            isCompleted: task.isCompleted,
+            completedAt: task.completedAt,
+            bumpCount: task.bumpCount,
+            isBumpable: task.isBumpable
+        )
 
         let bumpedTask = DailyTask(
             date: HomeModel.normalizedDay(tomorrow, calendar: cal),
@@ -117,6 +165,37 @@ final class HomeViewModel: ObservableObject {
         )
 
         context.insert(bumpedTask)
+        context.delete(task)
+        lastBumpAction = LastBumpAction(
+            originalTask: snapshot,
+            bumpedTaskID: bumpedTask.id
+        )
+        save(context: context)
+        refresh(context: context)
+    }
+
+    func undoLastBump(context: ModelContext) {
+        guard let action = lastBumpAction else { return }
+        let snapshot = action.originalTask
+
+        if let bumpedTask = fetchDailyTask(id: action.bumpedTaskID, context: context) {
+            context.delete(bumpedTask)
+        }
+
+        if fetchDailyTask(id: snapshot.id, context: context) == nil {
+            let restoredTask = DailyTask(
+                id: snapshot.id,
+                date: snapshot.date,
+                title: snapshot.title,
+                isCompleted: snapshot.isCompleted,
+                completedAt: snapshot.completedAt,
+                bumpCount: snapshot.bumpCount,
+                isBumpable: snapshot.isBumpable
+            )
+            context.insert(restoredTask)
+        }
+
+        lastBumpAction = nil
         save(context: context)
         refresh(context: context)
     }
@@ -125,6 +204,14 @@ final class HomeViewModel: ObservableObject {
 
     var isMorningMode: Bool {
         contextualList == .morning
+    }
+
+    var canCompleteSelectedDay: Bool {
+        HomeModel.isToday(selectedDay, now: now)
+    }
+
+    var canUndoLastBump: Bool {
+        lastBumpAction != nil
     }
 
     var morningProgress: Double {
@@ -161,18 +248,22 @@ final class HomeViewModel: ObservableObject {
     // MARK: - Derived state
 
     private func recalculateDerivedState(context: ModelContext) {
-        isReadOnly = HomeModel.isPastDay(selectedDay, now: now)
+        let calendar = Calendar.current
+        isReadOnly = HomeModel.isPastDay(selectedDay, now: now, calendar: calendar)
 
+        let autoContextualList: HomeModel.ContextualList
         if HomeModel.shouldShowMorningList(
             for: selectedDay,
             morningEntries: morningEntries,
             mode: morningMode,
             now: now
         ) {
-            contextualList = .morning
+            autoContextualList = .morning
         } else {
-            contextualList = .daily
+            autoContextualList = .daily
         }
+
+        contextualList = manualContextualListOverride ?? autoContextualList
 
         refreshSevenDayProgress(context: context)
         refreshMorningStreak(context: context)
@@ -182,7 +273,7 @@ final class HomeViewModel: ObservableObject {
 
     private func refreshSevenDayProgress(context: ModelContext) {
         let calendar = Calendar.current
-        let endDay = HomeModel.normalizedDay(selectedDay, calendar: calendar)
+        let endDay = HomeModel.normalizedDay(now, calendar: calendar)
         guard let startRaw = calendar.date(byAdding: .day, value: -6, to: endDay) else {
             sevenDayProgress = []
             return
@@ -213,7 +304,7 @@ final class HomeViewModel: ObservableObject {
 
     private func refreshMorningStreak(context: ModelContext) {
         let calendar = Calendar.current
-        let endDay = HomeModel.normalizedDay(selectedDay, calendar: calendar)
+        let endDay = HomeModel.normalizedDay(now, calendar: calendar)
         guard let startRaw = calendar.date(byAdding: .day, value: -365, to: endDay) else {
             morningStreakCount = 0
             return
@@ -235,7 +326,7 @@ final class HomeViewModel: ObservableObject {
 
     private func refreshDailyTaskStreak(context: ModelContext) {
         let calendar = Calendar.current
-        let endDay = HomeModel.normalizedDay(selectedDay, calendar: calendar)
+        let endDay = HomeModel.normalizedDay(now, calendar: calendar)
         guard let startRaw = calendar.date(byAdding: .day, value: -365, to: endDay) else {
             dailyTaskStreakCount = 0
             return
@@ -256,7 +347,7 @@ final class HomeViewModel: ObservableObject {
 
     private func refreshNeverMissTwiceState(context: ModelContext) {
         let calendar = Calendar.current
-        let today = HomeModel.normalizedDay(selectedDay, calendar: calendar)
+        let today = HomeModel.normalizedDay(now, calendar: calendar)
         guard let yesterdayRaw = calendar.date(byAdding: .day, value: -1, to: today) else {
             isNeverMissTwiceMorningRisk = false
             isNeverMissTwiceDailyRisk = false
@@ -273,14 +364,29 @@ final class HomeViewModel: ObservableObject {
             tasks: fetchDailyTasks(for: yesterday, context: context)
         ).value
 
-        let todayMorningCompletion = HomeModel.morningCompletion(entries: morningEntries).value
-        let todayDailyCompletion = HomeModel.dailyCompletion(tasks: dailyTasks).value
+        let todayMorningEntries: [MorningRoutineEntry]
+        let todayDailyTasks: [DailyTask]
+
+        if HomeModel.isToday(selectedDay, now: now, calendar: calendar) {
+            todayMorningEntries = morningEntries
+            todayDailyTasks = dailyTasks
+        } else {
+            todayMorningEntries = fetchMorningEntries(for: today, context: context)
+            todayDailyTasks = fetchDailyTasks(for: today, context: context)
+        }
+
+        let todayMorningCompletion = HomeModel.morningCompletion(entries: todayMorningEntries).value
+        let todayDailyCompletion = HomeModel.dailyCompletion(tasks: todayDailyTasks).value
 
         isNeverMissTwiceMorningRisk = yesterdayMorningCompletion < 1.0 && todayMorningCompletion < 1.0
         isNeverMissTwiceDailyRisk = yesterdayDailyCompletion < 1.0 && todayDailyCompletion < 1.0
     }
 
-    private func canEdit(day: Date) -> Bool {
+    private func canComplete(day: Date) -> Bool {
+        HomeModel.isToday(day, now: now)
+    }
+
+    private func canManage(day: Date) -> Bool {
         !HomeModel.isPastDay(day, now: now)
     }
 

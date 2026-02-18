@@ -37,6 +37,10 @@ struct HomeView: View {
                         settingsButton
                     }
 
+                    if !isViewingToday {
+                        selectedDayControls
+                    }
+
                     if let bannerText = vm.neverMissTwiceBannerText {
                         HomeNeverMissTwiceBanner(text: bannerText)
                     }
@@ -54,13 +58,62 @@ struct HomeView: View {
                 }
             }
             .navigationDestination(isPresented: $isShowingCalendar) {
-                CalendarView()
+                CalendarView(
+                    selectedDay: vm.selectedDay,
+                    onSelectDay: { day in
+                        vm.setSelectedDay(day, context: modelContext, preferredList: .daily)
+                        isShowingCalendar = false
+                    },
+                    onToday: {
+                        vm.goToToday(context: modelContext)
+                        isShowingCalendar = false
+                    }
+                )
             }
             .navigationDestination(isPresented: $isShowingSettings) {
                 SettingsView()
             }
         }
         .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var isViewingToday: Bool {
+        HomeModel.isToday(vm.selectedDay)
+    }
+
+    private var selectedDayControls: some View {
+        HStack(spacing: 10) {
+            Button {
+                openCalendar()
+            } label: {
+                Label("Back", systemImage: "chevron.left")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.white.opacity(0.8))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to calendar")
+
+            Button("Today") {
+                vm.goToToday(context: modelContext)
+            }
+            .font(.subheadline.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.white.opacity(0.8))
+            .clipShape(Capsule())
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Text(vm.selectedDay.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day().year()))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 2)
     }
 
     private var settingsButton: some View {
