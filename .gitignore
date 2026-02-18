@@ -1,0 +1,15 @@
+# Xcode user-specific state
+**/xcuserdata/
+**/*.xcuserstate
+
+# Build artifacts
+DerivedData/
+.build/
+
+# macOS Finder metadata
+.DS_Store
+
+# Local-only secret/config files
+Secrets.xcconfig
+.env
+.env.*
