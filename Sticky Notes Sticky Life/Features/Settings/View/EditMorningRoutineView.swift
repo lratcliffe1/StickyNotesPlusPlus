@@ -95,6 +95,7 @@ struct EditMorningRoutineView: View {
     private func saveContext() {
         do {
             try modelContext.save()
+            TaskWidgetReloader.reloadTopTasksWidget()
         } catch {
             print("SwiftData save error:", error)
         }

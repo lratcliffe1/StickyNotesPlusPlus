@@ -38,8 +38,8 @@ final class HomeViewModel: ObservableObject {
         nowOverride ?? Date()
     }
 
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+    init(defaults: UserDefaults? = nil) {
+        self.defaults = defaults ?? SharedPersistence.sharedDefaults
         loadMorningSettings()
     }
 
@@ -92,6 +92,7 @@ final class HomeViewModel: ObservableObject {
         entry.completedAt = entry.isCompleted ? now : nil
         save(context: context)
         refresh(context: context)
+        TaskWidgetReloader.reloadTopTasksWidget()
 
         if HomeModel.isToday(selectedDay, now: now),
            HomeModel.morningCompletion(entries: morningEntries).value >= 1.0 {
@@ -114,6 +115,7 @@ final class HomeViewModel: ObservableObject {
 
             save(context: context)
             refresh(context: context)
+            TaskWidgetReloader.reloadTopTasksWidget()
             return
         }
 
@@ -121,6 +123,7 @@ final class HomeViewModel: ObservableObject {
         task.completedAt = task.isCompleted ? now : nil
         save(context: context)
         refresh(context: context)
+        TaskWidgetReloader.reloadTopTasksWidget()
     }
 
     func addDailyTask(context: ModelContext) {
@@ -134,6 +137,7 @@ final class HomeViewModel: ObservableObject {
         newTaskTitle = ""
         save(context: context)
         refresh(context: context)
+        TaskWidgetReloader.reloadTopTasksWidget()
     }
 
     func bumpTaskToTomorrow(
@@ -167,6 +171,7 @@ final class HomeViewModel: ObservableObject {
         task.bumpedTaskID = bumpedTask.id
         save(context: context)
         refresh(context: context)
+        TaskWidgetReloader.reloadTopTasksWidget()
     }
 
     // MARK: - Computed for UI

@@ -3,10 +3,12 @@ import SwiftUI
 
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var vm: HomeViewModel
     @Namespace private var calendarTransition
     @State private var isShowingCalendar = false
     @State private var isShowingSettings = false
+    @State private var isShowingAddDailyTask = false
     @State private var dayTransitionDirection: DayTransitionDirection = .next
     @State private var isTaskRowSwipeActive = false
 
@@ -61,11 +63,21 @@ struct HomeView: View {
                     vm.refresh(context: modelContext)
                 }
             }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                syncFromExternalWrites()
+            }
+            .onOpenURL { url in
+                handleDeepLink(url)
+            }
             .navigationDestination(isPresented: $isShowingCalendar) {
                 calendarDestination
             }
             .navigationDestination(isPresented: $isShowingSettings) {
                 SettingsView()
+            }
+            .navigationDestination(isPresented: $isShowingAddDailyTask) {
+                AddDailyTaskView()
             }
         }
         .toolbar(.hidden, for: .navigationBar)
@@ -260,6 +272,35 @@ struct HomeView: View {
         withAnimation(dayAnimation) {
             vm.goToToday(context: modelContext)
         }
+    }
+
+    private func syncFromExternalWrites() {
+        if modelContext.hasChanges {
+            do {
+                try modelContext.save()
+            } catch {
+                modelContext.rollback()
+            }
+        } else {
+            modelContext.rollback()
+        }
+
+        vm.refresh(context: modelContext)
+    }
+
+    private func handleDeepLink(_ url: URL) {
+        guard isAddDailyTaskDeepLink(url) else { return }
+        isShowingAddDailyTask = true
+    }
+
+    private func isAddDailyTaskDeepLink(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "stickynotes" else { return false }
+        if url.host?.lowercased() == "add-daily-task" {
+            return true
+        }
+
+        let normalizedPath = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
+        return normalizedPath == "add-daily-task"
     }
 }
 

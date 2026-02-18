@@ -10,5 +10,9 @@
 	<array>
 		<string>CloudKit</string>
 	</array>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.liamratcliffe.Sticky-Notes-Sticky-Life</string>
+	</array>
 </dict>
 </plist>
