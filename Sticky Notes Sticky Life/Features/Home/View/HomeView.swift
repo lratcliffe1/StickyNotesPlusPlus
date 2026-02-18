@@ -72,32 +72,26 @@ struct HomeView: View {
 
     private var selectedDayControls: some View {
         HStack(spacing: 8) {
-            Button {
-                openCalendar()
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(relativeDayLabel(for: vm.selectedDay))
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(relativeDayLabel(for: vm.selectedDay))
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
 
-                    ZStack(alignment: .leading) {
-                        Text(vm.selectedDay.formatted(.dateTime.month(.abbreviated).day().year()))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .id(vm.selectedDay.timeIntervalSinceReferenceDate)
-                            .transition(dayLabelTransition)
-                    }
+                ZStack(alignment: .leading) {
+                    Text(vm.selectedDay.formatted(.dateTime.month(.abbreviated).day().year()))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .id(vm.selectedDay.timeIntervalSinceReferenceDate)
+                        .transition(dayLabelTransition)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.white.opacity(0.8))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Open calendar")
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.white.opacity(0.8))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
             if !isViewingToday {
                 Button("Today") {

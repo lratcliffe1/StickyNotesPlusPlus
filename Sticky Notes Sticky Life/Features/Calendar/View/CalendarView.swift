@@ -13,39 +13,25 @@ struct CalendarView: View {
         let progressLookup = dayProgressLookup
 
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 22, pinnedViews: [.sectionHeaders]) {
+            LazyVStack(alignment: .leading, spacing: 22) {
                 ForEach(displayYearSections) { section in
-                    Section {
-                        VStack(alignment: .leading, spacing: 16) {
-                            ForEach(section.months, id: \.self) { month in
-                                monthCard(
-                                    year: section.year,
-                                    month: month,
-                                    progressLookup: progressLookup
-                                )
-                            }
+                    VStack(alignment: .leading, spacing: 16) {
+                        ForEach(section.months, id: \.self) { month in
+                            monthCard(
+                                year: section.year,
+                                month: month,
+                                progressLookup: progressLookup
+                            )
                         }
-                        .padding(.horizontal, 16)
-                    } header: {
-                        yearHeader(section.year)
                     }
+                    .padding(.horizontal, 16)
                 }
             }
             .padding(.vertical, 14)
         }
         .scrollIndicators(.hidden)
         .background(screenBackground.ignoresSafeArea())
-        .navigationTitle("Calendar")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.visible, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Today") {
-                    onToday()
-                }
-                .accessibilityLabel("Go to today")
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private var calendar: Calendar {
@@ -183,16 +169,6 @@ struct CalendarView: View {
         }
 
         return lookup
-    }
-
-    private func yearHeader(_ year: Int) -> some View {
-        Text(String(year))
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial)
     }
 
     private func monthCard(
