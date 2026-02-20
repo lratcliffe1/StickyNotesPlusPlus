@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 @main
-struct Sticky_Notes_Sticky_LifeApp: App {
+struct StickyNotePlusPlusApp: App {
     var sharedModelContainer: ModelContainer = {
         do {
             return try SharedPersistence.makeContainer()

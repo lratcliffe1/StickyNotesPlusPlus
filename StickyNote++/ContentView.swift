@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  Sticky Notes Sticky Life
+//  StickyNote++
 //
 //  Created by Liam Ratcliffe on 17/02/2026.
 //

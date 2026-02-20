@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		6F2C00022F5000000000A001 /* Sticky Notes Widget Extension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 6F2C00012F5000000000A001 /* Sticky Notes Widget Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		6F2C00022F5000000000A001 /* StickyNote++ Widget Extension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 6F2C00012F5000000000A001 /* StickyNote++ Widget Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -16,7 +16,7 @@
 			containerPortal = 15AB331E2F4456EC0004C854 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 6F2C000B2F5000000000A001;
-			remoteInfo = "Sticky Notes Widget Extension";
+			remoteInfo = "StickyNote++ Widget Extension";
 		};
 /* End PBXContainerItemProxy section */
 
@@ -27,7 +27,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				6F2C00022F5000000000A001 /* Sticky Notes Widget Extension.appex in Embed App Extensions */,
+				6F2C00022F5000000000A001 /* StickyNote++ Widget Extension.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -35,42 +35,42 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		15AB33262F4456EC0004C854 /* Sticky Notes Sticky Life.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Sticky Notes Sticky Life.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		6F2C00012F5000000000A001 /* Sticky Notes Widget Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Sticky Notes Widget Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		15AB33262F4456EC0004C854 /* StickyNote++.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "StickyNote++.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6F2C00012F5000000000A001 /* StickyNote++ Widget Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "StickyNote++ Widget Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		15AB33332F4456F00004C854 /* Exceptions for "Sticky Notes Sticky Life" folder in "Sticky Notes Sticky Life" target */ = {
+		15AB33332F4456F00004C854 /* Exceptions for "StickyNote++" folder in "StickyNote++" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = 15AB33252F4456EC0004C854 /* Sticky Notes Sticky Life */;
+			target = 15AB33252F4456EC0004C854 /* StickyNote++ */;
 		};
-		6F2C00032F5000000000A001 /* Exceptions for "Sticky Notes Widget Extension" folder in "Sticky Notes Widget Extension" target */ = {
+		6F2C00032F5000000000A001 /* Exceptions for "StickyNote++ Widget Extension" folder in "StickyNote++ Widget Extension" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = 6F2C000B2F5000000000A001 /* Sticky Notes Widget Extension */;
+			target = 6F2C000B2F5000000000A001 /* StickyNote++ Widget Extension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		15AB33282F4456EC0004C854 /* Sticky Notes Sticky Life */ = {
+		15AB33282F4456EC0004C854 /* StickyNote++ */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				15AB33332F4456F00004C854 /* Exceptions for "Sticky Notes Sticky Life" folder in "Sticky Notes Sticky Life" target */,
+				15AB33332F4456F00004C854 /* Exceptions for "StickyNote++" folder in "StickyNote++" target */,
 			);
-			path = "Sticky Notes Sticky Life";
+			path = "StickyNote++";
 			sourceTree = "<group>";
 		};
-		6F2C00042F5000000000A001 /* Sticky Notes Widget Extension */ = {
+		6F2C00042F5000000000A001 /* StickyNote++ Widget Extension */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				6F2C00032F5000000000A001 /* Exceptions for "Sticky Notes Widget Extension" folder in "Sticky Notes Widget Extension" target */,
+				6F2C00032F5000000000A001 /* Exceptions for "StickyNote++ Widget Extension" folder in "StickyNote++ Widget Extension" target */,
 			);
-			path = "Sticky Notes Widget Extension";
+			path = "StickyNote++ Widget Extension";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -96,8 +96,8 @@
 		15AB331D2F4456EC0004C854 = {
 			isa = PBXGroup;
 			children = (
-				15AB33282F4456EC0004C854 /* Sticky Notes Sticky Life */,
-				6F2C00042F5000000000A001 /* Sticky Notes Widget Extension */,
+				15AB33282F4456EC0004C854 /* StickyNote++ */,
+				6F2C00042F5000000000A001 /* StickyNote++ Widget Extension */,
 				15AB33272F4456EC0004C854 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -105,8 +105,8 @@
 		15AB33272F4456EC0004C854 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				15AB33262F4456EC0004C854 /* Sticky Notes Sticky Life.app */,
-				6F2C00012F5000000000A001 /* Sticky Notes Widget Extension.appex */,
+				15AB33262F4456EC0004C854 /* StickyNote++.app */,
+				6F2C00012F5000000000A001 /* StickyNote++ Widget Extension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -114,9 +114,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		15AB33252F4456EC0004C854 /* Sticky Notes Sticky Life */ = {
+		15AB33252F4456EC0004C854 /* StickyNote++ */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 15AB33342F4456F00004C854 /* Build configuration list for PBXNativeTarget "Sticky Notes Sticky Life" */;
+			buildConfigurationList = 15AB33342F4456F00004C854 /* Build configuration list for PBXNativeTarget "StickyNote++" */;
 			buildPhases = (
 				15AB33222F4456EC0004C854 /* Sources */,
 				15AB33232F4456EC0004C854 /* Frameworks */,
@@ -129,18 +129,18 @@
 				6F2C000A2F5000000000A001 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				15AB33282F4456EC0004C854 /* Sticky Notes Sticky Life */,
+				15AB33282F4456EC0004C854 /* StickyNote++ */,
 			);
-			name = "Sticky Notes Sticky Life";
+			name = "StickyNote++";
 			packageProductDependencies = (
 			);
-			productName = "Sticky Notes Sticky Life";
-			productReference = 15AB33262F4456EC0004C854 /* Sticky Notes Sticky Life.app */;
+			productName = "StickyNote++";
+			productReference = 15AB33262F4456EC0004C854 /* StickyNote++.app */;
 			productType = "com.apple.product-type.application";
 		};
-		6F2C000B2F5000000000A001 /* Sticky Notes Widget Extension */ = {
+		6F2C000B2F5000000000A001 /* StickyNote++ Widget Extension */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 6F2C000C2F5000000000A001 /* Build configuration list for PBXNativeTarget "Sticky Notes Widget Extension" */;
+			buildConfigurationList = 6F2C000C2F5000000000A001 /* Build configuration list for PBXNativeTarget "StickyNote++ Widget Extension" */;
 			buildPhases = (
 				6F2C00062F5000000000A001 /* Sources */,
 				6F2C00052F5000000000A001 /* Frameworks */,
@@ -151,13 +151,13 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				6F2C00042F5000000000A001 /* Sticky Notes Widget Extension */,
+				6F2C00042F5000000000A001 /* StickyNote++ Widget Extension */,
 			);
-			name = "Sticky Notes Widget Extension";
+			name = "StickyNote++ Widget Extension";
 			packageProductDependencies = (
 			);
-			productName = "Sticky Notes Widget Extension";
-			productReference = 6F2C00012F5000000000A001 /* Sticky Notes Widget Extension.appex */;
+			productName = "StickyNote++ Widget Extension";
+			productReference = 6F2C00012F5000000000A001 /* StickyNote++ Widget Extension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -178,7 +178,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 15AB33212F4456EC0004C854 /* Build configuration list for PBXProject "Sticky Notes Sticky Life" */;
+			buildConfigurationList = 15AB33212F4456EC0004C854 /* Build configuration list for PBXProject "StickyNote++" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -192,8 +192,8 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				15AB33252F4456EC0004C854 /* Sticky Notes Sticky Life */,
-				6F2C000B2F5000000000A001 /* Sticky Notes Widget Extension */,
+				15AB33252F4456EC0004C854 /* StickyNote++ */,
+				6F2C000B2F5000000000A001 /* StickyNote++ Widget Extension */,
 			);
 		};
 /* End PBXProject section */
@@ -235,7 +235,7 @@
 /* Begin PBXTargetDependency section */
 		6F2C000A2F5000000000A001 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 6F2C000B2F5000000000A001 /* Sticky Notes Widget Extension */;
+			target = 6F2C000B2F5000000000A001 /* StickyNote++ Widget Extension */;
 			targetProxy = 6F2C00092F5000000000A001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -246,13 +246,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "Sticky Notes Sticky Life/Sticky_Notes_Sticky_Life.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "StickyNote++/StickyNotePlusPlus.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3ZFCG7AH4U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "Sticky Notes Sticky Life/Info.plist";
+				INFOPLIST_FILE = "StickyNote++/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "StickyNote++";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -280,13 +281,14 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = "Sticky Notes Sticky Life/Sticky_Notes_Sticky_Life.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "StickyNote++/StickyNotePlusPlus.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3ZFCG7AH4U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "Sticky Notes Sticky Life/Info.plist";
+				INFOPLIST_FILE = "StickyNote++/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "StickyNote++";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -432,13 +434,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = "Sticky Notes Widget Extension/Sticky_Notes_Widget_Extension.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "StickyNote++ Widget Extension/StickyNotePlusPlusWidgetExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3ZFCG7AH4U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "Sticky Notes Widget Extension/Info.plist";
+				INFOPLIST_FILE = "StickyNote++ Widget Extension/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -464,13 +466,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = "Sticky Notes Widget Extension/Sticky_Notes_Widget_Extension.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "StickyNote++ Widget Extension/StickyNotePlusPlusWidgetExtension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 3ZFCG7AH4U;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "Sticky Notes Widget Extension/Info.plist";
+				INFOPLIST_FILE = "StickyNote++ Widget Extension/Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -495,7 +497,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		15AB33212F4456EC0004C854 /* Build configuration list for PBXProject "Sticky Notes Sticky Life" */ = {
+		15AB33212F4456EC0004C854 /* Build configuration list for PBXProject "StickyNote++" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				15AB33372F4456F00004C854 /* Debug */,
@@ -504,7 +506,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		15AB33342F4456F00004C854 /* Build configuration list for PBXNativeTarget "Sticky Notes Sticky Life" */ = {
+		15AB33342F4456F00004C854 /* Build configuration list for PBXNativeTarget "StickyNote++" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				15AB33352F4456F00004C854 /* Debug */,
@@ -513,7 +515,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		6F2C000C2F5000000000A001 /* Build configuration list for PBXNativeTarget "Sticky Notes Widget Extension" */ = {
+		6F2C000C2F5000000000A001 /* Build configuration list for PBXNativeTarget "StickyNote++ Widget Extension" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				6F2C000D2F5000000000A001 /* Debug */,
