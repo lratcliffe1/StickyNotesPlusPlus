@@ -66,8 +66,7 @@ enum WidgetTaskStore {
                 )
             }
 
-            let sortedDailyTasks = sortDailyTasksLikeHome(dailyTasks)
-            let items = sortedDailyTasks
+            let items = dailyTasks
                 .filter { !$0.isCompleted }
                 .prefix(3)
                 .map { WidgetTaskItem(id: $0.id, title: $0.title, list: .daily) }
@@ -145,8 +144,7 @@ enum WidgetTaskStore {
 
     private static func fetchDailyTasks(for day: Date, context: ModelContext) -> [DailyTask] {
         let descriptor = FetchDescriptor<DailyTask>(
-            predicate: #Predicate { $0.date == day },
-            sortBy: [SortDescriptor(\.title)]
+            predicate: #Predicate { $0.date == day }
         )
         return (try? context.fetch(descriptor)) ?? []
     }
@@ -156,21 +154,6 @@ enum WidgetTaskStore {
             sortBy: [SortDescriptor(\.sortOrder)]
         )
         return (try? context.fetch(descriptor)) ?? []
-    }
-
-    private static func sortDailyTasksLikeHome(_ tasks: [DailyTask]) -> [DailyTask] {
-        tasks.sorted { lhs, rhs in
-            if lhs.isBumpable != rhs.isBumpable {
-                return lhs.isBumpable == false
-            }
-
-            let titleOrder = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
-            if titleOrder != .orderedSame {
-                return titleOrder == .orderedAscending
-            }
-
-            return lhs.id.uuidString < rhs.id.uuidString
-        }
     }
 
     private static func currentMorningMode() -> HomeModel.MorningMode {

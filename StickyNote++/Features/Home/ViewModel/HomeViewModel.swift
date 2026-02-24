@@ -241,18 +241,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     var sortedDailyTasks: [DailyTask] {
-        dailyTasks.sorted { lhs, rhs in
-            if lhs.isBumpable != rhs.isBumpable {
-                return lhs.isBumpable == false
-            }
-
-            let titleOrder = lhs.title.localizedCaseInsensitiveCompare(rhs.title)
-            if titleOrder != .orderedSame {
-                return titleOrder == .orderedAscending
-            }
-
-            return lhs.id.uuidString < rhs.id.uuidString
-        }
+        dailyTasks
     }
 
     func updateNewTaskTitle(_ value: String) {
@@ -263,15 +252,15 @@ final class HomeViewModel: ObservableObject {
         guard isNeverMissTwiceMorningRisk || isNeverMissTwiceDailyRisk else { return nil }
 
         if isMorningMode, isNeverMissTwiceMorningRisk {
-            return "Yesterday slipped. Finish your morning list today."
+            return "NEVER MISS TWICE! Finish your morning todos."
         }
         if !isMorningMode, isNeverMissTwiceDailyRisk {
-            return "Yesterday slipped. Finish today’s tasks to avoid missing twice."
+            return "NEVER MISS TWICE! Finish your daily todos."
         }
         if isNeverMissTwiceMorningRisk {
-            return "Morning consistency is at risk today."
+            return "You missed your morning todos twice, resetting tomorrow..."
         }
-        return "Daily consistency is at risk today."
+        return "You missed your daily todos twice, resetting tomorrow..."
     }
 
     // MARK: - Derived state
@@ -390,38 +379,40 @@ final class HomeViewModel: ObservableObject {
     private func refreshNeverMissTwiceState(context: ModelContext) {
         let calendar = Calendar.current
         let today = HomeModel.normalizedDay(now, calendar: calendar)
-        guard let yesterdayRaw = calendar.date(byAdding: .day, value: -1, to: today) else {
+
+        guard let startRaw = calendar.date(byAdding: .day, value: -streakLookbackDays, to: today) else {
             isNeverMissTwiceMorningRisk = false
             isNeverMissTwiceDailyRisk = false
             return
         }
 
-        let yesterday = HomeModel.normalizedDay(yesterdayRaw, calendar: calendar)
+        let startDay = HomeModel.normalizedDay(startRaw, calendar: calendar)
 
-        let yesterdayMorningCompletion = HomeModel.morningCompletion(
-            entries: fetchMorningEntries(for: yesterday, context: context)
-        ).value
-
-        let yesterdayDailyCompletion = HomeModel.dailyCompletion(
-            tasks: fetchDailyTasks(for: yesterday, context: context)
-        ).value
-
-        let todayMorningEntries: [MorningRoutineEntry]
-        let todayDailyTasks: [DailyTask]
-
-        if HomeModel.isToday(selectedDay, now: now, calendar: calendar) {
-            todayMorningEntries = morningEntries
-            todayDailyTasks = dailyTasks
-        } else {
-            todayMorningEntries = fetchMorningEntries(for: today, context: context)
-            todayDailyTasks = fetchDailyTasks(for: today, context: context)
+        let morningEntries = fetchMorningEntries(from: startDay, through: today, context: context)
+        let morningByDay = Dictionary(grouping: morningEntries) {
+            HomeModel.normalizedDay($0.date, calendar: calendar)
         }
 
-        let todayMorningCompletion = HomeModel.morningCompletion(entries: todayMorningEntries).value
-        let todayDailyCompletion = HomeModel.dailyCompletion(tasks: todayDailyTasks).value
+        let dailyTasks = fetchDailyTasks(from: startDay, through: today, context: context)
+        let dailyByDay = Dictionary(grouping: dailyTasks) {
+            HomeModel.normalizedDay($0.date, calendar: calendar)
+        }
 
-        isNeverMissTwiceMorningRisk = yesterdayMorningCompletion < 1.0 && todayMorningCompletion < 1.0
-        isNeverMissTwiceDailyRisk = yesterdayDailyCompletion < 1.0 && todayDailyCompletion < 1.0
+        let morningStreakStateToday = HomeModel.morningStreakState(
+            through: today,
+            entriesByDay: morningByDay,
+            mode: morningMode,
+            calendar: calendar
+        )
+        let dailyStreakStateToday = HomeModel.dailyStreakState(
+            through: today,
+            tasksByDay: dailyByDay,
+            calendar: calendar
+        )
+
+        // Match "never miss twice" warnings to the exact same freeze semantics as streak counters.
+        isNeverMissTwiceMorningRisk = morningStreakStateToday.isFrozen
+        isNeverMissTwiceDailyRisk = dailyStreakStateToday.isFrozen
     }
 
     private func canComplete(day: Date) -> Bool {

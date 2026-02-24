@@ -198,30 +198,23 @@ enum HomeModel {
     ) -> StreakState {
         let anchor = normalizedDay(anchorDay, calendar: calendar)
         let start = min(normalizedDay(earliestTrackedDay, calendar: calendar), anchor)
-
-        var cursor = start
         var streakCount = 0
-        var previousDayWasComplete = false
-        var isFrozen = false
+        var isFrozenToday = false
+        var cursor = start
 
-        while true {
-            let completedToday = isComplete(cursor)
+        while cursor < anchor {
+            let completed = isComplete(cursor)
 
-            if completedToday {
-                streakCount += 1
-                previousDayWasComplete = true
-                isFrozen = false
-            } else if previousDayWasComplete && streakCount > 0 {
-                previousDayWasComplete = false
-                isFrozen = (cursor == anchor)
-            } else {
+            if completed {
+                streakCount = max(1, streakCount + 1)
+                isFrozenToday = false
+            } else if isFrozenToday {
                 streakCount = 0
-                previousDayWasComplete = false
-                isFrozen = false
-            }
-
-            if cursor == anchor {
-                break
+                isFrozenToday = false
+            } else if streakCount > 0 {
+                isFrozenToday = true
+            } else {
+                isFrozenToday = false
             }
 
             guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
@@ -230,6 +223,22 @@ enum HomeModel {
             cursor = normalizedDay(next, calendar: calendar)
         }
 
-        return StreakState(count: streakCount, isFrozen: isFrozen)
+        let completedAnchorDay = isComplete(anchor)
+        if completedAnchorDay {
+            return StreakState(
+                count: max(1, streakCount + 1),
+                isFrozen: false
+            )
+        }
+
+        if isFrozenToday {
+            return StreakState(count: streakCount, isFrozen: streakCount > 0)
+        }
+
+        if streakCount > 0 {
+            return StreakState(count: streakCount, isFrozen: false)
+        }
+
+        return StreakState(count: 0, isFrozen: false)
     }
 }

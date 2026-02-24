@@ -17,8 +17,7 @@ extension HomeViewModel {
         let day = HomeModel.normalizedDay(day)
 
         let descriptor = FetchDescriptor<DailyTask>(
-            predicate: #Predicate { $0.date == day },
-            sortBy: [SortDescriptor(\.title)]
+            predicate: #Predicate { $0.date == day }
         )
 
         return (try? context.fetch(descriptor)) ?? []
@@ -71,8 +70,7 @@ extension HomeViewModel {
         let endDay = HomeModel.normalizedDay(endDay)
 
         let descriptor = FetchDescriptor<DailyTask>(
-            predicate: #Predicate { $0.date >= startDay && $0.date <= endDay },
-            sortBy: [SortDescriptor(\.date), SortDescriptor(\.title)]
+            predicate: #Predicate { $0.date >= startDay && $0.date <= endDay }
         )
 
         return (try? context.fetch(descriptor)) ?? []

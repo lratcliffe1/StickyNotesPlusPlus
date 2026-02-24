@@ -110,25 +110,6 @@ private struct StreakValue: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .frame(minWidth: 14)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
-                    .background {
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        Color(red: 0.96, green: 0.99, blue: 1.0),
-                                        Color(red: 0.79, green: 0.91, blue: 1.0),
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                                    .stroke(Color.white.opacity(0.95), lineWidth: 0.8)
-                            )
-                    }
             } else {
                 Text("\(value)")
                     .font(.caption.monospacedDigit().weight(.semibold))
@@ -142,14 +123,6 @@ private struct StreakValue: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            Capsule(style: .continuous)
-                .fill(AppTheme.chipSurface.opacity(0.65))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(AppTheme.cardBorder.opacity(0.6), lineWidth: 0.8)
-                )
-        }
     }
 }
 

@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct HomeStickyNoteCard: View {
     @ObservedObject var vm: HomeViewModel
@@ -8,7 +9,7 @@ struct HomeStickyNoteCard: View {
     @State private var isShowingBumpPopup = false
     @State private var pendingBumpTaskID: UUID?
     @State private var pendingBumpTitle: String = ""
-    @FocusState private var isBumpTitleFieldFocused: Bool
+    @State private var bumpFocusToken = 0
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -139,6 +140,11 @@ struct HomeStickyNoteCard: View {
             guard !ids.contains(pendingBumpTaskID) else { return }
             clearPendingBumpComposer()
         }
+        .onChange(of: isShowingBumpPopup) { _, isPresented in
+            if isPresented {
+                scheduleBumpComposerFocus()
+            }
+        }
         .sheet(
             isPresented: $isShowingBumpPopup,
             onDismiss: clearPendingBumpComposer
@@ -217,12 +223,13 @@ struct HomeStickyNoteCard: View {
         pendingBumpTaskID = task.id
         pendingBumpTitle = ""
         isShowingBumpPopup = true
+        scheduleBumpComposerFocus()
     }
 
     private func clearPendingBumpComposer() {
+        bumpFocusToken += 1
         pendingBumpTaskID = nil
         pendingBumpTitle = ""
-        isBumpTitleFieldFocused = false
         isShowingBumpPopup = false
     }
 
@@ -259,13 +266,14 @@ struct HomeStickyNoteCard: View {
                 .accessibilityLabel("Cancel bump")
             }
 
-            TextField("Task for tomorrow...", text: $pendingBumpTitle)
-                .textFieldStyle(.plain)
-                .font(.subheadline)
-                .submitLabel(.done)
-                .focused($isBumpTitleFieldFocused)
-                .onSubmit(submitPendingBump)
-                .disabled(task == nil)
+            BumpAutofocusTextField(
+                text: $pendingBumpTitle,
+                placeholder: "Task for tomorrow...",
+                isEnabled: task != nil,
+                focusToken: bumpFocusToken,
+                onSubmit: submitPendingBump
+            )
+            .frame(height: 22)
 
             Text("Press Enter to bump this task to tomorrow.")
                 .font(.caption2)
@@ -277,8 +285,100 @@ struct HomeStickyNoteCard: View {
         .padding(.horizontal, 14)
         .padding(.top, 14)
         .onAppear {
+            scheduleBumpComposerFocus()
+        }
+    }
+
+    private func scheduleBumpComposerFocus() {
+        bumpFocusToken += 1
+    }
+}
+
+private struct BumpAutofocusTextField: UIViewRepresentable {
+    @Binding var text: String
+    let placeholder: String
+    let isEnabled: Bool
+    let focusToken: Int
+    let onSubmit: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(text: $text, onSubmit: onSubmit)
+    }
+
+    func makeUIView(context: Context) -> UITextField {
+        let textField = UITextField(frame: .zero)
+        textField.borderStyle = .none
+        textField.backgroundColor = .clear
+        textField.font = UIFont.preferredFont(forTextStyle: .subheadline)
+        textField.textColor = .label
+        textField.returnKeyType = .done
+        textField.autocapitalizationType = .sentences
+        textField.autocorrectionType = .yes
+        textField.clearButtonMode = .whileEditing
+        textField.delegate = context.coordinator
+        textField.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.textDidChange(_:)),
+            for: .editingChanged
+        )
+        return textField
+    }
+
+    func updateUIView(_ uiView: UITextField, context: Context) {
+        context.coordinator.text = $text
+        context.coordinator.onSubmit = onSubmit
+
+        uiView.placeholder = placeholder
+        uiView.isEnabled = isEnabled
+
+        if uiView.text != text {
+            uiView.text = text
+        }
+
+        context.coordinator.applyFocusIfNeeded(
+            token: focusToken,
+            to: uiView,
+            isEnabled: isEnabled
+        )
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var text: Binding<String>
+        var onSubmit: () -> Void
+        private var lastFocusToken: Int = .min
+
+        init(text: Binding<String>, onSubmit: @escaping () -> Void) {
+            self.text = text
+            self.onSubmit = onSubmit
+        }
+
+        @objc func textDidChange(_ sender: UITextField) {
+            text.wrappedValue = sender.text ?? ""
+        }
+
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            onSubmit()
+            return false
+        }
+
+        func applyFocusIfNeeded(token: Int, to textField: UITextField, isEnabled: Bool) {
+            guard token != lastFocusToken else { return }
+            lastFocusToken = token
+            guard isEnabled else { return }
+
+            focusAndSelectAll(textField)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak textField] in
+                guard let textField else { return }
+                self.focusAndSelectAll(textField)
+            }
+        }
+
+        private func focusAndSelectAll(_ textField: UITextField) {
             DispatchQueue.main.async {
-                isBumpTitleFieldFocused = true
+                guard textField.window != nil, textField.isEnabled else { return }
+                textField.becomeFirstResponder()
+                textField.selectAll(nil)
             }
         }
     }
