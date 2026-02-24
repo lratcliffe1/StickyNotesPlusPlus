@@ -3,6 +3,25 @@ import SwiftUI
 struct DiagonalSplitCircle: View {
     let morning: HomeModel.CompletionState
     let daily: HomeModel.CompletionState
+    let completionTickDiameter: CGFloat?
+    let completionTickColor: Color
+
+    init(
+        morning: HomeModel.CompletionState,
+        daily: HomeModel.CompletionState,
+        completionTickDiameter: CGFloat? = nil,
+        completionTickColor: Color = .primary
+    ) {
+        self.morning = morning
+        self.daily = daily
+        self.completionTickDiameter = completionTickDiameter
+        self.completionTickColor = completionTickColor
+    }
+
+    private enum CompletionSide {
+        case morning
+        case daily
+    }
 
     var body: some View {
         ZStack {
@@ -26,6 +45,11 @@ struct DiagonalSplitCircle: View {
             Circle()
                 .stroke(AppTheme.progressCircleStroke, lineWidth: 1)
         }
+        .overlay {
+            if let diameter = completionTickDiameter {
+                completionTickOverlay(diameter: diameter)
+            }
+        }
     }
 
     private func progressColor(for state: HomeModel.CompletionState) -> Color {
@@ -40,6 +64,41 @@ struct DiagonalSplitCircle: View {
             return Color.gray.opacity(0.55)
         }
         return base
+    }
+
+    @ViewBuilder
+    private func completionTickOverlay(diameter: CGFloat) -> some View {
+        ZStack {
+            if isMorningCompleted {
+                completionTick(for: .morning, diameter: diameter)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            }
+
+            if isDailyCompleted {
+                completionTick(for: .daily, diameter: diameter)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            }
+        }
+    }
+
+    private var isMorningCompleted: Bool {
+        morning.value >= 1.0 && !morning.isImplicitlyComplete
+    }
+
+    private var isDailyCompleted: Bool {
+        daily.value >= 1.0 && !daily.isImplicitlyComplete
+    }
+
+    private func completionTick(for side: CompletionSide, diameter: CGFloat) -> some View {
+        let tickSize = max(4, diameter * 0.24)
+        let inset = diameter * 0.20
+        let offsetX = side == .morning ? -inset : inset
+        let offsetY = side == .morning ? inset : -inset
+
+        return Image(systemName: "checkmark")
+            .font(.system(size: tickSize, weight: .black))
+            .foregroundStyle(completionTickColor)
+            .offset(x: offsetX, y: offsetY)
     }
 }
 

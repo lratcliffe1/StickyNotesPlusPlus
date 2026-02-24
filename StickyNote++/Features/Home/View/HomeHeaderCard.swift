@@ -136,16 +136,17 @@ private struct DayProgressCell: View {
         VStack(spacing: max(2, diameter * 0.14)) {
             DiagonalSplitCircle(
                 morning: day.morning,
-                daily: day.daily
+                daily: day.daily,
+                completionTickDiameter: diameter
             )
             .frame(width: diameter, height: diameter)
             .overlay {
                 if isSelected {
                     Circle()
-                        .stroke(AppTheme.todayStroke, lineWidth: 2)
+                        .stroke(.primary, lineWidth: 2)
                 } else if isToday {
                     Circle()
-                        .stroke(.blue.opacity(0.45), lineWidth: 1)
+                        .stroke(.secondary, lineWidth: 1)
                 }
             }
 
@@ -168,6 +169,27 @@ private struct DayProgressCell: View {
         let dailyPercent = Int((day.daily.value * 100).rounded())
         let selectedPrefix = isSelected ? "Selected, " : ""
         let todayPrefix = isToday ? "Today, " : ""
-        return "\(selectedPrefix)\(todayPrefix)\(day.date.formatted(date: .abbreviated, time: .omitted)), morning \(morningPercent) percent, daily \(dailyPercent) percent"
+        return "\(selectedPrefix)\(todayPrefix)\(day.date.formatted(date: .abbreviated, time: .omitted)), morning \(morningPercent) percent, daily \(dailyPercent) percent, \(completionSummary)"
+    }
+
+    private var isMorningCompleted: Bool {
+        day.morning.value >= 1.0 && !day.morning.isImplicitlyComplete
+    }
+
+    private var isDailyCompleted: Bool {
+        day.daily.value >= 1.0 && !day.daily.isImplicitlyComplete
+    }
+
+    private var completionSummary: String {
+        switch (isMorningCompleted, isDailyCompleted) {
+        case (true, true):
+            return "morning and daily complete"
+        case (true, false):
+            return "morning complete only"
+        case (false, true):
+            return "daily complete only"
+        case (false, false):
+            return "not complete"
+        }
     }
 }

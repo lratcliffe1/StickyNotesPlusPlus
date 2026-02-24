@@ -205,6 +205,7 @@ struct CalendarView: View {
         let progress = progressLookup[normalized] ?? emptyProgress(for: normalized)
         let isSelected = normalized == selectedDayNormalized
         let isToday = HomeModel.isToday(normalized, calendar: calendar)
+        let circleDiameter: CGFloat = 25
 
         return Button {
             onSelectDay(normalized)
@@ -212,9 +213,10 @@ struct CalendarView: View {
             VStack(spacing: 4) {
                 DiagonalSplitCircle(
                     morning: progress.morning,
-                    daily: progress.daily
+                    daily: progress.daily,
+                    completionTickDiameter: circleDiameter
                 )
-                .frame(width: 25, height: 25)
+                .frame(width: circleDiameter, height: circleDiameter)
 
                 Text("\(calendar.component(.day, from: normalized))")
                     .font(.system(size: 10, weight: .semibold))
