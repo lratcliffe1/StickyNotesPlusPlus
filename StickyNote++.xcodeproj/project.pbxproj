@@ -73,6 +73,11 @@
 			path = "StickyNote++ Widget Extension";
 			sourceTree = "<group>";
 		};
+		7F9E10012F6000000000A001 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -98,6 +103,7 @@
 			children = (
 				15AB33282F4456EC0004C854 /* StickyNote++ */,
 				6F2C00042F5000000000A001 /* StickyNote++ Widget Extension */,
+				7F9E10012F6000000000A001 /* Shared */,
 				15AB33272F4456EC0004C854 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -130,6 +136,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				15AB33282F4456EC0004C854 /* StickyNote++ */,
+				7F9E10012F6000000000A001 /* Shared */,
 			);
 			name = "StickyNote++";
 			packageProductDependencies = (
@@ -152,6 +159,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				6F2C00042F5000000000A001 /* StickyNote++ Widget Extension */,
+				7F9E10012F6000000000A001 /* Shared */,
 			);
 			name = "StickyNote++ Widget Extension";
 			packageProductDependencies = (
