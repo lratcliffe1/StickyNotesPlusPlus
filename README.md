@@ -1,7 +1,8 @@
 # Sticky Notes, Sticky Life
 
 I wanted an advanced sticky note app where I can track both my recurring morning routine streak and my daily task streak.
-I based it on ideas from James Clear's *Atomic Habits*:
+I based it on ideas from James Clear's _Atomic Habits_:
+
 - never miss twice
 - make it easy
 - make it visible
@@ -80,11 +81,3 @@ I now use this app daily.
 ```bash
 xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -destination "generic/platform=iOS Simulator" CODE_SIGNING_ALLOWED=NO build
 ```
-
-### Notes for real-device signing
-
-- This project includes an app group entitlement: `group.com.liamratcliffe.Sticky-Notes-Sticky-Life`.
-- If your team/profile does not own that group, update:
-  - app + widget entitlements
-  - bundle identifiers
-  - `SharedPersistence.appGroupIdentifier`
