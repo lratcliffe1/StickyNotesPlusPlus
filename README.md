@@ -21,36 +21,47 @@ I now use this app daily.
 - Added daily task bumping ("move to tomorrow") with urgency coloring.
 - Added a read-only calendar history view with 7-day and per-day progress visuals.
 - Added a widget that shows the top 3 uncompleted items and supports completion from the widget.
+- Fixed date/time edge cases across time zones by introducing a stable `dayKey` (`YYYY-MM-DD`) for all day-based queries.
+- Added one-time migration logic for legacy rows missing `dayKey` values.
+- Moved shared models, settings, persistence, and core day logic into a top-level `Shared/` folder used by both app and widget targets.
+- Added legacy store migration into the App Group container so old app-only data still loads after the shared-store move.
 
 ## Explain the code
 
 - `StickyNote++/StickyNotePlusPlusApp.swift`
   - App entry point. Creates the shared SwiftData container and injects it into the environment.
-- `StickyNote++/Core/Persistence/SharedPersistence.swift`
+- `Shared/Persistence/SharedPersistence.swift`
   - Defines the shared schema (`MorningRoutineTemplateItem`, `MorningRoutineEntry`, `DailyTask`, `DayRecord`).
   - Uses an App Group store so app + widget read/write the same data.
+  - Includes legacy-store migration into the App Group location.
+- `Shared/Home/HomeModel.swift`
+  - Pure rules for date normalization, stable day keys, completion math, streak math, and morning-window rules.
+- `Shared/Models/`
+  - Shared SwiftData models used by both targets.
+- `Shared/Settings/AppSettings.swift`
+  - Shared defaults keys and time conversion helpers for morning mode settings.
 - `StickyNote++/Features/Home/`
   - Main product logic/UI.
   - `HomeViewModel.swift` drives state, list switching, progress, streaks, and "never miss twice" flags.
-  - `HomeViewModel+Storage.swift` contains fetch/reconcile/save logic for SwiftData.
-  - `HomeModel.swift` contains pure logic for date normalization, completion math, streak math, and morning-window rules.
+  - `HomeViewModel+Storage.swift` contains fetch/reconcile/save logic for SwiftData and handles `dayKey` migration for legacy data.
   - `View/` contains the sticky note card, streak header, ink-strike interactions, and day navigation.
 - `StickyNote++/Features/Calendar/View/CalendarView.swift`
-  - Read-only calendar with per-day morning/daily split progress.
+  - Read-only calendar with per-day morning/daily split progress, keyed by stable day IDs.
 - `StickyNote++/Features/Settings/View/`
   - Edit morning routine template items.
   - Add daily tasks (including "must happen today" / non-bumpable behavior).
 - `StickyNote++ Widget Extension/`
   - Widget timeline + AppIntent completion.
-  - `WidgetTaskStore.swift` mirrors core selection logic and updates shared data.
+  - `WidgetTaskStore.swift` mirrors core selection logic, uses the shared container, and applies the same `dayKey` migration/query rules.
 
 ## Architecture choices
 
-- **SwiftUI + MVVM**: UI is declarative, and business logic lives in `HomeViewModel` / `HomeModel`.
+- **SwiftUI + MVVM**: UI is declarative, and feature state lives in `HomeViewModel`, while pure rules live in `Shared/Home/HomeModel`.
+- **Shared source of truth across targets**: the `Shared/` folder is compiled into both app and widget targets to keep models/settings/rules aligned.
 - **Shared local persistence first**: SwiftData in an App Group container keeps app and widget in sync without extra backend work.
-- **Explicit day normalization**: all date comparisons use start-of-day to avoid edge-case bugs.
+- **Stable day identity across time zones**: day-based queries use `dayKey` (`YYYY-MM-DD`) plus normalized dates to avoid timezone-related fetch bugs.
 - **Separation of logic from storage**:
-  - Pure rules in `HomeModel`
+  - Pure rules in `Shared/Home/HomeModel`
   - Persistence/fetch logic in `HomeViewModel+Storage`
   - UI composition in `View` files
 - **Feature-oriented folders**: Home, Calendar, Settings, and Widget are split by behavior rather than by UIKit-style layers.
