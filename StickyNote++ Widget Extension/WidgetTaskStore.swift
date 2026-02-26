@@ -39,6 +39,7 @@ enum WidgetTaskStore {
 
         do {
             let context = try modelContext()
+            try migrateLegacyDayKeysIfNeeded(context: context)
             try reconcileMorningEntries(for: today, context: context)
 
             let morningEntries = fetchMorningEntries(for: today, context: context)
@@ -90,7 +91,9 @@ enum WidgetTaskStore {
 
     static func completeTask(id: UUID, list: WidgetContextualList, now: Date = Date()) throws -> Bool {
         let context = try modelContext()
+        try migrateLegacyDayKeysIfNeeded(context: context)
         let day = HomeModel.normalizedDay(now)
+        let dayKey = HomeModel.dayKey(for: day)
 
         let didUpdate: Bool
 
@@ -101,7 +104,7 @@ enum WidgetTaskStore {
             )
 
             guard let entry = try context.fetch(descriptor).first else { return false }
-            guard HomeModel.normalizedDay(entry.date) == day else { return false }
+            guard entry.dayKey == dayKey else { return false }
             guard !entry.isCompleted else { return false }
 
             entry.isCompleted = true
@@ -114,7 +117,7 @@ enum WidgetTaskStore {
             )
 
             guard let task = try context.fetch(descriptor).first else { return false }
-            guard HomeModel.normalizedDay(task.date) == day else { return false }
+            guard task.dayKey == dayKey else { return false }
             guard !task.isCompleted else { return false }
 
             task.isCompleted = true
@@ -135,16 +138,18 @@ enum WidgetTaskStore {
     }
 
     private static func fetchMorningEntries(for day: Date, context: ModelContext) -> [MorningRoutineEntry] {
+        let dayKey = dayKey(for: day)
         let descriptor = FetchDescriptor<MorningRoutineEntry>(
-            predicate: #Predicate { $0.date == day },
+            predicate: #Predicate { $0.dayKey == dayKey },
             sortBy: [SortDescriptor(\.sortOrderSnapshot), SortDescriptor(\.titleSnapshot)]
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
     private static func fetchDailyTasks(for day: Date, context: ModelContext) -> [DailyTask] {
+        let dayKey = dayKey(for: day)
         let descriptor = FetchDescriptor<DailyTask>(
-            predicate: #Predicate { $0.date == day }
+            predicate: #Predicate { $0.dayKey == dayKey }
         )
         return (try? context.fetch(descriptor)) ?? []
     }
@@ -193,9 +198,10 @@ enum WidgetTaskStore {
     private static func updateDayRecord(for day: Date, context: ModelContext) {
         let morningState = HomeModel.morningCompletion(entries: fetchMorningEntries(for: day, context: context))
         let dailyState = HomeModel.dailyCompletion(tasks: fetchDailyTasks(for: day, context: context))
+        let dayKey = dayKey(for: day)
 
         let descriptor = FetchDescriptor<DayRecord>(
-            predicate: #Predicate { $0.date == day }
+            predicate: #Predicate { $0.dayKey == dayKey }
         )
 
         if let record = (try? context.fetch(descriptor))?.first {
@@ -281,5 +287,44 @@ enum WidgetTaskStore {
         if didChange {
             try context.save()
         }
+    }
+
+    private static func migrateLegacyDayKeysIfNeeded(context: ModelContext) throws {
+        let defaults = SharedPersistence.sharedDefaults
+        guard !defaults.bool(forKey: dayKeyMigrationCompletedDefaultsKey) else { return }
+
+        var didChange = false
+
+        let morningEntries = try context.fetch(FetchDescriptor<MorningRoutineEntry>())
+        for entry in morningEntries where entry.dayKey.isEmpty {
+            entry.dayKey = HomeModel.dayKey(for: entry.date)
+            didChange = true
+        }
+
+        let dailyTasks = try context.fetch(FetchDescriptor<DailyTask>())
+        for task in dailyTasks where task.dayKey.isEmpty {
+            task.dayKey = HomeModel.dayKey(for: task.date)
+            didChange = true
+        }
+
+        let dayRecords = try context.fetch(FetchDescriptor<DayRecord>())
+        for record in dayRecords where record.dayKey.isEmpty {
+            record.dayKey = HomeModel.dayKey(for: record.date)
+            didChange = true
+        }
+
+        if didChange {
+            try context.save()
+        }
+
+        defaults.set(true, forKey: dayKeyMigrationCompletedDefaultsKey)
+    }
+
+    private static func dayKey(for day: Date) -> String {
+        HomeModel.dayKey(for: HomeModel.normalizedDay(day))
+    }
+
+    private static var dayKeyMigrationCompletedDefaultsKey: String {
+        "stable_day_key_migration_completed_v1"
     }
 }

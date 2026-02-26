@@ -49,6 +49,7 @@ final class HomeViewModel: ObservableObject {
 
     func refresh(context: ModelContext) {
         loadMorningSettings()
+        migrateLegacyDayKeysIfNeeded(context: context)
 
         let calendar = Calendar.current
         let day = HomeModel.normalizedDay(selectedDay, calendar: calendar)
@@ -88,7 +89,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     func toggleMorningEntry(_ entry: MorningRoutineEntry, context: ModelContext) {
-        guard canComplete(day: entry.date) else { return }
+        guard canComplete(day: selectedDay) else { return }
 
         entry.isCompleted.toggle()
         entry.completedAt = entry.isCompleted ? now : nil
@@ -104,7 +105,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     func toggleDailyTask(_ task: DailyTask, context: ModelContext) {
-        guard canComplete(day: task.date) else { return }
+        guard canComplete(day: selectedDay) else { return }
 
         if task.isCompleted, let bumpedTaskID = task.bumpedTaskID {
             task.isCompleted = false
@@ -147,7 +148,7 @@ final class HomeViewModel: ObservableObject {
         bumpedTitle: String,
         context: ModelContext
     ) {
-        guard canManage(day: task.date) else { return }
+        guard canManage(day: selectedDay) else { return }
         guard task.isBumpable, !task.isCompleted else { return }
         guard task.bumpedTaskID == nil else { return }
 
@@ -155,7 +156,8 @@ final class HomeViewModel: ObservableObject {
         guard !bumpedTitle.isEmpty else { return }
 
         let cal = Calendar.current
-        let taskDay = HomeModel.normalizedDay(task.date, calendar: cal)
+        let taskDay = HomeModel.date(fromDayKey: task.dayKey, calendar: cal)
+            ?? HomeModel.normalizedDay(task.date, calendar: cal)
         let tomorrow = cal.date(byAdding: .day, value: 1, to: taskDay) ?? taskDay
 
         let bumpedTask = DailyTask(
@@ -305,11 +307,11 @@ final class HomeViewModel: ObservableObject {
         let weeklyDaily = fetchDailyTasks(from: startDay, through: endDay, context: context)
 
         let morningByDay = Dictionary(grouping: weeklyMorning) {
-            HomeModel.normalizedDay($0.date, calendar: calendar)
+            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
         }
 
         let dailyByDay = Dictionary(grouping: weeklyDaily) {
-            HomeModel.normalizedDay($0.date, calendar: calendar)
+            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
         }
 
         sevenDayProgress = (0..<progressWindowDays).compactMap { offset in
@@ -337,7 +339,7 @@ final class HomeViewModel: ObservableObject {
         let startDay = HomeModel.normalizedDay(startRaw, calendar: calendar)
         let entries = fetchMorningEntries(from: startDay, through: endDay, context: context)
         let entriesByDay = Dictionary(grouping: entries) {
-            HomeModel.normalizedDay($0.date, calendar: calendar)
+            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
         }
 
         let streakState = HomeModel.morningStreakState(
@@ -364,7 +366,7 @@ final class HomeViewModel: ObservableObject {
         let startDay = HomeModel.normalizedDay(startRaw, calendar: calendar)
         let tasks = fetchDailyTasks(from: startDay, through: endDay, context: context)
         let tasksByDay = Dictionary(grouping: tasks) {
-            HomeModel.normalizedDay($0.date, calendar: calendar)
+            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
         }
 
         let streakState = HomeModel.dailyStreakState(
@@ -390,12 +392,12 @@ final class HomeViewModel: ObservableObject {
 
         let morningEntries = fetchMorningEntries(from: startDay, through: today, context: context)
         let morningByDay = Dictionary(grouping: morningEntries) {
-            HomeModel.normalizedDay($0.date, calendar: calendar)
+            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
         }
 
         let dailyTasks = fetchDailyTasks(from: startDay, through: today, context: context)
         let dailyByDay = Dictionary(grouping: dailyTasks) {
-            HomeModel.normalizedDay($0.date, calendar: calendar)
+            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
         }
 
         let morningStreakStateToday = HomeModel.morningStreakState(
@@ -421,6 +423,18 @@ final class HomeViewModel: ObservableObject {
 
     private func canManage(day: Date) -> Bool {
         !HomeModel.isPastDay(day, now: now)
+    }
+
+    private func dayFromStored(
+        dayKey: String,
+        fallbackDate: Date,
+        calendar: Calendar = .current
+    ) -> Date {
+        if !dayKey.isEmpty, let parsed = HomeModel.date(fromDayKey: dayKey, calendar: calendar) {
+            return HomeModel.normalizedDay(parsed, calendar: calendar)
+        }
+
+        return HomeModel.normalizedDay(fallbackDate, calendar: calendar)
     }
 
     private func loadMorningSettings() {

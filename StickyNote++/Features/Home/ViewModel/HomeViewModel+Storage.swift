@@ -5,19 +5,19 @@ extension HomeViewModel {
     // MARK: - Fetching
 
     func fetchMorningEntries(for day: Date, context: ModelContext) -> [MorningRoutineEntry] {
-        let day = HomeModel.normalizedDay(day)
+        let dayKey = dayKey(for: day)
         let descriptor = FetchDescriptor<MorningRoutineEntry>(
-            predicate: #Predicate { $0.date == day },
+            predicate: #Predicate { $0.dayKey == dayKey },
             sortBy: [SortDescriptor(\.sortOrderSnapshot), SortDescriptor(\.titleSnapshot)]
         )
         return (try? context.fetch(descriptor)) ?? []
     }
 
     func fetchDailyTasks(for day: Date, context: ModelContext) -> [DailyTask] {
-        let day = HomeModel.normalizedDay(day)
+        let dayKey = dayKey(for: day)
 
         let descriptor = FetchDescriptor<DailyTask>(
-            predicate: #Predicate { $0.date == day }
+            predicate: #Predicate { $0.dayKey == dayKey }
         )
 
         return (try? context.fetch(descriptor)) ?? []
@@ -31,9 +31,9 @@ extension HomeViewModel {
     }
 
     func fetchDayRecord(for day: Date, context: ModelContext) -> DayRecord? {
-        let day = HomeModel.normalizedDay(day)
+        let dayKey = dayKey(for: day)
         let descriptor = FetchDescriptor<DayRecord>(
-            predicate: #Predicate { $0.date == day }
+            predicate: #Predicate { $0.dayKey == dayKey }
         )
         return (try? context.fetch(descriptor))?.first
     }
@@ -50,12 +50,14 @@ extension HomeViewModel {
         through endDay: Date,
         context: ModelContext
     ) -> [MorningRoutineEntry] {
-        let startDay = HomeModel.normalizedDay(startDay)
-        let endDay = HomeModel.normalizedDay(endDay)
+        let startKey = dayKey(for: startDay)
+        let endKey = dayKey(for: endDay)
 
         let descriptor = FetchDescriptor<MorningRoutineEntry>(
-            predicate: #Predicate { $0.date >= startDay && $0.date <= endDay },
-            sortBy: [SortDescriptor(\.date), SortDescriptor(\.sortOrderSnapshot), SortDescriptor(\.titleSnapshot)]
+            predicate: #Predicate {
+                $0.dayKey >= startKey && $0.dayKey <= endKey
+            },
+            sortBy: [SortDescriptor(\.dayKey), SortDescriptor(\.sortOrderSnapshot), SortDescriptor(\.titleSnapshot)]
         )
 
         return (try? context.fetch(descriptor)) ?? []
@@ -66,14 +68,51 @@ extension HomeViewModel {
         through endDay: Date,
         context: ModelContext
     ) -> [DailyTask] {
-        let startDay = HomeModel.normalizedDay(startDay)
-        let endDay = HomeModel.normalizedDay(endDay)
+        let startKey = dayKey(for: startDay)
+        let endKey = dayKey(for: endDay)
 
         let descriptor = FetchDescriptor<DailyTask>(
-            predicate: #Predicate { $0.date >= startDay && $0.date <= endDay }
+            predicate: #Predicate {
+                $0.dayKey >= startKey && $0.dayKey <= endKey
+            }
         )
 
         return (try? context.fetch(descriptor)) ?? []
+    }
+
+    func migrateLegacyDayKeysIfNeeded(context: ModelContext) {
+        let defaults = SharedPersistence.sharedDefaults
+        guard !defaults.bool(forKey: dayKeyMigrationCompletedDefaultsKey) else { return }
+
+        do {
+            var didChange = false
+
+            let morningEntries = try context.fetch(FetchDescriptor<MorningRoutineEntry>())
+            for entry in morningEntries where entry.dayKey.isEmpty {
+                entry.dayKey = HomeModel.dayKey(for: entry.date)
+                didChange = true
+            }
+
+            let dailyTasks = try context.fetch(FetchDescriptor<DailyTask>())
+            for task in dailyTasks where task.dayKey.isEmpty {
+                task.dayKey = HomeModel.dayKey(for: task.date)
+                didChange = true
+            }
+
+            let dayRecords = try context.fetch(FetchDescriptor<DayRecord>())
+            for record in dayRecords where record.dayKey.isEmpty {
+                record.dayKey = HomeModel.dayKey(for: record.date)
+                didChange = true
+            }
+
+            if didChange {
+                try context.save()
+            }
+
+            defaults.set(true, forKey: dayKeyMigrationCompletedDefaultsKey)
+        } catch {
+            print("Day key migration error:", error)
+        }
     }
 
     // MARK: - Ensure / Upsert logic
@@ -165,5 +204,13 @@ extension HomeViewModel {
     func save(context: ModelContext) {
         do { try context.save() }
         catch { print("SwiftData save error:", error) }
+    }
+
+    private func dayKey(for day: Date) -> String {
+        HomeModel.dayKey(for: HomeModel.normalizedDay(day))
+    }
+
+    private var dayKeyMigrationCompletedDefaultsKey: String {
+        "stable_day_key_migration_completed_v1"
     }
 }

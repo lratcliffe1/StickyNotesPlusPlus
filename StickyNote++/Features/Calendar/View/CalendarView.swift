@@ -2,8 +2,8 @@ import SwiftData
 import SwiftUI
 
 struct CalendarView: View {
-    @Query(sort: \MorningRoutineEntry.date) private var morningEntries: [MorningRoutineEntry]
-    @Query(sort: \DailyTask.date) private var dailyTasks: [DailyTask]
+    @Query(sort: \MorningRoutineEntry.dayKey) private var morningEntries: [MorningRoutineEntry]
+    @Query(sort: \DailyTask.dayKey) private var dailyTasks: [DailyTask]
 
     let selectedDay: Date
     let onSelectDay: (Date) -> Void
@@ -62,16 +62,16 @@ struct CalendarView: View {
         var maxYear = max(currentYear, initialYear)
 
         for entry in morningEntries {
-            let normalized = HomeModel.normalizedDay(entry.date, calendar: calendar)
-            let year = calendar.component(.year, from: normalized)
+            let day = dayFromStored(dayKey: entry.dayKey, fallbackDate: entry.date)
+            let year = calendar.component(.year, from: day)
             guard year >= lowerBound && year <= upperBound else { continue }
             minYear = min(minYear, year)
             maxYear = max(maxYear, year)
         }
 
         for task in dailyTasks {
-            let normalized = HomeModel.normalizedDay(task.date, calendar: calendar)
-            let year = calendar.component(.year, from: normalized)
+            let day = dayFromStored(dayKey: task.dayKey, fallbackDate: task.date)
+            let year = calendar.component(.year, from: day)
             guard year >= lowerBound && year <= upperBound else { continue }
             minYear = min(minYear, year)
             maxYear = max(maxYear, year)
@@ -143,10 +143,10 @@ struct CalendarView: View {
 
     private var dayProgressLookup: [Date: HomeModel.DayProgress] {
         let morningByDay = Dictionary(grouping: morningEntries) { entry in
-            HomeModel.normalizedDay(entry.date, calendar: calendar)
+            dayFromStored(dayKey: entry.dayKey, fallbackDate: entry.date)
         }
         let dailyByDay = Dictionary(grouping: dailyTasks) { task in
-            HomeModel.normalizedDay(task.date, calendar: calendar)
+            dayFromStored(dayKey: task.dayKey, fallbackDate: task.date)
         }
 
         let allDays = Set(morningByDay.keys).union(dailyByDay.keys)
@@ -299,6 +299,14 @@ struct CalendarView: View {
 
     private var gridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
+    }
+
+    private func dayFromStored(dayKey: String, fallbackDate: Date) -> Date {
+        if !dayKey.isEmpty, let parsed = HomeModel.date(fromDayKey: dayKey, calendar: calendar) {
+            return HomeModel.normalizedDay(parsed, calendar: calendar)
+        }
+
+        return HomeModel.normalizedDay(fallbackDate, calendar: calendar)
     }
 }
 

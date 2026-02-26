@@ -33,6 +33,36 @@ enum HomeModel {
         calendar.startOfDay(for: date)
     }
 
+    static func dayKey(for date: Date, calendar: Calendar = .current) -> String {
+        let dayCalendar = gregorianCalendar(using: calendar)
+        let components = dayCalendar.dateComponents([.year, .month, .day], from: date)
+        let year = components.year ?? 1970
+        let month = components.month ?? 1
+        let day = components.day ?? 1
+        return String(format: "%04d-%02d-%02d", year, month, day)
+    }
+
+    static func date(fromDayKey key: String, calendar: Calendar = .current) -> Date? {
+        let dayCalendar = gregorianCalendar(using: calendar)
+        let parts = key.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 3 else { return nil }
+        guard
+            let year = Int(parts[0]),
+            let month = Int(parts[1]),
+            let day = Int(parts[2])
+        else {
+            return nil
+        }
+
+        return dayCalendar.date(from: DateComponents(year: year, month: month, day: day))
+    }
+
+    private static func gregorianCalendar(using base: Calendar) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = base.timeZone
+        return calendar
+    }
+
     static func isToday(_ day: Date, now: Date = Date(), calendar: Calendar = .current) -> Bool {
         normalizedDay(day, calendar: calendar) == normalizedDay(now, calendar: calendar)
     }
