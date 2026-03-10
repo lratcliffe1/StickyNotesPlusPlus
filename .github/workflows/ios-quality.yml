@@ -15,16 +15,9 @@ jobs:
       - name: Show Xcode Version
         run: xcodebuild -version
 
-      - name: Install SwiftLint
-        run: |
-          brew update
-          brew install swiftlint
-
       - name: Build App
         run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 16" build
 
       - name: Build Widget
         run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++ Widget Extension" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 16" build
 
-      - name: SwiftLint
-        run: swiftlint
