@@ -33,6 +33,15 @@ struct WidgetTaskSnapshot {
 enum WidgetTaskStore {
     static let widgetKind = "TopTasksWidget"
     private static let container: ModelContainer? = try? SharedPersistence.makeContainer()
+    static var makeContext: () throws -> ModelContext = {
+        if let container = Self.container {
+            return ModelContext(container)
+        }
+        return ModelContext(try SharedPersistence.makeContainer())
+    }
+    static var loadMorningMode: () -> HomeModel.MorningMode = {
+        MorningModeProvider.load(from: SharedPersistence.sharedDefaults).mode
+    }
 
     static func snapshot(now: Date = Date()) -> WidgetTaskSnapshot {
         let calendar = Calendar.current
@@ -41,7 +50,7 @@ enum WidgetTaskStore {
         let fallbackDate = nextRefreshDate(now: now, mode: mode, calendar: calendar)
 
         do {
-            let context = try modelContext()
+            let context = try makeContext()
             try HomeDataStore.migrateLegacyDayKeysIfNeeded(context: context)
             try HomeDataStore.reconcileMorningEntries(for: today, context: context)
 
@@ -100,7 +109,7 @@ enum WidgetTaskStore {
     }
 
     static func completeTask(id: UUID, list: WidgetContextualList, now: Date = Date()) throws -> Bool {
-        let context = try modelContext()
+        let context = try makeContext()
         try HomeDataStore.migrateLegacyDayKeysIfNeeded(context: context)
         let day = HomeModel.normalizedDay(now)
         let currentDayKey = HomeDataStore.dayKey(for: day)
@@ -150,7 +159,7 @@ enum WidgetTaskStore {
     static func bumpTask(id: UUID, list: WidgetContextualList, now: Date = Date()) throws -> Bool {
         guard list == .daily else { return false }
 
-        let context = try modelContext()
+        let context = try makeContext()
         try HomeDataStore.migrateLegacyDayKeysIfNeeded(context: context)
         let day = HomeModel.normalizedDay(now)
         let currentDayKey = HomeDataStore.dayKey(for: day)
@@ -195,15 +204,8 @@ enum WidgetTaskStore {
         return true
     }
 
-    private static func modelContext() throws -> ModelContext {
-        if let container {
-            return ModelContext(container)
-        }
-        return ModelContext(try SharedPersistence.makeContainer())
-    }
-
     private static func currentMorningMode() -> HomeModel.MorningMode {
-        MorningModeProvider.load(from: SharedPersistence.sharedDefaults).mode
+        loadMorningMode()
     }
 
     private static func nextRefreshDate(now: Date, mode: HomeModel.MorningMode, calendar: Calendar) -> Date {

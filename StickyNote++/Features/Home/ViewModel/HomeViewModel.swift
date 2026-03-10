@@ -36,6 +36,7 @@ final class HomeViewModel: ObservableObject {
     private let defaults: UserDefaults
     private let loadSettings: (UserDefaults) -> MorningModeSettings
     private let reloadWidget: () -> Void
+    private let createDailyTask: (Date, String, Bool, ModelContext) throws -> DailyTask
     private var manualContextualListOverride: HomeModel.ContextualList?
     private let streakLookbackDays = 365
     private let progressWindowDays = 7
@@ -47,11 +48,21 @@ final class HomeViewModel: ObservableObject {
     init(
         defaults: UserDefaults? = nil,
         loadSettings: @escaping (UserDefaults) -> MorningModeSettings = MorningModeProvider.load,
-        reloadWidget: @escaping () -> Void = TaskWidgetReloader.reloadTopTasksWidget
+        reloadWidget: @escaping () -> Void = TaskWidgetReloader.reloadTopTasksWidget,
+        createDailyTask: @escaping (Date, String, Bool, ModelContext) throws -> DailyTask = { day, title, mustHappenToday, context in
+            try DailyTaskMutationService.createTask(
+                for: day,
+                title: title,
+                mustHappenToday: mustHappenToday,
+                context: context,
+                saveImmediately: false
+            )
+        }
     ) {
         self.defaults = defaults ?? SharedPersistence.sharedDefaults
         self.loadSettings = loadSettings
         self.reloadWidget = reloadWidget
+        self.createDailyTask = createDailyTask
         loadMorningSettings()
     }
 
@@ -161,15 +172,12 @@ final class HomeViewModel: ObservableObject {
 
         let title = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return false }
-        let sortOrder = nextSortOrder(for: selectedDay, insertAtTop: mustHappenToday, context: context)
-
-        let task = DailyTask(
-            date: selectedDay,
-            title: title,
-            sortOrder: sortOrder,
-            isBumpable: !mustHappenToday
-        )
-        context.insert(task)
+        do {
+            _ = try createDailyTask(selectedDay, title, mustHappenToday, context)
+        } catch {
+            AppLogger.persistence.error("Create daily task failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
         newTaskTitle = ""
         finishMutation(context: context)
         return true
@@ -307,10 +315,7 @@ final class HomeViewModel: ObservableObject {
             return try HomeDataStore.nextSortOrder(for: day, insertAtTop: insertAtTop, context: context)
         } catch {
             AppLogger.persistence.error("Compute next sort order failed: \(error.localizedDescription, privacy: .public)")
-            if insertAtTop {
-                return -1
-            }
-            return 0
+            return insertAtTop ? -1 : 0
         }
     }
 

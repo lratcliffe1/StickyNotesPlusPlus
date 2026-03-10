@@ -1,5 +1,5 @@
-import SwiftUI
 import SwiftData
+import SwiftUI
 import os
 
 struct AddDailyTaskView: View {
@@ -33,39 +33,24 @@ struct AddDailyTaskView: View {
     private func addTask() {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let sortOrder: Int
+
         do {
-            sortOrder = try HomeDataStore.nextSortOrder(
+            _ = try DailyTaskMutationService.createTask(
                 for: selectedDate,
-                insertAtTop: mustHappenToday,
-                context: modelContext
+                title: trimmed,
+                mustHappenToday: mustHappenToday,
+                context: modelContext,
+                saveImmediately: true
             )
         } catch {
-            AppLogger.persistence.error("Compute sort order in settings failed: \(error.localizedDescription, privacy: .public)")
+            AppLogger.persistence.error("Create task from AddDailyTaskView failed: \(error.localizedDescription, privacy: .public)")
+            modelContext.rollback()
             return
         }
-
-        let task = DailyTask(
-            date: selectedDate,
-            title: trimmed,
-            sortOrder: sortOrder,
-            isBumpable: !mustHappenToday
-        )
-
-        modelContext.insert(task)
-        saveContext()
+        TaskWidgetReloader.reloadTopTasksWidget()
 
         title = ""
         mustHappenToday = false
-    }
-
-    private func saveContext() {
-        do {
-            try modelContext.save()
-            TaskWidgetReloader.reloadTopTasksWidget()
-        } catch {
-            AppLogger.persistence.error("Save from AddDailyTaskView failed: \(error.localizedDescription, privacy: .public)")
-        }
     }
 }
 

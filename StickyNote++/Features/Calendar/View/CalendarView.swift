@@ -22,8 +22,12 @@ struct CalendarView: View {
     @State private var scrollRequestVersion = 0
     @State private var requestedMonthID: String?
     var body: some View {
+        let months = displayMonthDescriptors
         let progressLookup = dayProgressLookup
-        let monthProgressByMonthID = monthProgressLookupByMonthID(from: progressLookup)
+        let monthProgressByMonthID = monthProgressLookupByMonthID(
+            from: progressLookup,
+            monthCount: months.count
+        )
         let selectedMonthID = monthID(
             year: calendar.component(.year, from: selectedDayNormalized),
             month: calendar.component(.month, from: selectedDayNormalized)
@@ -35,7 +39,7 @@ struct CalendarView: View {
 
         ZStack(alignment: .bottomLeading) {
             CalendarCollectionView(
-                months: displayMonthDescriptors,
+                months: months,
                 weekdaySymbols: weekdaySymbols,
                 monthProgressByMonthID: monthProgressByMonthID,
                 selectedDay: selectedDayNormalized,
@@ -165,10 +169,11 @@ struct CalendarView: View {
     }
 
     private func monthProgressLookupByMonthID(
-        from progressLookup: [Date: HomeModel.DayProgress]
+        from progressLookup: [Date: HomeModel.DayProgress],
+        monthCount: Int
     ) -> [String: [Date: HomeModel.DayProgress]] {
         var grouped: [String: [Date: HomeModel.DayProgress]] = [:]
-        grouped.reserveCapacity(displayMonthDescriptors.count)
+        grouped.reserveCapacity(monthCount)
 
         for (day, progress) in progressLookup {
             let normalizedDay = HomeModel.normalizedDay(day, calendar: calendar)
