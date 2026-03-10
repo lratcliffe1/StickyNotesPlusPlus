@@ -7,7 +7,7 @@ extension HomeViewModel {
 
     func fetchMorningEntries(for day: Date, context: ModelContext) -> [MorningRoutineEntry] {
         do {
-            return try HomeDataStore.fetchMorningEntries(for: day, context: context)
+            return try repository.fetchMorningEntries(for: day, context: context)
         } catch {
             AppLogger.persistence.error("Fetch morning entries failed: \(error.localizedDescription, privacy: .public)")
             return []
@@ -16,7 +16,7 @@ extension HomeViewModel {
 
     func fetchDailyTasks(for day: Date, context: ModelContext) -> [DailyTask] {
         do {
-            return try HomeDataStore.fetchDailyTasks(for: day, context: context)
+            return try repository.fetchDailyTasks(for: day, context: context)
         } catch {
             AppLogger.persistence.error("Fetch daily tasks failed: \(error.localizedDescription, privacy: .public)")
             return []
@@ -25,7 +25,7 @@ extension HomeViewModel {
 
     func fetchDailyTask(id: UUID, context: ModelContext) -> DailyTask? {
         do {
-            return try HomeDataStore.fetchDailyTask(id: id, context: context)
+            return try repository.fetchDailyTask(id: id, context: context)
         } catch {
             AppLogger.persistence.error("Fetch daily task by id failed: \(error.localizedDescription, privacy: .public)")
             return nil
@@ -34,7 +34,7 @@ extension HomeViewModel {
 
     func fetchDayRecord(for day: Date, context: ModelContext) -> DayRecord? {
         do {
-            return try HomeDataStore.fetchDayRecord(for: day, context: context)
+            return try repository.fetchDayRecord(for: day, context: context)
         } catch {
             AppLogger.persistence.error("Fetch day record failed: \(error.localizedDescription, privacy: .public)")
             return nil
@@ -43,7 +43,7 @@ extension HomeViewModel {
 
     func fetchTemplates(context: ModelContext) -> [MorningRoutineTemplateItem] {
         do {
-            return try HomeDataStore.fetchTemplates(context: context)
+            return try repository.fetchTemplates(context: context)
         } catch {
             AppLogger.persistence.error("Fetch templates failed: \(error.localizedDescription, privacy: .public)")
             return []
@@ -56,7 +56,7 @@ extension HomeViewModel {
         context: ModelContext
     ) -> [MorningRoutineEntry] {
         do {
-            return try HomeDataStore.fetchMorningEntries(from: startDay, through: endDay, context: context)
+            return try repository.fetchMorningEntries(from: startDay, through: endDay, context: context)
         } catch {
             AppLogger.persistence.error("Fetch morning entries range failed: \(error.localizedDescription, privacy: .public)")
             return []
@@ -69,7 +69,7 @@ extension HomeViewModel {
         context: ModelContext
     ) -> [DailyTask] {
         do {
-            return try HomeDataStore.fetchDailyTasks(from: startDay, through: endDay, context: context)
+            return try repository.fetchDailyTasks(from: startDay, through: endDay, context: context)
         } catch {
             AppLogger.persistence.error("Fetch daily tasks range failed: \(error.localizedDescription, privacy: .public)")
             return []
@@ -78,7 +78,7 @@ extension HomeViewModel {
 
     func migrateLegacyDayKeysIfNeeded(context: ModelContext) {
         do {
-            try HomeDataStore.migrateLegacyDayKeysIfNeeded(context: context)
+            try repository.migrateLegacyDayKeysIfNeeded(context: context)
         } catch {
             AppLogger.persistence.error("Day-key migration failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -88,7 +88,7 @@ extension HomeViewModel {
 
     func reconcileMorningEntries(for day: Date, context: ModelContext) {
         do {
-            _ = try HomeDataStore.reconcileMorningEntries(for: day, context: context)
+            _ = try repository.reconcileMorningEntries(for: day, context: context)
         } catch {
             AppLogger.persistence.error("Reconcile morning entries failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -99,7 +99,7 @@ extension HomeViewModel {
         let daily = HomeModel.dailyCompletion(tasks: dailyTasks).value
 
         do {
-            _ = try HomeDataStore.upsertDayRecord(
+            _ = try repository.upsertDayRecord(
                 for: day,
                 morningCompletion: morning,
                 dailyCompletion: daily,

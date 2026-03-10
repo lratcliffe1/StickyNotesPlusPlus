@@ -33,6 +33,7 @@ struct WidgetTaskSnapshot {
 enum WidgetTaskStore {
     static let widgetKind = "TopTasksWidget"
     private static let container: ModelContainer? = try? SharedPersistence.makeContainer()
+    private static var repository: HomeRepository = SwiftDataHomeRepository()
     static var makeContext: () throws -> ModelContext = {
         if let container = Self.container {
             return ModelContext(container)
@@ -51,11 +52,11 @@ enum WidgetTaskStore {
 
         do {
             let context = try makeContext()
-            try HomeDataStore.migrateLegacyDayKeysIfNeeded(context: context)
-            try HomeDataStore.reconcileMorningEntries(for: today, context: context)
+            try repository.migrateLegacyDayKeysIfNeeded(context: context)
+            try repository.reconcileMorningEntries(for: today, context: context)
 
-            let morningEntries = try HomeDataStore.fetchMorningEntries(for: today, context: context)
-            let dailyTasks = try HomeDataStore.fetchDailyTasks(for: today, context: context)
+            let morningEntries = try repository.fetchMorningEntries(for: today, context: context)
+            let dailyTasks = try repository.fetchDailyTasks(for: today, context: context)
 
             let shouldShowMorning = HomeModel.shouldShowMorningList(
                 for: today,
@@ -110,7 +111,7 @@ enum WidgetTaskStore {
 
     static func completeTask(id: UUID, list: WidgetContextualList, now: Date = Date()) throws -> Bool {
         let context = try makeContext()
-        try HomeDataStore.migrateLegacyDayKeysIfNeeded(context: context)
+        try repository.migrateLegacyDayKeysIfNeeded(context: context)
         let day = HomeModel.normalizedDay(now)
         let currentDayKey = HomeDataStore.dayKey(for: day)
 
@@ -146,10 +147,10 @@ enum WidgetTaskStore {
 
         guard didUpdate else { return false }
 
-        _ = try HomeDataStore.upsertDayRecord(
+        _ = try repository.upsertDayRecord(
             for: day,
-            morningCompletion: HomeModel.morningCompletion(entries: try HomeDataStore.fetchMorningEntries(for: day, context: context)).value,
-            dailyCompletion: HomeModel.dailyCompletion(tasks: try HomeDataStore.fetchDailyTasks(for: day, context: context)).value,
+            morningCompletion: HomeModel.morningCompletion(entries: try repository.fetchMorningEntries(for: day, context: context)).value,
+            dailyCompletion: HomeModel.dailyCompletion(tasks: try repository.fetchDailyTasks(for: day, context: context)).value,
             context: context
         )
         try context.save()
@@ -160,7 +161,7 @@ enum WidgetTaskStore {
         guard list == .daily else { return false }
 
         let context = try makeContext()
-        try HomeDataStore.migrateLegacyDayKeysIfNeeded(context: context)
+        try repository.migrateLegacyDayKeysIfNeeded(context: context)
         let day = HomeModel.normalizedDay(now)
         let currentDayKey = HomeDataStore.dayKey(for: day)
 
@@ -184,7 +185,7 @@ enum WidgetTaskStore {
             title: task.title,
             isCompleted: false,
             completedAt: nil,
-            sortOrder: try HomeDataStore.nextSortOrder(for: tomorrowNormalized, insertAtTop: false, context: context),
+            sortOrder: try repository.nextSortOrder(for: tomorrowNormalized, insertAtTop: false, context: context),
             bumpCount: task.bumpCount + 1,
             isBumpable: task.isBumpable
         )
@@ -194,10 +195,10 @@ enum WidgetTaskStore {
         task.completedAt = now
         task.bumpedTaskID = bumpedTask.id
 
-        _ = try HomeDataStore.upsertDayRecord(
+        _ = try repository.upsertDayRecord(
             for: day,
-            morningCompletion: HomeModel.morningCompletion(entries: try HomeDataStore.fetchMorningEntries(for: day, context: context)).value,
-            dailyCompletion: HomeModel.dailyCompletion(tasks: try HomeDataStore.fetchDailyTasks(for: day, context: context)).value,
+            morningCompletion: HomeModel.morningCompletion(entries: try repository.fetchMorningEntries(for: day, context: context)).value,
+            dailyCompletion: HomeModel.dailyCompletion(tasks: try repository.fetchDailyTasks(for: day, context: context)).value,
             context: context
         )
         try context.save()
