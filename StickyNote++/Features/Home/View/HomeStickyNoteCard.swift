@@ -10,6 +10,7 @@ struct HomeStickyNoteCard: View {
     @State private var pendingBumpTaskID: UUID?
     @State private var pendingBumpTitle: String = ""
     @State private var bumpFocusToken = 0
+    @State private var newTaskMustHappenToday = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -156,28 +157,51 @@ struct HomeStickyNoteCard: View {
     }
 
     private var addTaskComposer: some View {
-        HStack(spacing: 8) {
-            TextField("Add a task...", text: newTaskTitleBinding)
-                .textFieldStyle(.plain)
-                .font(.subheadline)
-                .submitLabel(.done)
-                .onSubmit {
-                    vm.addDailyTask(context: modelContext)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                TextField("Add a task...", text: newTaskTitleBinding)
+                    .textFieldStyle(.plain)
+                    .font(.subheadline)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        submitNewTask()
+                    }
+                Button {
+                    newTaskMustHappenToday.toggle()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: newTaskMustHappenToday ? "checkmark.circle.fill" : "circle")
+                            .font(.caption2.weight(.semibold))
+                    }
+                    .foregroundStyle(newTaskMustHappenToday ? .primary : .secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(AppTheme.chipSurface)
+                    .clipShape(Capsule())
+                    .overlay {
+                        Capsule()
+                            .stroke(AppTheme.cardBorder, lineWidth: 1)
+                    }
                 }
-
-            Button("Add") {
-                vm.addDailyTask(context: modelContext)
+                .buttonStyle(.plain)
+                .accessibilityLabel("Must happen today")
+                .accessibilityValue(newTaskMustHappenToday ? "On" : "Off")
             }
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(AppTheme.chipSurface)
-            .clipShape(Capsule())
-            .disabled(!vm.canAddNewTask)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .glassCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.cardSurface), shadowOpacity: 0)
+    }
+
+    private func submitNewTask() {
+        let didAdd = vm.addDailyTask(
+            context: modelContext,
+            mustHappenToday: newTaskMustHappenToday
+        )
+
+        if didAdd {
+            newTaskMustHappenToday = false
+        }
     }
 
     private var newTaskTitleBinding: Binding<String> {

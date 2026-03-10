@@ -129,18 +129,24 @@ final class HomeViewModel: ObservableObject {
         TaskWidgetReloader.reloadTopTasksWidget()
     }
 
-    func addDailyTask(context: ModelContext) {
-        guard canManage(day: selectedDay) else { return }
+    @discardableResult
+    func addDailyTask(context: ModelContext, mustHappenToday: Bool = false) -> Bool {
+        guard canManage(day: selectedDay) else { return false }
 
         let title = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty else { return }
+        guard !title.isEmpty else { return false }
 
-        let task = DailyTask(date: selectedDay, title: title)
+        let task = DailyTask(
+            date: selectedDay,
+            title: title,
+            isBumpable: !mustHappenToday
+        )
         context.insert(task)
         newTaskTitle = ""
         save(context: context)
         refresh(context: context)
         TaskWidgetReloader.reloadTopTasksWidget()
+        return true
     }
 
     func bumpTaskToTomorrow(
