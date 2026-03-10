@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 
+/// Shared sticky-note color palette used by app theming components.
 enum StickyNotePalette {
     static var stickyNoteBackground: LinearGradient {
         LinearGradient(

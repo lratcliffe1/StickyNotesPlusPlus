@@ -1,6 +1,8 @@
 import Foundation
 import SwiftData
 
+/// Shared write-path for creating daily tasks.
+/// Ensures Home composer and Settings use identical task insertion behavior.
 enum DailyTaskMutationService {
     @discardableResult
     static func createTask(

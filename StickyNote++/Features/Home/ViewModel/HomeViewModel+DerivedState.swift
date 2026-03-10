@@ -1,6 +1,8 @@
 import Foundation
 import SwiftData
 
+/// Pure-ish derived UI state recalculation for `HomeViewModel`.
+/// Separating this keeps streak/progress/contextual-list rules easy to reason about and test.
 extension HomeViewModel {
     func recalculateDerivedState(context: ModelContext) {
         let calendar = Calendar.current

@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Home header summary card showing streak metrics and recent progress.
 struct HomeHeaderCard: View {
     let morningStreakCount: Int
     let dailyTaskStreakCount: Int

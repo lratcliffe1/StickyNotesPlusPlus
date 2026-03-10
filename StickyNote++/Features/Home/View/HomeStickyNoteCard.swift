@@ -1,6 +1,7 @@
 import SwiftData
 import SwiftUI
 
+/// Primary sticky-note card UI for morning/daily lists and task interactions.
 struct HomeStickyNoteCard: View {
     @ObservedObject var vm: HomeViewModel
     let modelContext: ModelContext

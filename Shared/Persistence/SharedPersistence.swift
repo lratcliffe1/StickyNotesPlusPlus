@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import os
 
+/// Shared SwiftData container factory + legacy store migration into the App Group location.
 enum SharedPersistence {
     static let appGroupIdentifier = "group.com.liamratcliffe.Sticky-Notes-Sticky-Life"
     private static let sharedStoreName = "StickyNotesSharedStore"

@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Small reusable banner for never-miss-twice risk messaging on Home.
 struct HomeNeverMissTwiceBanner: View {
     let text: String
 

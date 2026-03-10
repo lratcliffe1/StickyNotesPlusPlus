@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 
+/// Tests for morning-mode defaults parsing and duration clamping behavior.
 final class MorningModeProviderTests: XCTestCase {
     func testLoadsCutoffModeByDefault() {
         let suite = suiteName()

@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 import os
 
+/// Main Home screen shell that composes header, sticky note card, and navigation flows.
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase

@@ -1,6 +1,8 @@
 import Foundation
 import SwiftData
 
+/// Repository contract used by app and widget.
+/// This isolates callers from concrete SwiftData implementation details.
 protocol HomeRepository {
     func fetchMorningEntries(for day: Date, context: ModelContext) throws -> [MorningRoutineEntry]
     func fetchDailyTasks(for day: Date, context: ModelContext) throws -> [DailyTask]

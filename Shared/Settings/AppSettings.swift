@@ -1,5 +1,6 @@
 import Foundation
 
+/// Shared settings keys/defaults and time-conversion helpers used by app and widget.
 enum AppSettings {
     enum MorningMode: String {
         case cutoff

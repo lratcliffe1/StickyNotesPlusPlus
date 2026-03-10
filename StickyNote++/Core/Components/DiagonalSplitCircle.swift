@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Reusable split-circle progress indicator for morning vs daily completion.
 struct DiagonalSplitCircle: View {
     let morning: HomeModel.CompletionState
     let daily: HomeModel.CompletionState

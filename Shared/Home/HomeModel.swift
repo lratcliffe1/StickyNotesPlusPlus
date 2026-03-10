@@ -1,5 +1,6 @@
 import Foundation
 
+/// Pure domain rules for day identity, completion math, list gating, and streak behavior.
 enum HomeModel {
     enum MorningMode: Equatable {
         case cutoff(time: DateComponents)

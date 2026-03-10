@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+/// Read-only calendar surface that visualizes daily morning/daily completion history.
 private enum CalendarMonthLayoutMetrics {
     static let titleRowHeight: CGFloat = 22
     static let contentSpacingAfterTitle: CGFloat = 10

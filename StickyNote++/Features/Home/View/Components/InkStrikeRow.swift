@@ -1,5 +1,6 @@
 import SwiftUI
 
+/// Reusable swipe-aware row with animated strike-through completion affordance.
 struct InkStrikeRow<Trailing: View>: View {
     let title: String
     let subtitle: String?

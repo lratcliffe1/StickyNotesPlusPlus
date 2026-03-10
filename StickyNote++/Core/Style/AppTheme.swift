@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 
+/// Centralized app color, material, and visual constants for consistent styling.
 enum AppTheme {
     static let pageBackground = LinearGradient(
         colors: [

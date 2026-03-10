@@ -2,6 +2,8 @@ import Foundation
 import SwiftData
 import os
 
+/// Storage-facing helpers for `HomeViewModel`.
+/// Kept separate to keep persistence concerns isolated from mutation and derived-state logic.
 extension HomeViewModel {
     // MARK: - Fetching
 

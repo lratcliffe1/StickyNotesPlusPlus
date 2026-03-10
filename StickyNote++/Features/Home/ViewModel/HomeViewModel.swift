@@ -3,6 +3,10 @@ import Foundation
 import SwiftData
 import SwiftUI
 
+/// Home screen orchestrator:
+/// - owns observable UI state
+/// - wires injected dependencies
+/// - delegates storage/mutations/derived-state work to focused extensions
 @MainActor
 final class HomeViewModel: ObservableObject {
     enum MorningModeSelection {

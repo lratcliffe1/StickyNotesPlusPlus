@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 import os
 
+/// Settings utility screen for adding a daily task to a chosen date.
 struct AddDailyTaskView: View {
     @Environment(\.modelContext) private var modelContext
 

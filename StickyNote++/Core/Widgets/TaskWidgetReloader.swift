@@ -4,6 +4,7 @@ import Foundation
 import WidgetKit
 #endif
 
+/// Small helper to trigger timeline refreshes for task widgets.
 enum TaskWidgetReloader {
     static let topTasksWidgetKind = "TopTasksWidget"
 

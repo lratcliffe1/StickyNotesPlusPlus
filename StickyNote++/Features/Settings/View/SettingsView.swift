@@ -1,6 +1,7 @@
 import SwiftData
 import SwiftUI
 
+/// Settings hub that links to routine editing and task utilities.
 struct SettingsView: View {
     var body: some View {
         List {

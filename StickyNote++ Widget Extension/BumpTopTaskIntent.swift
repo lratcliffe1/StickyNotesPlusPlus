@@ -1,6 +1,7 @@
 import AppIntents
 import WidgetKit
 
+/// Widget intent that bumps a selected daily task to tomorrow.
 struct BumpTopTaskIntent: AppIntent {
     static var title: LocalizedStringResource = "Bump Task"
     static var description = IntentDescription("Moves the selected daily task to tomorrow.")

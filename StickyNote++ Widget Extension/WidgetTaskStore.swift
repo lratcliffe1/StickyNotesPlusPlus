@@ -2,6 +2,8 @@ import Foundation
 import SwiftData
 import os
 
+/// Widget-facing task store that reuses shared repository logic.
+/// This keeps app/widget day-key, migration, and selection behavior in sync.
 enum WidgetContextualList: String, Codable {
     case morning
     case daily

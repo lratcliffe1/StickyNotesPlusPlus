@@ -2,6 +2,7 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
+/// Widget timeline/view composition for displaying top uncompleted tasks.
 struct TopTasksWidgetConfigurationIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Top Tasks"
     static var description = IntentDescription("Shows the top 3 uncompleted morning or daily items.")

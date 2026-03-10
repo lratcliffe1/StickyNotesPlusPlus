@@ -1,5 +1,6 @@
 import Foundation
 
+/// Normalized morning-mode settings payload used by view models and widget store.
 struct MorningModeSettings {
     enum Selection {
         case cutoff
@@ -22,6 +23,7 @@ struct MorningModeSettings {
 }
 
 enum MorningModeProvider {
+    /// Single source of truth for defaults parsing + range clamping.
     static func load(from defaults: UserDefaults) -> MorningModeSettings {
         let modeRaw = defaults.string(forKey: AppSettings.morningModeKey) ?? AppSettings.defaultMorningMode.rawValue
         let selection: MorningModeSettings.Selection =

@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 
+/// App entry point that injects the shared SwiftData container.
 @main
 struct StickyNotePlusPlusApp: App {
     var sharedModelContainer: ModelContainer = {

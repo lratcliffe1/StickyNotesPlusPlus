@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 
+/// High-signal tests for stable HomeModel domain rules.
 final class HomeModelTests: XCTestCase {
     private var utcCalendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)

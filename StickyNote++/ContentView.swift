@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 
+/// Root host view that loads the main Home experience.
 struct ContentView: View {
     var body: some View {
         HomeView()

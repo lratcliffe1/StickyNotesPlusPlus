@@ -2,6 +2,7 @@ import SwiftData
 import SwiftUI
 import os
 
+/// Settings screen for editing morning routine template items and order.
 struct EditMorningRoutineView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \MorningRoutineTemplateItem.sortOrder) private var templates: [MorningRoutineTemplateItem]

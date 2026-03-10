@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import XCTest
 
+/// Integration-like tests for migration and idempotent persistence behavior.
 final class HomeDataStoreTests: XCTestCase {
     func testUpsertDayRecordReturnsFalseWhenUnchanged() throws {
         let context = try makeInMemoryContext()

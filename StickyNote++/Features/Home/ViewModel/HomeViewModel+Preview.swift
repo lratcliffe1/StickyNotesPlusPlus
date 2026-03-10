@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 
+/// Deterministic preview scenarios for HomeViewModel states in SwiftUI previews.
 extension HomeViewModel {
     enum PreviewScenario {
         case morningActive

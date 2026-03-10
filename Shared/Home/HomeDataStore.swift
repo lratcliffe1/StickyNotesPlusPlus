@@ -1,6 +1,8 @@
 import Foundation
 import SwiftData
 
+/// Shared persistence workflows for Home + Widget.
+/// Keep all fetch/migrate/reconcile/upsert rules here so behavior stays aligned across targets.
 enum HomeDataStore {
     static let dayKeyMigrationCompletedDefaultsKey = "stable_day_key_migration_completed_v1"
     static let dailyTaskSortOrderMigrationCompletedDefaultsKey = "daily_task_sort_order_migration_completed_v1"

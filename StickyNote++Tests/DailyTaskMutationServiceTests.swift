@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import XCTest
 
+/// Tests for shared daily-task creation semantics used by Home and Settings.
 final class DailyTaskMutationServiceTests: XCTestCase {
     func testCreateTaskTrimsTitleAndSetsBumpability() throws {
         let context = try makeInMemoryContext()

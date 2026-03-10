@@ -1,6 +1,7 @@
 import AppIntents
 import WidgetKit
 
+/// Widget intent that marks a selected top task as complete.
 struct CompleteTopTaskIntent: AppIntent {
     static var title: LocalizedStringResource = "Complete Task"
     static var description = IntentDescription("Marks the selected task as complete.")

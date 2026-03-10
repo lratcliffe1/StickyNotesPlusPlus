@@ -3,6 +3,8 @@ import SwiftData
 import os
 import SwiftUI
 
+/// User-driven write operations for `HomeViewModel`.
+/// Includes completion, bumping, add/reorder, and post-mutation refresh/reload coordination.
 extension HomeViewModel {
     func toggleMorningEntry(_ entry: MorningRoutineEntry, context: ModelContext) {
         guard canComplete(day: selectedDay) else { return }
