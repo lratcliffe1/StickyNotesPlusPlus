@@ -17,33 +17,10 @@ enum AppTheme {
         endPoint: .bottomTrailing
     )
 
-    static let stickyNoteBackground = LinearGradient(
-        colors: [
-            Color(
-                light: UIColor(red: 1.00, green: 0.97, blue: 0.78, alpha: 1.0),
-                dark: UIColor(red: 0.33, green: 0.28, blue: 0.13, alpha: 1.0)
-            ),
-            Color(
-                light: UIColor(red: 0.99, green: 0.93, blue: 0.67, alpha: 1.0),
-                dark: UIColor(red: 0.22, green: 0.19, blue: 0.09, alpha: 1.0)
-            ),
-        ],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
-
-    static let cardSurface = Color(
-        light: UIColor.white.withAlphaComponent(0.74),
-        dark: UIColor.white.withAlphaComponent(0.12)
-    )
-    static let cardBorder = Color(
-        light: UIColor.white.withAlphaComponent(0.82),
-        dark: UIColor.white.withAlphaComponent(0.20)
-    )
-    static let chipSurface = Color(
-        light: UIColor.white.withAlphaComponent(0.82),
-        dark: UIColor.white.withAlphaComponent(0.16)
-    )
+    static let stickyNoteBackground = StickyNotePalette.stickyNoteBackground
+    static let cardSurface = StickyNotePalette.cardSurface
+    static let cardBorder = StickyNotePalette.cardBorder
+    static let chipSurface = StickyNotePalette.chipSurface
     static let selectedDayTint = Color(
         light: UIColor.systemBlue.withAlphaComponent(0.18),
         dark: UIColor.systemBlue.withAlphaComponent(0.35)

@@ -19,6 +19,7 @@ struct WidgetTaskItem: Identifiable, Hashable {
     let id: UUID
     let title: String
     let list: WidgetContextualList
+    let canBump: Bool
 }
 
 struct WidgetTaskSnapshot {
@@ -57,7 +58,7 @@ enum WidgetTaskStore {
                 let items = morningEntries
                     .filter { !$0.isCompleted }
                     .prefix(3)
-                    .map { WidgetTaskItem(id: $0.id, title: $0.titleSnapshot, list: .morning) }
+                    .map { WidgetTaskItem(id: $0.id, title: $0.titleSnapshot, list: .morning, canBump: false) }
 
                 return WidgetTaskSnapshot(
                     date: now,
@@ -70,7 +71,14 @@ enum WidgetTaskStore {
             let items = dailyTasks
                 .filter { !$0.isCompleted }
                 .prefix(3)
-                .map { WidgetTaskItem(id: $0.id, title: $0.title, list: .daily) }
+                .map {
+                    WidgetTaskItem(
+                        id: $0.id,
+                        title: $0.title,
+                        list: .daily,
+                        canBump: $0.isBumpable && $0.bumpedTaskID == nil
+                    )
+                }
 
             return WidgetTaskSnapshot(
                 date: now,
@@ -132,6 +140,49 @@ enum WidgetTaskStore {
         return true
     }
 
+    static func bumpTask(id: UUID, list: WidgetContextualList, now: Date = Date()) throws -> Bool {
+        guard list == .daily else { return false }
+
+        let context = try modelContext()
+        try migrateLegacyDayKeysIfNeeded(context: context)
+        let day = HomeModel.normalizedDay(now)
+        let dayKey = HomeModel.dayKey(for: day)
+
+        let descriptor = FetchDescriptor<DailyTask>(
+            predicate: #Predicate { $0.id == id }
+        )
+
+        guard let task = try context.fetch(descriptor).first else { return false }
+        guard task.dayKey == dayKey else { return false }
+        guard task.isBumpable, !task.isCompleted else { return false }
+        guard task.bumpedTaskID == nil else { return false }
+
+        let calendar = Calendar.current
+        let taskDay = HomeModel.date(fromDayKey: task.dayKey, calendar: calendar)
+            ?? HomeModel.normalizedDay(task.date, calendar: calendar)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: taskDay) ?? taskDay
+        let tomorrowNormalized = HomeModel.normalizedDay(tomorrow, calendar: calendar)
+
+        let bumpedTask = DailyTask(
+            date: tomorrowNormalized,
+            title: task.title,
+            isCompleted: false,
+            completedAt: nil,
+            sortOrder: nextSortOrder(for: tomorrowNormalized, context: context),
+            bumpCount: task.bumpCount + 1,
+            isBumpable: task.isBumpable
+        )
+
+        context.insert(bumpedTask)
+        task.isCompleted = true
+        task.completedAt = now
+        task.bumpedTaskID = bumpedTask.id
+
+        updateDayRecord(for: day, context: context)
+        try context.save()
+        return true
+    }
+
     private static func modelContext() throws -> ModelContext {
         let container = try SharedPersistence.makeContainer()
         return ModelContext(container)
@@ -153,6 +204,11 @@ enum WidgetTaskStore {
             sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.title)]
         )
         return (try? context.fetch(descriptor)) ?? []
+    }
+
+    private static func nextSortOrder(for day: Date, context: ModelContext) -> Int {
+        let tasks = fetchDailyTasks(for: day, context: context)
+        return (tasks.map(\.sortOrder).max() ?? -1) + 1
     }
 
     private static func fetchTemplates(context: ModelContext) -> [MorningRoutineTemplateItem] {
