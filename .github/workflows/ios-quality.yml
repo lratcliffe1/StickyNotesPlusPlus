@@ -21,10 +21,10 @@ jobs:
           brew install swiftformat swiftlint
 
       - name: Build App
-        run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 15" build
+        run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 16" build
 
       - name: Build Widget
-        run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++ Widget Extension" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 15" build
+        run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++ Widget Extension" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 16" build
 
       - name: SwiftFormat Check
         run: swiftformat . --lint
