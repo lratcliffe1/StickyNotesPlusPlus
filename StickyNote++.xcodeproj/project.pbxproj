@@ -37,6 +37,7 @@
 /* Begin PBXFileReference section */
 		15AB33262F4456EC0004C854 /* StickyNote++.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "StickyNote++.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		6F2C00012F5000000000A001 /* StickyNote++ Widget Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "StickyNote++ Widget Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9A1B00012F7000000000A001 /* StickyNote++Tests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "StickyNote++Tests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -78,6 +79,11 @@
 			path = Shared;
 			sourceTree = "<group>";
 		};
+		9A1B00022F7000000000A001 /* StickyNote++Tests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "StickyNote++Tests";
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -95,6 +101,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9A1B00032F7000000000A001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -103,6 +116,7 @@
 			children = (
 				15AB33282F4456EC0004C854 /* StickyNote++ */,
 				6F2C00042F5000000000A001 /* StickyNote++ Widget Extension */,
+				9A1B00022F7000000000A001 /* StickyNote++Tests */,
 				7F9E10012F6000000000A001 /* Shared */,
 				15AB33272F4456EC0004C854 /* Products */,
 			);
@@ -113,6 +127,7 @@
 			children = (
 				15AB33262F4456EC0004C854 /* StickyNote++.app */,
 				6F2C00012F5000000000A001 /* StickyNote++ Widget Extension.appex */,
+				9A1B00012F7000000000A001 /* StickyNote++Tests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -168,6 +183,29 @@
 			productReference = 6F2C00012F5000000000A001 /* StickyNote++ Widget Extension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		9A1B00042F7000000000A001 /* StickyNote++Tests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9A1B00052F7000000000A001 /* Build configuration list for PBXNativeTarget "StickyNote++Tests" */;
+			buildPhases = (
+				9A1B00062F7000000000A001 /* Sources */,
+				9A1B00032F7000000000A001 /* Frameworks */,
+				9A1B00072F7000000000A001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7F9E10012F6000000000A001 /* Shared */,
+				9A1B00022F7000000000A001 /* StickyNote++Tests */,
+			);
+			name = "StickyNote++Tests";
+			packageProductDependencies = (
+			);
+			productName = "StickyNote++Tests";
+			productReference = 9A1B00012F7000000000A001 /* StickyNote++Tests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -202,6 +240,7 @@
 			targets = (
 				15AB33252F4456EC0004C854 /* StickyNote++ */,
 				6F2C000B2F5000000000A001 /* StickyNote++ Widget Extension */,
+				9A1B00042F7000000000A001 /* StickyNote++Tests */,
 			);
 		};
 /* End PBXProject section */
@@ -221,6 +260,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9A1B00072F7000000000A001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -232,6 +278,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		6F2C00062F5000000000A001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9A1B00062F7000000000A001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -502,6 +555,40 @@
 			};
 			name = Release;
 		};
+		9A1B00082F7000000000A001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3ZFCG7AH4U;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.liamratcliffe.Sticky-Notes-Sticky-Life.Tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "";
+			};
+			name = Debug;
+		};
+		9A1B00092F7000000000A001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "";
+				CODE_SIGNING_ALLOWED = NO;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3ZFCG7AH4U;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.liamratcliffe.Sticky-Notes-Sticky-Life.Tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -528,6 +615,15 @@
 			buildConfigurations = (
 				6F2C000D2F5000000000A001 /* Debug */,
 				6F2C000E2F5000000000A001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9A1B00052F7000000000A001 /* Build configuration list for PBXNativeTarget "StickyNote++Tests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9A1B00082F7000000000A001 /* Debug */,
+				9A1B00092F7000000000A001 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

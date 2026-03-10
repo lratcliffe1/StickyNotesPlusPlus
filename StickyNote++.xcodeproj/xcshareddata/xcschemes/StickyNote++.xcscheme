@@ -21,6 +21,20 @@
                ReferencedContainer = "container:StickyNote++.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "9A1B00042F7000000000A001"
+               BuildableName = "StickyNote++Tests.xctest"
+               BlueprintName = "StickyNote++Tests"
+               ReferencedContainer = "container:StickyNote++.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -37,6 +51,19 @@
             ReferencedContainer = "container:StickyNote++.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
+      <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "9A1B00042F7000000000A001"
+               BuildableName = "StickyNote++Tests.xctest"
+               BlueprintName = "StickyNote++Tests"
+               ReferencedContainer = "container:StickyNote++.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+      </Testables>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
