@@ -131,6 +131,30 @@ final class HomeViewModel: ObservableObject {
     }
 
     @discardableResult
+    func completePastDailyTask(
+        _ task: DailyTask,
+        typedConfirmation: String,
+        context: ModelContext
+    ) -> Bool {
+        guard HomeModel.isPastDay(selectedDay, now: now) else { return false }
+        guard !task.isCompleted else { return false }
+
+        guard typedConfirmation == task.title else { return false }
+
+        let calendar = Calendar.current
+        let taskDay = HomeModel.date(fromDayKey: task.dayKey, calendar: calendar)
+            ?? HomeModel.normalizedDay(task.date, calendar: calendar)
+        let endOfTaskDay = endOfDay(for: taskDay, calendar: calendar)
+
+        task.isCompleted = true
+        task.completedAt = endOfTaskDay
+        save(context: context)
+        refresh(context: context)
+        TaskWidgetReloader.reloadTopTasksWidget()
+        return true
+    }
+
+    @discardableResult
     func addDailyTask(context: ModelContext, mustHappenToday: Bool = false) -> Bool {
         guard canManage(day: selectedDay) else { return false }
 
@@ -474,6 +498,12 @@ final class HomeViewModel: ObservableObject {
 
     private func canManage(day: Date) -> Bool {
         !HomeModel.isPastDay(day, now: now)
+    }
+
+    private func endOfDay(for day: Date, calendar: Calendar) -> Date {
+        let start = HomeModel.normalizedDay(day, calendar: calendar)
+        let next = calendar.date(byAdding: .day, value: 1, to: start) ?? start
+        return next.addingTimeInterval(-1)
     }
 
     private func dayFromStored(

@@ -11,6 +11,10 @@ struct HomeStickyNoteCard: View {
     @State private var pendingBumpTaskID: UUID?
     @State private var pendingBumpTitle: String = ""
     @State private var bumpFocusToken = 0
+    @State private var isShowingPastCompletePopup = false
+    @State private var pendingPastCompleteTaskID: UUID?
+    @State private var pendingPastCompleteTitle: String = ""
+    @State private var pastCompleteFocusToken = 0
     @State private var newTaskMustHappenToday = false
     @State private var draggedDailyTaskID: UUID?
 
@@ -113,11 +117,11 @@ struct HomeStickyNoteCard: View {
                         title: task.title,
                         subtitle: dailySubtitle(for: task),
                         isCompleted: task.isCompleted,
-                        canEdit: vm.canCompleteSelectedDay,
+                        canEdit: vm.canCompleteSelectedDay || (vm.isReadOnly && !task.isCompleted),
                         strikeColor: urgencyColor(for: task.bumpCount),
                         onHorizontalSwipeActivityChange: onTaskRowSwipeActiveChange
                     ) {
-                        vm.toggleDailyTask(task, context: modelContext)
+                        handleDailyTaskToggle(task)
                     } trailing: {
                         if task.isBumpable, !task.isCompleted, !vm.isReadOnly {
                             Button {
@@ -156,9 +160,19 @@ struct HomeStickyNoteCard: View {
             guard !ids.contains(pendingBumpTaskID) else { return }
             clearPendingBumpComposer()
         }
+        .onChange(of: vm.dailyTasks.map(\.id)) { _, ids in
+            guard let pendingPastCompleteTaskID else { return }
+            guard !ids.contains(pendingPastCompleteTaskID) else { return }
+            clearPendingPastCompleteComposer()
+        }
         .onChange(of: isShowingBumpPopup) { _, isPresented in
             if isPresented {
                 scheduleBumpComposerFocus()
+            }
+        }
+        .onChange(of: isShowingPastCompletePopup) { _, isPresented in
+            if isPresented {
+                schedulePastCompleteComposerFocus()
             }
         }
         .sheet(
@@ -167,6 +181,14 @@ struct HomeStickyNoteCard: View {
         ) {
             bumpPopupContent
                 .presentationDetents([.height(210)])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(
+            isPresented: $isShowingPastCompletePopup,
+            onDismiss: clearPendingPastCompleteComposer
+        ) {
+            pastCompletePopupContent
+                .presentationDetents([.height(260)])
                 .presentationDragIndicator(.visible)
         }
     }
@@ -272,6 +294,35 @@ struct HomeStickyNoteCard: View {
         isShowingBumpPopup = false
     }
 
+    private var pendingPastCompleteTask: DailyTask? {
+        guard let pendingPastCompleteTaskID else { return nil }
+        return vm.dailyTasks.first { $0.id == pendingPastCompleteTaskID }
+    }
+
+    private func handleDailyTaskToggle(_ task: DailyTask) {
+        if vm.canCompleteSelectedDay {
+            vm.toggleDailyTask(task, context: modelContext)
+            return
+        }
+
+        guard vm.isReadOnly, !task.isCompleted else { return }
+        presentPastCompleteComposer(for: task)
+    }
+
+    private func presentPastCompleteComposer(for task: DailyTask) {
+        pendingPastCompleteTaskID = task.id
+        pendingPastCompleteTitle = ""
+        isShowingPastCompletePopup = true
+        schedulePastCompleteComposerFocus()
+    }
+
+    private func clearPendingPastCompleteComposer() {
+        pastCompleteFocusToken += 1
+        pendingPastCompleteTaskID = nil
+        pendingPastCompleteTitle = ""
+        isShowingPastCompletePopup = false
+    }
+
     private func submitPendingBump() {
         guard let task = pendingBumpTask else {
             clearPendingBumpComposer()
@@ -283,6 +334,23 @@ struct HomeStickyNoteCard: View {
 
         vm.bumpTaskToTomorrow(task, bumpedTitle: title, context: modelContext)
         clearPendingBumpComposer()
+    }
+
+    private func submitPendingPastComplete() {
+        guard let task = pendingPastCompleteTask else {
+            clearPendingPastCompleteComposer()
+            return
+        }
+
+        let didComplete = vm.completePastDailyTask(
+            task,
+            typedConfirmation: pendingPastCompleteTitle,
+            context: modelContext
+        )
+
+        if didComplete {
+            clearPendingPastCompleteComposer()
+        }
     }
 
     private var bumpPopupContent: some View {
@@ -328,8 +396,58 @@ struct HomeStickyNoteCard: View {
         }
     }
 
+    private var pastCompletePopupContent: some View {
+        let task = pendingPastCompleteTask
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Mark as completed?")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Button {
+                    clearPendingPastCompleteComposer()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .font(.footnote)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel completion confirmation")
+            }
+
+            Text("Are you sure you completed this task? Type it in exactly to complete it.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            Text("\"\(task?.title ?? "")\"")
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+
+            BumpAutofocusTextField(
+                text: $pendingPastCompleteTitle,
+                placeholder: "Type task exactly...",
+                isEnabled: task != nil,
+                focusToken: pastCompleteFocusToken,
+                onSubmit: submitPendingPastComplete
+            )
+            .frame(height: 22)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .glassCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.cardSurface), shadowOpacity: 0)
+        .padding(.horizontal, 14)
+        .padding(.top, 14)
+        .onAppear {
+            schedulePastCompleteComposerFocus()
+        }
+    }
+
     private func scheduleBumpComposerFocus() {
         bumpFocusToken += 1
+    }
+
+    private func schedulePastCompleteComposerFocus() {
+        pastCompleteFocusToken += 1
     }
 }
 
