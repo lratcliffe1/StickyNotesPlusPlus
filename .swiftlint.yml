@@ -1,0 +1,26 @@
+included:
+  - StickyNote++
+  - StickyNote++ Widget Extension
+  - Shared
+
+excluded:
+  - .build
+  - DerivedData
+
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - first_where
+  - force_unwrapping
+  - redundant_nil_coalescing
+
+line_length:
+  warning: 140
+  error: 180
+
+identifier_name:
+  excluded:
+    - id
+    - vm
+    - x
+    - y

@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import os
 
 struct EditMorningRoutineView: View {
     @Environment(\.modelContext) private var modelContext
@@ -20,13 +21,12 @@ struct EditMorningRoutineView: View {
                         "Routine item",
                         text: Binding(
                             get: { template.title },
-                            set: { newValue in
-                                template.title = newValue
-                                saveContext()
-                            }
+                            set: { newValue in template.title = newValue }
                         )
                     )
                     .textInputAutocapitalization(.sentences)
+                    .submitLabel(.done)
+                    .onSubmit(saveContext)
                 }
                 .onDelete(perform: deleteTemplates)
                 .onMove(perform: moveTemplates)
@@ -47,6 +47,11 @@ struct EditMorningRoutineView: View {
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
             EditButton()
+        }
+        .onDisappear {
+            if modelContext.hasChanges {
+                saveContext()
+            }
         }
     }
 
@@ -97,7 +102,7 @@ struct EditMorningRoutineView: View {
             try modelContext.save()
             TaskWidgetReloader.reloadTopTasksWidget()
         } catch {
-            print("SwiftData save error:", error)
+            AppLogger.persistence.error("Save from EditMorningRoutineView failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

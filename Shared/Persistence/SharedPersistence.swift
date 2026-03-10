@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import os
 
 enum SharedPersistence {
     static let appGroupIdentifier = "group.com.liamratcliffe.Sticky-Notes-Sticky-Life"
@@ -64,7 +65,7 @@ enum SharedPersistence {
             )
             try copyStoreFamily(from: legacyURL, to: sharedURL, fileManager: fileManager)
         } catch {
-            print("SharedPersistence migration error:", error)
+            AppLogger.persistence.error("SharedPersistence migration failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

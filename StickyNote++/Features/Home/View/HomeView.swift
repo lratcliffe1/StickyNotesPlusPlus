@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import os
 
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
@@ -199,10 +200,6 @@ struct HomeView: View {
             onSelectDay: { day in
                 setSelectedDay(day, preferredList: .daily)
                 isShowingCalendar = false
-            },
-            onToday: {
-                goToTodayAnimated()
-                isShowingCalendar = false
             }
         )
     }
@@ -234,8 +231,8 @@ struct HomeView: View {
                 let horizontal = value.translation.width
                 let vertical = value.translation.height
 
-                guard abs(horizontal) > 44 else { return }
-                guard abs(horizontal) > abs(vertical) * 1.25 else { return }
+                guard abs(horizontal) > HomeGestureMetrics.minimumSwipeDistance else { return }
+                guard abs(horizontal) > abs(vertical) * HomeGestureMetrics.horizontalToVerticalRatio else { return }
 
                 if horizontal < 0 {
                     shiftSelectedDay(by: 1, direction: .next)
@@ -283,6 +280,7 @@ struct HomeView: View {
             do {
                 try modelContext.save()
             } catch {
+                AppLogger.persistence.error("HomeView external sync save failed: \(error.localizedDescription, privacy: .public)")
                 modelContext.rollback()
             }
         } else {
@@ -311,4 +309,9 @@ struct HomeView: View {
 private enum DayTransitionDirection {
     case previous
     case next
+}
+
+private enum HomeGestureMetrics {
+    static let minimumSwipeDistance: CGFloat = 44
+    static let horizontalToVerticalRatio: CGFloat = 1.25
 }

@@ -2,6 +2,7 @@ import Combine
 import Foundation
 import SwiftData
 import SwiftUI
+import os
 
 @MainActor
 final class HomeViewModel: ObservableObject {
@@ -33,6 +34,8 @@ final class HomeViewModel: ObservableObject {
     var morningWindowDurationMinutes: Int = 90
     var nowOverride: Date?
     private let defaults: UserDefaults
+    private let loadSettings: (UserDefaults) -> MorningModeSettings
+    private let reloadWidget: () -> Void
     private var manualContextualListOverride: HomeModel.ContextualList?
     private let streakLookbackDays = 365
     private let progressWindowDays = 7
@@ -41,8 +44,14 @@ final class HomeViewModel: ObservableObject {
         nowOverride ?? Date()
     }
 
-    init(defaults: UserDefaults? = nil) {
+    init(
+        defaults: UserDefaults? = nil,
+        loadSettings: @escaping (UserDefaults) -> MorningModeSettings = MorningModeProvider.load,
+        reloadWidget: @escaping () -> Void = TaskWidgetReloader.reloadTopTasksWidget
+    ) {
         self.defaults = defaults ?? SharedPersistence.sharedDefaults
+        self.loadSettings = loadSettings
+        self.reloadWidget = reloadWidget
         loadMorningSettings()
     }
 
@@ -94,9 +103,7 @@ final class HomeViewModel: ObservableObject {
 
         entry.isCompleted.toggle()
         entry.completedAt = entry.isCompleted ? now : nil
-        save(context: context)
-        refresh(context: context)
-        TaskWidgetReloader.reloadTopTasksWidget()
+        finishMutation(context: context)
 
         if HomeModel.isToday(selectedDay, now: now),
            HomeModel.morningCompletion(entries: morningEntries).value >= 1.0 {
@@ -117,17 +124,13 @@ final class HomeViewModel: ObservableObject {
                 context.delete(bumpedTask)
             }
 
-            save(context: context)
-            refresh(context: context)
-            TaskWidgetReloader.reloadTopTasksWidget()
+            finishMutation(context: context)
             return
         }
 
         task.isCompleted.toggle()
         task.completedAt = task.isCompleted ? now : nil
-        save(context: context)
-        refresh(context: context)
-        TaskWidgetReloader.reloadTopTasksWidget()
+        finishMutation(context: context)
     }
 
     @discardableResult
@@ -148,9 +151,7 @@ final class HomeViewModel: ObservableObject {
 
         task.isCompleted = true
         task.completedAt = endOfTaskDay
-        save(context: context)
-        refresh(context: context)
-        TaskWidgetReloader.reloadTopTasksWidget()
+        finishMutation(context: context)
         return true
     }
 
@@ -160,11 +161,7 @@ final class HomeViewModel: ObservableObject {
 
         let title = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return false }
-        let sortOrder = nextSortOrder(
-            for: selectedDay,
-            insertAtTop: mustHappenToday,
-            context: context
-        )
+        let sortOrder = nextSortOrder(for: selectedDay, insertAtTop: mustHappenToday, context: context)
 
         let task = DailyTask(
             date: selectedDay,
@@ -174,9 +171,7 @@ final class HomeViewModel: ObservableObject {
         )
         context.insert(task)
         newTaskTitle = ""
-        save(context: context)
-        refresh(context: context)
-        TaskWidgetReloader.reloadTopTasksWidget()
+        finishMutation(context: context)
         return true
     }
 
@@ -211,9 +206,7 @@ final class HomeViewModel: ObservableObject {
         task.isCompleted = true
         task.completedAt = now
         task.bumpedTaskID = bumpedTask.id
-        save(context: context)
-        refresh(context: context)
-        TaskWidgetReloader.reloadTopTasksWidget()
+        finishMutation(context: context)
     }
 
     // MARK: - Computed for UI
@@ -306,19 +299,19 @@ final class HomeViewModel: ObservableObject {
         }
 
         dailyTasks = orderedTasks
-        save(context: context)
-        refresh(context: context)
-        TaskWidgetReloader.reloadTopTasksWidget()
+        finishMutation(context: context)
     }
 
     private func nextSortOrder(for day: Date, insertAtTop: Bool, context: ModelContext) -> Int {
-        let tasksForDay = fetchDailyTasks(for: day, context: context)
-
-        if insertAtTop {
-            return (tasksForDay.map(\.sortOrder).min() ?? 0) - 1
+        do {
+            return try HomeDataStore.nextSortOrder(for: day, insertAtTop: insertAtTop, context: context)
+        } catch {
+            AppLogger.persistence.error("Compute next sort order failed: \(error.localizedDescription, privacy: .public)")
+            if insertAtTop {
+                return -1
+            }
+            return 0
         }
-
-        return (tasksForDay.map(\.sortOrder).max() ?? -1) + 1
     }
 
     func updateNewTaskTitle(_ value: String) {
@@ -511,24 +504,15 @@ final class HomeViewModel: ObservableObject {
         fallbackDate: Date,
         calendar: Calendar = .current
     ) -> Date {
-        if !dayKey.isEmpty, let parsed = HomeModel.date(fromDayKey: dayKey, calendar: calendar) {
-            return HomeModel.normalizedDay(parsed, calendar: calendar)
-        }
-
-        return HomeModel.normalizedDay(fallbackDate, calendar: calendar)
+        HomeDataStore.dayFromStored(dayKey: dayKey, fallbackDate: fallbackDate, calendar: calendar)
     }
 
     private func loadMorningSettings() {
-        let modeRaw = defaults.string(forKey: AppSettings.morningModeKey) ?? AppSettings.defaultMorningMode.rawValue
-        morningModeSelection = modeRaw == AppSettings.MorningMode.sinceWakeUp.rawValue ? .sinceWakeUp : .cutoff
-
-        let cutoffMinutes = defaults.object(forKey: AppSettings.morningCutoffMinutesKey) as? Int ?? AppSettings.defaultMorningCutoffMinutes
-        let wakeMinutes = defaults.object(forKey: AppSettings.wakeUpMinutesKey) as? Int ?? AppSettings.defaultWakeUpMinutes
-        let duration = defaults.object(forKey: AppSettings.morningWindowDurationMinutesKey) as? Int ?? AppSettings.defaultMorningWindowDurationMinutes
-
-        morningCutoffTime = AppSettings.dateComponents(fromMinutes: cutoffMinutes)
-        wakeUpTime = AppSettings.dateComponents(fromMinutes: wakeMinutes)
-        morningWindowDurationMinutes = min(240, max(15, duration))
+        let settings = loadSettings(defaults)
+        morningModeSelection = settings.selection == .sinceWakeUp ? .sinceWakeUp : .cutoff
+        morningCutoffTime = settings.cutoffTime
+        wakeUpTime = settings.wakeUpTime
+        morningWindowDurationMinutes = settings.windowDurationMinutes
     }
 
     var morningMode: HomeModel.MorningMode {
@@ -549,6 +533,12 @@ final class HomeViewModel: ObservableObject {
 
     private var dailyCompletionState: HomeModel.CompletionState {
         HomeModel.dailyCompletion(tasks: dailyTasks)
+    }
+
+    private func finishMutation(context: ModelContext) {
+        save(context: context)
+        refresh(context: context)
+        reloadWidget()
     }
 
 #if DEBUG

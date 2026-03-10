@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import os
 
 struct AddDailyTaskView: View {
     @Environment(\.modelContext) private var modelContext
@@ -32,7 +33,17 @@ struct AddDailyTaskView: View {
     private func addTask() {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let sortOrder = nextSortOrder(for: selectedDate, insertAtTop: mustHappenToday)
+        let sortOrder: Int
+        do {
+            sortOrder = try HomeDataStore.nextSortOrder(
+                for: selectedDate,
+                insertAtTop: mustHappenToday,
+                context: modelContext
+            )
+        } catch {
+            AppLogger.persistence.error("Compute sort order in settings failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
 
         let task = DailyTask(
             date: selectedDate,
@@ -48,27 +59,12 @@ struct AddDailyTaskView: View {
         mustHappenToday = false
     }
 
-    private func nextSortOrder(for day: Date, insertAtTop: Bool) -> Int {
-        let dayKey = HomeModel.dayKey(for: HomeModel.normalizedDay(day))
-        let descriptor = FetchDescriptor<DailyTask>(
-            predicate: #Predicate { $0.dayKey == dayKey },
-            sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.title)]
-        )
-        let tasks = (try? modelContext.fetch(descriptor)) ?? []
-
-        if insertAtTop {
-            return (tasks.map(\.sortOrder).min() ?? 0) - 1
-        }
-
-        return (tasks.map(\.sortOrder).max() ?? -1) + 1
-    }
-
     private func saveContext() {
         do {
             try modelContext.save()
             TaskWidgetReloader.reloadTopTasksWidget()
         } catch {
-            print("SwiftData save error:", error)
+            AppLogger.persistence.error("Save from AddDailyTaskView failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }

@@ -1,0 +1,7 @@
+--indent 4
+--linebreaks lf
+--maxwidth 140
+--trimwhitespace always
+--commas always
+--wraparguments before-first
+--wrapparameters before-first

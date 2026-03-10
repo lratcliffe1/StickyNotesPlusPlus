@@ -19,7 +19,6 @@ struct CalendarView: View {
 
     let selectedDay: Date
     let onSelectDay: (Date) -> Void
-    let onToday: () -> Void
     @State private var scrollRequestVersion = 0
     @State private var requestedMonthID: String?
     var body: some View {
@@ -194,11 +193,7 @@ struct CalendarView: View {
     }
 
     private func dayFromStored(dayKey: String, fallbackDate: Date) -> Date {
-        if !dayKey.isEmpty, let parsed = HomeModel.date(fromDayKey: dayKey, calendar: calendar) {
-            return HomeModel.normalizedDay(parsed, calendar: calendar)
-        }
-
-        return HomeModel.normalizedDay(fallbackDate, calendar: calendar)
+        HomeDataStore.dayFromStored(dayKey: dayKey, fallbackDate: fallbackDate, calendar: calendar)
     }
 
 }
@@ -600,8 +595,7 @@ private struct CalendarSlot: Identifiable {
     return NavigationStack {
         CalendarView(
             selectedDay: Date(),
-            onSelectDay: { _ in },
-            onToday: {}
+            onSelectDay: { _ in }
         )
     }
     .modelContainer(container)
