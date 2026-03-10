@@ -15,24 +15,19 @@ jobs:
       - name: Show Xcode Version
         run: xcodebuild -version
 
+      - name: Install SwiftFormat and SwiftLint
+        run: |
+          brew update
+          brew install swiftformat swiftlint
+
       - name: Build App
         run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 15" build
 
       - name: Build Widget
         run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++ Widget Extension" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 15" build
 
-      - name: SwiftFormat Check (if installed)
-        run: |
-          if command -v swiftformat >/dev/null 2>&1; then
-            swiftformat . --lint
-          else
-            echo "swiftformat not installed; skipping."
-          fi
+      - name: SwiftFormat Check
+        run: swiftformat . --lint
 
-      - name: SwiftLint (if installed)
-        run: |
-          if command -v swiftlint >/dev/null 2>&1; then
-            swiftlint
-          else
-            echo "swiftlint not installed; skipping."
-          fi
+      - name: SwiftLint
+        run: swiftlint

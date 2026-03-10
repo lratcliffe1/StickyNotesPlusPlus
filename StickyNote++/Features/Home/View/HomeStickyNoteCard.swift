@@ -1,6 +1,5 @@
 import SwiftData
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct HomeStickyNoteCard: View {
     @ObservedObject var vm: HomeViewModel
@@ -13,7 +12,6 @@ struct HomeStickyNoteCard: View {
     @State private var pendingPastCompleteTaskID: UUID?
     @State private var pendingPastCompleteTitle: String = ""
     @State private var newTaskMustHappenToday = false
-    @State private var draggedDailyTaskID: UUID?
     @FocusState private var focusedField: SheetField?
 
     private enum SheetField {
@@ -142,19 +140,18 @@ struct HomeStickyNoteCard: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    .onDrag {
-                        draggedDailyTaskID = task.id
-                        return NSItemProvider(object: task.id.uuidString as NSString)
-                    }
-                    .onDrop(
-                        of: [UTType.text],
-                        delegate: DailyTaskDropDelegate(
-                            targetTaskID: task.id,
-                            draggedTaskID: $draggedDailyTaskID,
-                            vm: vm,
+                    .draggable(task.id.uuidString)
+                    .dropDestination(for: String.self) { items, _ in
+                        guard let rawID = items.first, let draggedID = UUID(uuidString: rawID) else {
+                            return false
+                        }
+                        vm.reorderDailyTask(
+                            draggedID: draggedID,
+                            over: task.id,
                             context: modelContext
                         )
-                    )
+                        return true
+                    }
                 }
             }
         }
@@ -441,30 +438,5 @@ struct HomeStickyNoteCard: View {
         .onAppear {
             focusedField = .pastComplete
         }
-    }
-}
-
-private struct DailyTaskDropDelegate: DropDelegate {
-    let targetTaskID: UUID
-    @Binding var draggedTaskID: UUID?
-    let vm: HomeViewModel
-    let context: ModelContext
-
-    func dropEntered(info: DropInfo) {
-        guard let draggedTaskID else { return }
-        vm.reorderDailyTask(
-            draggedID: draggedTaskID,
-            over: targetTaskID,
-            context: context
-        )
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggedTaskID = nil
-        return true
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
     }
 }
