@@ -75,7 +75,7 @@ struct TopTasksWidgetEntryView: View {
                                 .foregroundStyle(.primary)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
+                                .padding(.vertical, 7)
                                 .background(
                                     StickyNotePalette.cardSurface,
                                     in: RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -116,24 +116,24 @@ struct TopTasksWidgetEntryView: View {
         .containerBackground(for: .widget) {
             StickyNotePalette.stickyNoteBackground
         }
-        .overlay(alignment: .topTrailing) {
+        .overlay(alignment: .bottomTrailing) {
             if let addDailyTaskDeepLink {
                 Link(destination: addDailyTaskDeepLink) {
                     Image(systemName: "plus")
-                        .font(.caption.weight(.bold))
+                        .font(.callout.weight(.bold))
                         .foregroundStyle(.primary)
-                        .frame(width: 20, height: 20)
+                        .frame(width: 26, height: 26)
                         .background(
                             StickyNotePalette.chipSurface,
                             in: Circle()
                         )
                         .overlay {
                             Circle()
-                                .stroke(StickyNotePalette.cardBorder, lineWidth: 1)
+                                .stroke(StickyNotePalette.cardBorder, lineWidth: 1.2)
                         }
                 }
-                .padding(.top, 8)
-                .padding(.trailing, 8)
+                .padding(.bottom, 12)
+                .padding(.trailing, 12)
                 .accessibilityLabel("Add daily task")
             }
         }
