@@ -1,6 +1,7 @@
 import Combine
 import Foundation
 import SwiftData
+import SwiftUI
 
 @MainActor
 final class HomeViewModel: ObservableObject {
@@ -135,10 +136,16 @@ final class HomeViewModel: ObservableObject {
 
         let title = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return false }
+        let sortOrder = nextSortOrder(
+            for: selectedDay,
+            insertAtTop: mustHappenToday,
+            context: context
+        )
 
         let task = DailyTask(
             date: selectedDay,
             title: title,
+            sortOrder: sortOrder,
             isBumpable: !mustHappenToday
         )
         context.insert(task)
@@ -171,6 +178,7 @@ final class HomeViewModel: ObservableObject {
             title: bumpedTitle,
             isCompleted: false,
             completedAt: nil,
+            sortOrder: nextSortOrder(for: tomorrow, insertAtTop: false, context: context),
             bumpCount: task.bumpCount + 1,
             isBumpable: task.isBumpable
         )
@@ -250,6 +258,43 @@ final class HomeViewModel: ObservableObject {
 
     var sortedDailyTasks: [DailyTask] {
         dailyTasks
+    }
+
+    func reorderDailyTask(
+        draggedID: UUID,
+        over targetID: UUID,
+        context: ModelContext
+    ) {
+        guard draggedID != targetID else { return }
+        guard let fromIndex = dailyTasks.firstIndex(where: { $0.id == draggedID }) else { return }
+        guard let toIndex = dailyTasks.firstIndex(where: { $0.id == targetID }) else { return }
+        guard fromIndex != toIndex else { return }
+
+        var updated = dailyTasks
+        let destination = toIndex > fromIndex ? toIndex + 1 : toIndex
+        updated.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: destination)
+        applyDailyTaskOrder(updated, context: context)
+    }
+
+    private func applyDailyTaskOrder(_ orderedTasks: [DailyTask], context: ModelContext) {
+        for (index, task) in orderedTasks.enumerated() where task.sortOrder != index {
+            task.sortOrder = index
+        }
+
+        dailyTasks = orderedTasks
+        save(context: context)
+        refresh(context: context)
+        TaskWidgetReloader.reloadTopTasksWidget()
+    }
+
+    private func nextSortOrder(for day: Date, insertAtTop: Bool, context: ModelContext) -> Int {
+        let tasksForDay = fetchDailyTasks(for: day, context: context)
+
+        if insertAtTop {
+            return (tasksForDay.map(\.sortOrder).min() ?? 0) - 1
+        }
+
+        return (tasksForDay.map(\.sortOrder).max() ?? -1) + 1
     }
 
     func updateNewTaskTitle(_ value: String) {

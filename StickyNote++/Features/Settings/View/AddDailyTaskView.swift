@@ -32,10 +32,12 @@ struct AddDailyTaskView: View {
     private func addTask() {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        let sortOrder = nextSortOrder(for: selectedDate, insertAtTop: mustHappenToday)
 
         let task = DailyTask(
             date: selectedDate,
             title: trimmed,
+            sortOrder: sortOrder,
             isBumpable: !mustHappenToday
         )
 
@@ -44,6 +46,21 @@ struct AddDailyTaskView: View {
 
         title = ""
         mustHappenToday = false
+    }
+
+    private func nextSortOrder(for day: Date, insertAtTop: Bool) -> Int {
+        let dayKey = HomeModel.dayKey(for: HomeModel.normalizedDay(day))
+        let descriptor = FetchDescriptor<DailyTask>(
+            predicate: #Predicate { $0.dayKey == dayKey },
+            sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.title)]
+        )
+        let tasks = (try? modelContext.fetch(descriptor)) ?? []
+
+        if insertAtTop {
+            return (tasks.map(\.sortOrder).min() ?? 0) - 1
+        }
+
+        return (tasks.map(\.sortOrder).max() ?? -1) + 1
     }
 
     private func saveContext() {

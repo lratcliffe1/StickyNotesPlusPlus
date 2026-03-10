@@ -9,6 +9,7 @@ import SwiftData
 /// - title: String
 /// - isCompleted: Bool
 /// - completedAt: Date?
+/// - sortOrder: Int
 /// - bumpCount: Int
 /// - isBumpable: Bool
 /// - bumpedTaskID: UUID?
@@ -21,6 +22,7 @@ final class DailyTask {
     var title: String
     var isCompleted: Bool
     var completedAt: Date?
+    var sortOrder: Int = 0
     var bumpCount: Int
     var isBumpable: Bool
     var bumpedTaskID: UUID?
@@ -33,6 +35,7 @@ final class DailyTask {
         title: String,
         isCompleted: Bool = false,
         completedAt: Date? = nil,
+        sortOrder: Int = 0,
         bumpCount: Int = 0,
         isBumpable: Bool = true,
         bumpedTaskID: UUID? = nil
@@ -44,6 +47,7 @@ final class DailyTask {
         self.title = title
         self.isCompleted = isCompleted
         self.completedAt = completedAt
+        self.sortOrder = sortOrder
         self.bumpCount = bumpCount
         self.isBumpable = isBumpable
         self.bumpedTaskID = bumpedTaskID

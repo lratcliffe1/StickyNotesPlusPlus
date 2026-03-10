@@ -1,5 +1,6 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 import UIKit
 
 struct HomeStickyNoteCard: View {
@@ -11,6 +12,7 @@ struct HomeStickyNoteCard: View {
     @State private var pendingBumpTitle: String = ""
     @State private var bumpFocusToken = 0
     @State private var newTaskMustHappenToday = false
+    @State private var draggedDailyTaskID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -133,6 +135,19 @@ struct HomeStickyNoteCard: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .onDrag {
+                        draggedDailyTaskID = task.id
+                        return NSItemProvider(object: task.id.uuidString as NSString)
+                    }
+                    .onDrop(
+                        of: [UTType.text],
+                        delegate: DailyTaskDropDelegate(
+                            targetTaskID: task.id,
+                            draggedTaskID: $draggedDailyTaskID,
+                            vm: vm,
+                            context: modelContext
+                        )
+                    )
                 }
             }
         }
@@ -315,6 +330,31 @@ struct HomeStickyNoteCard: View {
 
     private func scheduleBumpComposerFocus() {
         bumpFocusToken += 1
+    }
+}
+
+private struct DailyTaskDropDelegate: DropDelegate {
+    let targetTaskID: UUID
+    @Binding var draggedTaskID: UUID?
+    let vm: HomeViewModel
+    let context: ModelContext
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedTaskID else { return }
+        vm.reorderDailyTask(
+            draggedID: draggedTaskID,
+            over: targetTaskID,
+            context: context
+        )
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggedTaskID = nil
+        return true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
     }
 }
 
