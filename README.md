@@ -1,4 +1,4 @@
-# Sticky Notes, Sticky Life
+# StickyNotes++
 
 I wanted an advanced sticky note app where I can track both my recurring morning routine streak and my daily task streak.
 I based it on ideas from James Clear's _Atomic Habits_:
