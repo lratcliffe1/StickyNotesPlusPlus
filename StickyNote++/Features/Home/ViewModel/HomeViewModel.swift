@@ -51,10 +51,16 @@ final class HomeViewModel: ObservableObject {
 
     init(
         defaults: UserDefaults? = nil,
-        repository: HomeRepository = SwiftDataHomeRepository(),
-        loadSettings: @escaping (UserDefaults) -> MorningModeSettings = MorningModeProvider.load,
-        reloadWidget: @escaping () -> Void = TaskWidgetReloader.reloadTopTasksWidget,
-        createDailyTask: @escaping (Date, String, Bool, ModelContext) throws -> DailyTask = { day, title, mustHappenToday, context in
+        repository: HomeRepository? = nil,
+        loadSettings: ((UserDefaults) -> MorningModeSettings)? = nil,
+        reloadWidget: (() -> Void)? = nil,
+        createDailyTask: ((Date, String, Bool, ModelContext) throws -> DailyTask)? = nil
+    ) {
+        self.defaults = defaults ?? SharedPersistence.sharedDefaults
+        self.repository = repository ?? SwiftDataHomeRepository()
+        self.loadSettings = loadSettings ?? MorningModeProvider.load
+        self.reloadWidget = reloadWidget ?? TaskWidgetReloader.reloadTopTasksWidget
+        self.createDailyTask = createDailyTask ?? { day, title, mustHappenToday, context in
             try DailyTaskMutationService.createTask(
                 for: day,
                 title: title,
@@ -63,12 +69,6 @@ final class HomeViewModel: ObservableObject {
                 saveImmediately: false
             )
         }
-    ) {
-        self.defaults = defaults ?? SharedPersistence.sharedDefaults
-        self.repository = repository
-        self.loadSettings = loadSettings
-        self.reloadWidget = reloadWidget
-        self.createDailyTask = createDailyTask
         loadMorningSettings()
     }
 
