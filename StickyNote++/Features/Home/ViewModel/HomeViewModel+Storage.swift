@@ -43,7 +43,7 @@ extension HomeViewModel {
             return try repository.streakState(
                 for: list,
                 through: HomeModel.dayKey(for: day),
-                morningMode: morningMode,
+                history: dayRulesHistory,
                 context: context
             )
         } catch {
@@ -57,7 +57,7 @@ extension HomeViewModel {
         do {
             return try repository.dayLooks(
                 for: list, through: endKey, todayKey: HomeModel.dayKey(for: now),
-                morningMode: morningMode, context: context
+                history: dayRulesHistory, context: context
             )
         } catch {
             AppLogger.persistence.error("Day looks for \(list.rawValue, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")

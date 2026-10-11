@@ -7,6 +7,15 @@ import os
 enum WidgetContextualList: String, Codable {
     case morning
     case daily
+    case evening
+
+    init(_ list: HomeModel.ContextualList) {
+        switch list {
+        case .morning: self = .morning
+        case .daily: self = .daily
+        case .evening: self = .evening
+        }
+    }
 
     var displayTitle: String {
         switch self {
@@ -14,6 +23,8 @@ enum WidgetContextualList: String, Codable {
             return "Morning Routine"
         case .daily:
             return "Daily Tasks"
+        case .evening:
+            return "Evening Routine"
         }
     }
 }
@@ -43,35 +54,45 @@ enum WidgetTaskStore {
         }
         return ModelContext(try SharedPersistence.makeContainer())
     }
-    static var loadMorningMode: () -> HomeModel.MorningMode = {
-        MorningModeProvider.load(from: SharedPersistence.sharedDefaults).mode
-    }
+    private static var defaults: UserDefaults { SharedPersistence.sharedDefaults }
 
-    /// The top 3 open items of the list Home would show now. Repeating items can be completed
-    /// but not bumped here; one-offs can be bumped when their limit allows. Skipping stays in the app.
+    /// The top 3 open items of the list Home would show now (`HomeModel.automaticList`, by
+    /// today's stored rules). Repeating items can be completed but not bumped here; one-offs can
+    /// be bumped when their limit allows. Skipping stays in the app.
     static func snapshot(now: Date = Date()) -> WidgetTaskSnapshot {
         let calendar = Calendar.current
         let today = HomeModel.normalizedDay(now, calendar: calendar)
         let todayKey = HomeModel.dayKey(for: today, calendar: calendar)
-        let mode = currentMorningMode()
-        let fallbackDate = nextRefreshDate(now: now, mode: mode, calendar: calendar)
+        let store = defaults
+        // Stores today's rules if the app hasn't yet (first read of the day wins).
+        ListService.recordTodaysRules(now: now, calendar: calendar, defaults: store)
+        let rules = DayRulesStore.history(in: store).rules(for: todayKey)
+        let fallbackDate = rules.nextBoundary(after: now, calendar: calendar)
 
         do {
             let context = try makeContext()
-            try ListService.prepare(context: context, now: now, calendar: calendar)
+            try ListService.prepare(context: context, now: now, calendar: calendar, defaults: store)
 
             let morning = try ListService.occurrences(on: todayKey, list: .morning, context: context)
-            let shouldShowMorning = HomeModel.shouldShowMorningList(
+            // The evening is only read once it could show.
+            let eveningStarted = rules.eveningStart(on: now, calendar: calendar).map { now >= $0 } ?? false
+            let evening = try eveningStarted
+                ? ListService.occurrences(on: todayKey, list: .evening, context: context)
+                : []
+            let list = WidgetContextualList(HomeModel.automaticList(
                 for: today,
-                morningCompletion: ListRules.completion(morning),
-                mode: mode,
                 now: now,
+                rules: rules,
+                morning: ListRules.completion(morning),
+                eveningIsEmpty: evening.isEmpty,
                 calendar: calendar
-            )
-            let list: WidgetContextualList = shouldShowMorning ? .morning : .daily
-            let rows = try shouldShowMorning
-                ? morning
-                : ListService.occurrences(on: todayKey, list: .day, context: context)
+            ))
+            let rows: [Occurrence]
+            switch list {
+            case .morning: rows = morning
+            case .evening: rows = evening
+            case .daily: rows = try ListService.occurrences(on: todayKey, list: .day, context: context)
+            }
 
             let items = rows
                 .filter { $0.state == .open }
@@ -127,24 +148,5 @@ enum WidgetTaskStore {
         guard occurrence.dayKey == HomeModel.dayKey(for: now, calendar: calendar) else { return false }
         guard !occurrence.isRepeating else { return false }
         return try ListService.bump(occurrence, now: now, calendar: calendar, context: context) != nil
-    }
-
-    private static func currentMorningMode() -> HomeModel.MorningMode {
-        loadMorningMode()
-    }
-
-    private static func nextRefreshDate(now: Date, mode: HomeModel.MorningMode, calendar: Calendar) -> Date {
-        let today = HomeModel.normalizedDay(now, calendar: calendar)
-        let deadline = HomeModel.morningDeadline(for: today, mode: mode, calendar: calendar)
-
-        if now < deadline {
-            return deadline
-        }
-
-        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) else {
-            return now.addingTimeInterval(60 * 30)
-        }
-
-        return tomorrow
     }
 }

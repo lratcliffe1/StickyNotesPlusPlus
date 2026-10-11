@@ -20,6 +20,8 @@ struct CalendarView: View {
 
     let selectedDay: Date
     let onSelectDay: (Date) -> Void
+    /// Where each day's stored rules are read from (the screenshot harness passes its own suite).
+    var defaults: UserDefaults = SharedPersistence.sharedDefaults
     @State private var scrollRequestVersion = 0
     @State private var requestedMonthID: String?
     var body: some View {
@@ -143,13 +145,14 @@ struct CalendarView: View {
     /// gets the ↻ mark.
     private var dayProgressLookup: [Date: HomeModel.DayProgress] {
         let todayKey = HomeModel.dayKey(for: Date())
-        let morningMode = MorningModeProvider.load(from: SharedPersistence.sharedDefaults).mode
+        // Each day is judged by its own stored rules (its morning deadline).
+        let history = DayRulesStore.history(in: defaults)
         func looks(_ list: ListKind) -> [String: ListRules.DayLook] {
             ListRules.dayLooks(
                 occurrences: occurrences.filter { $0.list == list },
                 schedules: items.filter { $0.list == list }.map(\.schedule),
                 missesBefore: todayKey,
-                deadline: ListService.deadline(for: list, morningMode: morningMode, calendar: .current)
+                deadline: ListService.deadline(for: list, history: history, calendar: .current)
             )
         }
         let morningLooks = looks(.morning)

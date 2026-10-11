@@ -9,19 +9,15 @@ extension HomeViewModel {
         isReadOnly = HomeModel.isPastDay(selectedDay, now: now, calendar: calendar)
         let anchorDay = HomeModel.normalizedDay(selectedDay, calendar: calendar)
 
-        let autoContextualList: HomeModel.ContextualList
-        if HomeModel.shouldShowMorningList(
+        automaticContextualList = HomeModel.automaticList(
             for: selectedDay,
-            morningCompletion: morningCompletionState,
-            mode: morningMode,
-            now: now
-        ) {
-            autoContextualList = .morning
-        } else {
-            autoContextualList = .daily
-        }
-
-        contextualList = manualContextualListOverride ?? autoContextualList
+            now: now,
+            rules: todaysRules,
+            morning: morningCompletionState,
+            eveningIsEmpty: eveningEntries.isEmpty,
+            calendar: calendar
+        )
+        contextualList = manualContextualListOverride ?? automaticContextualList
 
         refreshSevenDayProgress(anchoredOn: anchorDay, context: context)
         let streaks = refreshStreaks(through: anchorDay, context: context)

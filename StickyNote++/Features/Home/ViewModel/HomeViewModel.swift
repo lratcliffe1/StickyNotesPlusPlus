@@ -9,11 +9,6 @@ import SwiftUI
 /// - delegates storage/mutations/derived-state work to focused extensions
 @MainActor
 final class HomeViewModel: ObservableObject {
-    enum MorningModeSelection {
-        case cutoff
-        case sinceWakeUp
-    }
-
     // UI state
     @Published var selectedDay: Date = HomeModel.normalizedDay(Date())
     /// Today's (or the selected day's) morning-list occurrences, in display order.
@@ -48,18 +43,17 @@ final class HomeViewModel: ObservableObject {
     var optionsBeforeDeadlinePick: OneOffOptions?
     @Published var isNeverMissTwiceMorningRisk: Bool = false
     @Published var isNeverMissTwiceDailyRisk: Bool = false
-    /// When Home next needs a refresh on its own (cutoff or midnight). HomeView sleeps until it.
+    /// When Home next needs a refresh on its own (the morning's end, the evening's start or
+    /// midnight). HomeView sleeps until it.
     @Published var nextClockBoundary: Date = .distantFuture
 
-    // Defaults from the implementation spec.
-    var morningModeSelection: MorningModeSelection = .cutoff
-    var morningCutoffTime: DateComponents = DateComponents(hour: 9, minute: 0)
-    var wakeUpTime: DateComponents = DateComponents(hour: 7, minute: 0)
-    var morningWindowDurationMinutes: Int = 90
+    /// Every stored day's flip-time rules, re-read on each refresh.
+    var dayRulesHistory = DayRulesHistory()
+    /// The list the time and what's done pick, before any manual flip.
+    var automaticContextualList: HomeModel.ContextualList = .daily
     var nowOverride: Date?
     let defaults: UserDefaults
     let repository: HomeRepository
-    let loadSettings: (UserDefaults) -> MorningModeSettings
     let reloadWidget: () -> Void
     /// Adds a one-off to the day list: (day, title, the add menu's options, context).
     let createDailyTask: (Date, String, OneOffOptions, ModelContext) throws -> Occurrence?
@@ -75,13 +69,11 @@ final class HomeViewModel: ObservableObject {
     init(
         defaults: UserDefaults? = nil,
         repository: HomeRepository? = nil,
-        loadSettings: ((UserDefaults) -> MorningModeSettings)? = nil,
         reloadWidget: (() -> Void)? = nil,
         createDailyTask: ((Date, String, OneOffOptions, ModelContext) throws -> Occurrence?)? = nil
     ) {
         self.defaults = defaults ?? SharedPersistence.sharedDefaults
         self.repository = repository ?? SwiftDataHomeRepository()
-        self.loadSettings = loadSettings ?? MorningModeProvider.load
         self.reloadWidget = reloadWidget ?? TaskWidgetReloader.reloadTopTasksWidget
         self.createDailyTask = createDailyTask ?? { day, title, options, context in
             try ListService.addOneOff(
@@ -92,15 +84,15 @@ final class HomeViewModel: ObservableObject {
                 context: context
             )
         }
-        loadMorningSettings()
     }
 
     // MARK: - Public API
 
     func refresh(context: ModelContext) {
-        loadMorningSettings()
-        // One-time V1 copy, then today's occurrences (whichever day is on screen).
+        // Today's rules (first read wins), the one-time V1 copy, then today's occurrences
+        // (whichever day is on screen).
         prepareStore(context: context)
+        loadDayRules()
 
         let calendar = Calendar.current
         let day = HomeModel.normalizedDay(selectedDay, calendar: calendar)
@@ -113,7 +105,8 @@ final class HomeViewModel: ObservableObject {
         endedItemIDs = (try? ListService.endedItemIDs(among: morningEntries + dailyTasks + eveningEntries, context: context)) ?? []
 
         recalculateDerivedState(context: context)
-        nextClockBoundary = HomeModel.nextClockBoundary(after: now, mode: morningMode, calendar: calendar)
+        // A fixed clock (the screenshot harness) never reaches a boundary.
+        nextClockBoundary = nowOverride == nil ? todaysRules.nextBoundary(after: now, calendar: calendar) : .distantFuture
     }
 
     /// Called when time may have moved on: returning to the foreground, midnight, a time-zone or
@@ -127,6 +120,15 @@ final class HomeViewModel: ObservableObject {
             manualContextualListOverride = nil
         }
         refresh(context: context)
+    }
+
+    /// The scheduled boundary has come (the morning's end, the evening's start or midnight): on
+    /// today, the automatic list takes over again, so a flip made earlier doesn't hide the evening.
+    func handleClockBoundary(context: ModelContext) {
+        if isFollowingToday {
+            manualContextualListOverride = nil
+        }
+        handleClockChange(context: context)
     }
 
     func setSelectedDay(
@@ -317,7 +319,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     private var todaysMorningDeadline: Date {
-        HomeModel.morningDeadline(for: HomeModel.normalizedDay(now), mode: morningMode)
+        todaysRules.morningDeadline(on: now)
     }
 
     private static func bannerLine(risk: HomeModel.StreakRisk, saveable: String, lost: String) -> String? {
@@ -336,24 +338,20 @@ final class HomeViewModel: ObservableObject {
         HomeDataStore.dayFromStored(dayKey: dayKey, fallbackDate: fallbackDate, calendar: calendar)
     }
 
-    func loadMorningSettings() {
-        let settings = loadSettings(defaults)
-        morningModeSelection = settings.selection == .sinceWakeUp ? .sinceWakeUp : .cutoff
-        morningCutoffTime = settings.cutoffTime
-        wakeUpTime = settings.wakeUpTime
-        morningWindowDurationMinutes = settings.windowDurationMinutes
+    /// Re-reads every day's stored rules. Today's are normally stored by `prepareStore`; if that
+    /// failed, today goes by the settings as they are.
+    func loadDayRules() {
+        var history = DayRulesStore.history(in: defaults)
+        let todayKey = HomeModel.dayKey(for: now)
+        if history.stored[todayKey] == nil {
+            history.stored[todayKey] = AppSettings.currentRules(in: defaults)
+        }
+        dayRulesHistory = history
     }
 
-    var morningMode: HomeModel.MorningMode {
-        switch morningModeSelection {
-        case .cutoff:
-            return .cutoff(time: morningCutoffTime)
-        case .sinceWakeUp:
-            return .sinceWakeUp(
-                wakeUpTime: wakeUpTime,
-                durationMinutes: morningWindowDurationMinutes
-            )
-        }
+    /// Today's flip-time rules (the real today, whichever day is on screen).
+    var todaysRules: DayRules {
+        dayRulesHistory.rules(for: HomeModel.dayKey(for: now))
     }
 
     var morningCompletionState: HomeModel.CompletionState {

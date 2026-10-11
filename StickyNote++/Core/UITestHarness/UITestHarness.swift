@@ -5,9 +5,11 @@ import os
 
 /// Test-only launch mode used by the screenshot workflow (`scripts/screenshots.sh`).
 ///
-/// Launch with `-uiScenario <morning|daily|empty|missedYesterday|missedTwice>`, optionally
-/// `-uiScreen <home|calendar|settings|editLists|itemEditor|repeatPicker|bump|addOptions|deadline>`
-/// and `-uiList <morning|day|evening>` (the list Home shows, or Edit Lists' segment).
+/// Launch with `-uiScenario <morning|lateMorning|noon|daily|evening|empty|missedYesterday|missedTwice>`,
+/// optionally `-uiScreen <home|calendar|settings|editLists|itemEditor|repeatPicker|bump|addOptions|deadline>`,
+/// `-uiList <morning|day|evening>` (the list Home shows, or Edit Lists' segment),
+/// `-uiMorningEnds <setTime|doneOrSkipped>` (default setTime, 09:00) and `-uiEvening <on|off>`
+/// (default on, 21:00): the settings, which today's rules are stored from.
 /// The app then runs on an in-memory store seeded with fixed sample data (V2 items and occurrences;
 /// the V1 tables stay empty, so the one-time backfill finds nothing), at a fixed time of day,
 /// with its own settings suite, and the app skips opening the shared on-disk store entirely,
@@ -17,8 +19,15 @@ enum UITestHarness {
     enum Scenario: String {
         /// 08:15, two of six routine items done: the morning list is showing.
         case morning
+        /// 10:30, the same morning, still unfinished: past a 09:00 set time (day list), but still
+        /// the morning list when it ends "when everything's done or skipped".
+        case lateMorning
+        /// 12:30, the same morning, still unfinished: the day list in either mode.
+        case noon
         /// 14:00, routine finished at 07:40: the daily list, including a twice-bumped task.
         case daily
+        /// 21:30, the same day as `daily`: the evening list (one done, one skipped, one open).
+        case evening
         /// 14:00, nothing set up at all.
         case empty
         /// 08:15, both lists missed yesterday, morning still saveable: two "Missed yesterday" lines.
@@ -28,6 +37,19 @@ enum UITestHarness {
         case missedTwice
 
         var missesYesterday: Bool { self == .missedYesterday || self == .missedTwice }
+
+        /// The morning routine is finished today (07:40).
+        var routineFinished: Bool { self == .daily || self == .evening }
+
+        var time: (hour: Int, minute: Int) {
+            switch self {
+            case .morning, .missedYesterday: return (8, 15)
+            case .lateMorning: return (10, 30)
+            case .noon: return (12, 30)
+            case .daily, .empty, .missedTwice: return (14, 0)
+            case .evening: return (21, 30)
+            }
+        }
     }
 
     /// What opens at launch. Menus and long-press menus can't be opened from launch arguments, so
@@ -78,15 +100,17 @@ enum UITestHarness {
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard
         defaults.removePersistentDomain(forName: suiteName)
 
+        // The settings today's rules are stored from (the first refresh stores them).
+        if let ends = value(after: "-uiMorningEnds", in: arguments).flatMap(DayRules.MorningEnd.init(rawValue:)) {
+            defaults.set(ends.rawValue, forKey: AppSettings.morningEndKey)
+        }
+        if let evening = value(after: "-uiEvening", in: arguments) {
+            defaults.set(evening != "off", forKey: AppSettings.eveningEnabledKey)
+        }
+
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
-        let now: Date
-        switch scenario {
-        case .morning, .missedYesterday:
-            now = at(hour: 8, minute: 15, on: today, calendar: calendar)
-        case .daily, .empty, .missedTwice:
-            now = at(hour: 14, minute: 0, on: today, calendar: calendar)
-        }
+        let now = at(hour: scenario.time.hour, minute: scenario.time.minute, on: today, calendar: calendar)
 
         do {
             let config = ModelConfiguration(schema: SharedPersistence.appSchema(), isStoredInMemoryOnly: true)
@@ -294,7 +318,7 @@ enum UITestHarness {
         calendar: Calendar
     ) -> Occurrence {
         let todayKey = key(today)
-        let routineDoneCount = (scenario == .daily) ? items.count : 2
+        let routineDoneCount = scenario.routineFinished ? items.count : 2
         for (order, item) in items.enumerated() {
             let done = order < routineDoneCount
             context.insert(

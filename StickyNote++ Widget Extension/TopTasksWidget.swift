@@ -5,7 +5,7 @@ import WidgetKit
 /// Widget timeline/view composition for displaying top uncompleted tasks.
 struct TopTasksWidgetConfigurationIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Top Tasks"
-    static var description = IntentDescription("Shows the top 3 uncompleted morning or daily items.")
+    static var description = IntentDescription("Shows the top 3 uncompleted items of the current list: morning, day or evening.")
 }
 
 struct TopTasksEntry: TimelineEntry {
@@ -168,7 +168,7 @@ struct TopTasksWidget: Widget {
             TopTasksWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("Sticky Top 3")
-        .description("Shows your top 3 uncompleted morning or daily items.")
+        .description("Shows your top 3 uncompleted items: morning, day or evening.")
         .supportedFamilies([.systemMedium])
         .contentMarginsDisabled()
     }
