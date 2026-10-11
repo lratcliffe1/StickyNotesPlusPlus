@@ -16,8 +16,11 @@ xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configurati
 APP="$DERIVED/Build/Products/Debug-iphonesimulator/StickyNote++.app"
 BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.plist")
 
+# awk reads all of simctl's output (no early-exit pipe to trip pipefail) and prints the first match.
 find_udid() {
-  xcrun simctl list devices available | grep -m1 "    ${DEVICE_NAME} (" | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/' || true
+  xcrun simctl list devices available \
+    | awk -v want="    ${DEVICE_NAME} (" 'index($0, want) == 1 && !found { print; found = 1 }' \
+    | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/'
 }
 UDID=$(find_udid)
 if [ -z "$UDID" ]; then
@@ -31,12 +34,10 @@ fi
 
 xcrun simctl boot "$UDID" 2>/dev/null || true
 xcrun simctl bootstatus "$UDID" -b >/dev/null
-xcrun simctl status_bar "$UDID" override --time "9:41" --batteryState charged --batteryLevel 100 \
-  --cellularBars 4 --wifiBars 3 || true
 xcrun simctl install "$UDID" "$APP"
 mkdir -p "$OUT"
 
-# name | scenario | screen | appearance
+# name | scenario | screen | appearance. The status-bar clock matches each scenario's time.
 SHOTS=(
   "01-home-morning|morning|home|light"
   "02-home-daily|daily|home|light"
@@ -48,6 +49,10 @@ SHOTS=(
 
 for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name scenario screen appearance <<<"$shot"
+  clock="14:00"
+  [ "$scenario" = "morning" ] && clock="08:15"
+  xcrun simctl status_bar "$UDID" override --time "$clock" --batteryState charged --batteryLevel 100 \
+    --cellularBars 4 --wifiBars 3 || true
   xcrun simctl ui "$UDID" appearance "$appearance"
   xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
   xcrun simctl launch "$UDID" "$BUNDLE_ID" -uiScenario "$scenario" -uiScreen "$screen" >/dev/null

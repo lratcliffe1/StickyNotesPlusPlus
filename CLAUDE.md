@@ -27,14 +27,14 @@ The Xcode project uses **folder-synchronised groups**: a new `.swift` file dropp
 ## Rules that bind
 
 - **Greyscale first.** Every state must read without colour: carry meaning in shape, icon, text, weight, contrast or pattern, never hue alone. Check the `-grey.png` screenshots.
-- **Never edit a shipped schema.** The store is versioned (`Shared/Persistence/SchemaVersions.swift`). To change a model, add `StickyNotesSchemaV2`, snapshot V1's models as nested types inside `StickyNotesSchemaV1`, and add a migration stage. A store that can't migrate hits the `fatalError` in `StickyNotePlusPlusApp` at launch, on Liam's real data.
+- **Never edit a shipped schema.** The store is versioned (`Shared/Persistence/SchemaVersions.swift`), and `SchemaVersionTests.testVersionOneShapeIsPinned` fails if a model changes. To change one, add `StickyNotesSchemaV2`, snapshot V1's models as nested types inside `StickyNotesSchemaV1`, and add a migration stage. Don't just update the test. A store that can't migrate hits the `fatalError` in `StickyNotePlusPlusApp` at launch, on Liam's real data. The widget's `try?` (`WidgetTaskStore`) fails silently instead, and shows an empty widget.
 - **App Group via `ALTAppGroups`.** With a free account, SideStore renames the App Group and lists the real identifier in Info.plist under `ALTAppGroups`. `SharedPersistence.appGroupIdentifier` resolves it at runtime. Never hardcode the group again; it crashed the app on launch.
 - **Migration flags are written after the save**, never before (`HomeDataStore.migrateLegacyDayKeysIfNeeded`).
-- **Dates go through `HomeModel`.** Day identity is the `dayKey` string (`YYYY-MM-DD`). Use the view model's `now` (overridable), not `Date()`, in anything a test or the harness needs to control.
+- **Dates go through `HomeModel`.** Day identity is the `dayKey` string (`YYYY-MM-DD`). Prefer the view model's `now` (overridable) to `Date()`. Not everything does yet (`selectedDay`, the relative-day label, `isViewingToday`, `CalendarView`), which is why the harness fixes only the time of day, with dates relative to the real today.
 
 ## The screenshot harness
 
-In Debug builds only, launching with `-uiScenario <morning|daily|empty>` (and optionally `-uiScreen <home|calendar|settings>`) runs the app on an in-memory store with fixed sample data at a fixed time: `morning` is 08:15, with 2 of 6 routine items done; `daily` and `empty` are 14:00. See `StickyNote++/Core/UITestHarness/UITestHarness.swift`. To add a state: add a scenario or screen there, then add a row to `SHOTS` in `scripts/screenshots.sh`.
+In Debug builds only, launching with `-uiScenario <morning|daily|empty>` (and optionally `-uiScreen <home|calendar|settings>`) runs the app on an in-memory store with fixed sample data at a fixed time of day: `morning` is 08:15, with 2 of 6 routine items done; `daily` and `empty` are 14:00. In this mode the app never opens the shared on-disk store, and settings and migration flags go to their own suite. See `StickyNote++/Core/UITestHarness/UITestHarness.swift`. To add a state: add a scenario or screen there, then add a row to `SHOTS` in `scripts/screenshots.sh`.
 
 ## Shipping a build to the phone
 
@@ -50,4 +50,5 @@ Fix these as the planned work reaches them, not in passing:
 - Routine days are matched to the routine **by title**, so a rename wipes today's tick.
 - Bumping a task marks it complete, which keeps the streak alive.
 - The app and the widget both write the store without coordinating.
-- `CalendarView` uses a UIKit collection view with hand-computed heights. Its weeks start on Sunday, and it shows a fixed 2024–2028 range.
+- `CalendarView` uses a UIKit collection view with hand-computed heights. Its weeks start on Sunday, and it shows whole years (the current year ±1, widened to fit the data, plus a year's padding each side).
+- Xcode 26 will respect the targets' `SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor`, which Xcode 16 ignores. Expect to mark the schema enums (and similar) `nonisolated` when CI moves up.

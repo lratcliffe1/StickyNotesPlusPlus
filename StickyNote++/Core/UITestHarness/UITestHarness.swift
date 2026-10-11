@@ -7,8 +7,9 @@ import os
 ///
 /// Launch with `-uiScenario <morning|daily|empty>` and optionally `-uiScreen <home|calendar|settings>`.
 /// The app then runs on an in-memory store seeded with fixed sample data, at a fixed time of day,
-/// reading morning settings from its own suite, so real data is never touched. (The legacy
-/// migration flags still go to the shared suite; on a simulator that is harmless.) Debug builds only.
+/// with its own settings suite, and the app skips opening the shared on-disk store entirely,
+/// so real data and settings are never touched. It fixes the time of day only: dates are still
+/// relative to the real today, because some views read `Date()` directly. Debug builds only.
 enum UITestHarness {
     enum Scenario: String {
         /// 08:15, two of six routine items done: the morning list is showing.
@@ -66,7 +67,11 @@ enum UITestHarness {
             }
             try context.save()
 
-            let viewModel = HomeViewModel(defaults: defaults, reloadWidget: {})
+            let viewModel = HomeViewModel(
+                defaults: defaults,
+                repository: SwiftDataHomeRepository(defaults: defaults),
+                reloadWidget: {}
+            )
             viewModel.nowOverride = now
             return Configuration(container: container, viewModel: viewModel, initialDestination: destination)
         } catch {
