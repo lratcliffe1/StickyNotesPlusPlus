@@ -11,6 +11,7 @@ SETTLE_SECONDS="${SETTLE_SECONDS:-5}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 UDID=$("$HERE/ci-simulator.sh")
+echo "== building"
 
 xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug \
   -destination "id=$UDID" -derivedDataPath "$DERIVED" COMPILER_INDEX_STORE_ENABLE=NO build -quiet
@@ -22,7 +23,10 @@ BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$APP/Info.pli
 GREYSCALE="$DERIVED/greyscale"
 swiftc -O "$HERE/greyscale.swift" -o "$GREYSCALE"
 
+echo "== booting the simulator"
+
 xcrun simctl bootstatus "$UDID" -b >/dev/null
+echo "== installing and capturing"
 xcrun simctl install "$UDID" "$APP"
 mkdir -p "$OUT"
 
