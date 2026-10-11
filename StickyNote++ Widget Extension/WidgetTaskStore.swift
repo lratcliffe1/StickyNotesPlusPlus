@@ -30,6 +30,8 @@ struct WidgetTaskSnapshot {
     let list: WidgetContextualList
     let items: [WidgetTaskItem]
     let nextRefreshDate: Date
+    /// Retype to bump is on: the bump button opens the app's bump sheet instead of bumping.
+    var retypeToBump: Bool = AppSettings.defaultRetypeToBump
 }
 
 enum WidgetTaskStore {
@@ -87,7 +89,8 @@ enum WidgetTaskStore {
                 date: now,
                 list: list,
                 items: Array(items),
-                nextRefreshDate: fallbackDate
+                nextRefreshDate: fallbackDate,
+                retypeToBump: AppSettings.retypeToBump(in: SharedPersistence.sharedDefaults)
             )
         } catch {
             AppLogger.widget.error("Widget snapshot failed: \(error.localizedDescription, privacy: .public)")
@@ -112,8 +115,10 @@ enum WidgetTaskStore {
         return try ListService.complete(occurrence, at: now, context: context)
     }
 
-    /// Bumps one of today's one-offs to tomorrow, if its bump limit allows.
+    /// Bumps one of today's one-offs to tomorrow, if its bump limit allows. Only with Retype to bump
+    /// off: with it on, the widget opens the app's bump sheet instead (`BumpDeepLink`).
     static func bumpTask(id: UUID, list: WidgetContextualList, now: Date = Date()) throws -> Bool {
+        guard !AppSettings.retypeToBump(in: SharedPersistence.sharedDefaults) else { return false }
         let calendar = Calendar.current
         let context = try makeContext()
         try ListService.prepare(context: context, now: now, calendar: calendar)
