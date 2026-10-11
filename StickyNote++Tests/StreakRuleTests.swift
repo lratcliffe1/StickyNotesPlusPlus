@@ -111,7 +111,7 @@ final class StreakRuleTests: XCTestCase {
     // MARK: - Days nobody opened
 
     private func schedule(_ rule: RepeatRule = .daily, start: String, end: String? = nil) -> ListRules.ItemSchedule {
-        ListRules.ItemSchedule(rule: rule, startDayKey: start, endDayKey: end)
+        ListRules.ItemSchedule(itemID: UUID(), rule: rule, startDayKey: start, endDayKey: end)
     }
 
     private func streak(_ rows: [FactRow], schedules: [ListRules.ItemSchedule], through anchor: String) -> HomeModel.StreakState {
@@ -176,6 +176,18 @@ final class StreakRuleTests: XCTestCase {
     func testUnopenedMissShowsAsZeroNotNeutral() {
         XCTAssertEqual(ListRules.completion([FactRow](), isUnopenedMiss: true), HomeModel.CompletionState(value: 0, isNeutral: false))
         XCTAssertEqual(ListRules.completion([FactRow](), isUnopenedMiss: false), .neutral)
+    }
+
+    /// A weekly occurrence left open on its Monday can still be done that week: not a miss on Monday,
+    /// a miss on Sunday (its period end) once Sunday has passed.
+    func testOpenLessThanDailyOccurrenceIsAMissOnItsPeriodEndNotItsOwnDay() {
+        let rows = [
+            row("2026-10-11", .done),
+            FactRow(dayKey: "2026-10-12", itemID: UUID(), state: .open, scheduledDayKey: "2026-10-12", periodEndDayKey: "2026-10-18"),
+        ]
+        XCTAssertEqual(streak(rows, through: "2026-10-14"), HomeModel.StreakState(count: 1, isFrozen: false))
+        XCTAssertEqual(streak(rows, through: "2026-10-18"), HomeModel.StreakState(count: 1, isFrozen: false), "Sunday is today: still time")
+        XCTAssertEqual(streak(rows, through: "2026-10-19"), HomeModel.StreakState(count: 1, isFrozen: true), "one miss, on Sunday")
     }
 
     // MARK: - Order and duplicates

@@ -69,7 +69,7 @@ final class Item {
     }
 
     var schedule: ListRules.ItemSchedule {
-        ListRules.ItemSchedule(rule: repeatRule, startDayKey: startDayKey, endDayKey: endDayKey)
+        ListRules.ItemSchedule(itemID: id, rule: repeatRule, startDayKey: startDayKey, endDayKey: endDayKey)
     }
 
     /// Whether the item exists on `dayKey` (whether it falls due there is the repeat rule's call).

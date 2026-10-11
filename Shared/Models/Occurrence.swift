@@ -8,6 +8,8 @@ import SwiftData
 /// - A bump marks this row `bumped` and creates the next day's row, linked both ways
 ///   (`bumpedToID` / `bumpedFromID`), with `bumpCount + 1`. `firstAddedDayKey` and
 ///   `firstAddedTitle` stay those of the first row in the chain ("first added Mon as …").
+/// - An item occurrence's id is derived from (item, scheduled day) (`OccurrenceID`), so it can only
+///   be created once, whichever process gets there first.
 /// - Repeating occurrences remember the day they were scheduled for (`scheduledDayKey`) and the
 ///   last day they may be bumped to (`periodEndDayKey`); a bumped copy keeps both.
 /// Enums are stored as raw values.
@@ -25,6 +27,8 @@ final class Occurrence {
     var createdAt: Date
     var bumpLimitRaw: String
     var bumpLimitDays: Int
+    /// An optional deadline, independent of the bump limit (a one-off can have a deadline and
+    /// "up to 3 days"). The `untilDeadline` limit reads it.
     var deadlineDayKey: String?
     var bumpedFromID: UUID?
     var bumpedToID: UUID?
@@ -45,6 +49,7 @@ final class Occurrence {
         completedAt: Date? = nil,
         createdAt: Date = Date(),
         bumpLimit: BumpLimit = .defaultForNewOneOffs,
+        deadlineDayKey: String? = nil,
         bumpedFromID: UUID? = nil,
         bumpedToID: UUID? = nil,
         bumpCount: Int = 0,
@@ -64,7 +69,7 @@ final class Occurrence {
         self.createdAt = createdAt
         self.bumpLimitRaw = bumpLimit.kind.rawValue
         self.bumpLimitDays = bumpLimit.storedDays
-        self.deadlineDayKey = bumpLimit.storedDeadlineDayKey
+        self.deadlineDayKey = bumpLimit.storedDeadlineDayKey ?? deadlineDayKey
         self.bumpedFromID = bumpedFromID
         self.bumpedToID = bumpedToID
         self.bumpCount = bumpCount
@@ -88,7 +93,10 @@ final class Occurrence {
         set {
             bumpLimitRaw = newValue.kind.rawValue
             bumpLimitDays = newValue.storedDays
-            deadlineDayKey = newValue.storedDeadlineDayKey
+            // Only an `untilDeadline` limit sets the deadline; other limits leave it alone.
+            if let deadline = newValue.storedDeadlineDayKey {
+                deadlineDayKey = deadline
+            }
         }
     }
 

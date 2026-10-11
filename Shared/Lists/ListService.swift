@@ -27,9 +27,13 @@ enum ListService {
     }
 
     /// Creates the occurrences of every item due on `dayKey` that aren't there yet. Safe to call
-    /// any number of times: an item gets one scheduled row per day. If two exist anyway (the app and
-    /// the widget racing), keeps the most progressed one and deletes the rest. Rows bumped in from
-    /// an earlier day don't count as that day's scheduled row.
+    /// any number of times, from any process: an item occurrence's id comes from (item, scheduled
+    /// day), so a second create lands on the same row. If duplicates exist anyway, keeps the most
+    /// progressed one and deletes the rest.
+    ///
+    /// Less often than daily: if an occurrence scheduled on an earlier day is still within its period
+    /// and never got a row (nobody opened that day), it is created today, keeping its scheduled day
+    /// and period end, so it can still be done or bumped for the rest of its period.
     @discardableResult
     static func ensureOccurrences(
         on dayKey: String,
@@ -42,13 +46,14 @@ enum ListService {
         let existing = try context.fetch(FetchDescriptor<Occurrence>(predicate: #Predicate { $0.dayKey == key }))
         var didChange = false
 
-        var scheduledByItem: [UUID: [Occurrence]] = [:]
-        for row in existing where (row.scheduledDayKey ?? row.dayKey) == row.dayKey {
+        // Item rows created on this day (not bumped in), keyed by item and scheduled day.
+        var rowsByKey: [String: [Occurrence]] = [:]
+        for row in existing where row.bumpedFromID == nil {
             if let itemID = row.itemID {
-                scheduledByItem[itemID, default: []].append(row)
+                rowsByKey[ListRules.materialisedKey(itemID, row.scheduledDayKey ?? row.dayKey), default: []].append(row)
             }
         }
-        for rows in scheduledByItem.values where rows.count > 1 {
+        for rows in rowsByKey.values where rows.count > 1 {
             guard let keep = ListRules.preferredDuplicate(rows) else { continue }
             for row in rows where row.id != keep.id {
                 try unlinkBeforeDelete(row, context: context)
@@ -57,14 +62,33 @@ enum ListService {
             }
         }
 
-        for item in items where scheduledByItem[item.id] == nil && item.isActive(on: dayKey) {
-            guard item.repeatRule.occurs(on: dayKey, startDayKey: item.startDayKey, calendar: calendar) else { continue }
-            context.insert(makeOccurrence(for: item, on: dayKey, now: now, calendar: calendar))
+        let math = DayMath(calendar: calendar)
+        for item in items where item.isActive(on: dayKey) {
+            let rule = item.repeatRule
+            if rule.occurs(on: dayKey, startDayKey: item.startDayKey, math: math) {
+                guard rowsByKey[ListRules.materialisedKey(item.id, dayKey)] == nil else { continue }
+                context.insert(makeOccurrence(for: item, scheduledOn: dayKey, on: dayKey, now: now, calendar: calendar))
+                didChange = true
+                continue
+            }
+            // Today isn't scheduled: is an earlier occurrence's period still running, with no row yet?
+            guard
+                let scheduled = latestOccurrence(of: item, before: dayKey, math: math),
+                rule.periodEnd(for: scheduled, startDayKey: item.startDayKey, calendar: calendar) >= dayKey,
+                try !hasRow(itemID: item.id, scheduledDayKey: scheduled, context: context)
+            else { continue }
+            context.insert(makeOccurrence(for: item, scheduledOn: scheduled, on: dayKey, now: now, calendar: calendar))
             didChange = true
         }
 
         if didChange {
-            try context.save()
+            do {
+                try context.save()
+            } catch {
+                // Never leave a failed insert pending: every later save in this context would fail too.
+                context.rollback()
+                throw error
+            }
         }
         return didChange
     }
@@ -156,10 +180,13 @@ enum ListService {
         context: ModelContext,
         calendar: Calendar = .current
     ) throws -> Set<String> {
-        let opened = Set(try occurrences(through: anchorKey, list: list, context: context).map(\.dayKey))
+        let rows = try occurrences(through: anchorKey, list: list, context: context)
         return ListRules.unopenedMisses(
             schedules: try schedules(for: list, context: context),
-            openedDays: opened,
+            openedDays: Set(rows.map(\.dayKey)),
+            materialised: Set(rows.compactMap { row in
+                row.itemID.map { ListRules.materialisedKey($0, row.scheduledDayKey ?? row.dayKey) }
+            }),
             before: anchorKey,
             calendar: calendar
         )
@@ -253,6 +280,7 @@ enum ListService {
             sortOrder: sortOrder,
             createdAt: now,
             bumpLimit: occurrence.bumpLimit,
+            deadlineDayKey: occurrence.deadlineDayKey,
             bumpedFromID: occurrence.id,
             bumpCount: occurrence.bumpCount + 1,
             firstAddedDayKey: occurrence.firstAddedDayKey,
@@ -271,13 +299,14 @@ enum ListService {
     // MARK: - One-offs
 
     /// Adds a one-off to any day, today or later (or earlier). New one-offs default to
-    /// "up to 3 days". Returns nil for an empty title.
+    /// "up to 3 days". `deadlineDayKey` is independent of the limit. Returns nil for an empty title.
     @discardableResult
     static func addOneOff(
         list: ListKind,
         dayKey: String,
         title: String,
         bumpLimit: BumpLimit = .defaultForNewOneOffs,
+        deadlineDayKey: String? = nil,
         now: Date = Date(),
         context: ModelContext
     ) throws -> Occurrence? {
@@ -290,7 +319,8 @@ enum ListService {
             title: trimmed,
             sortOrder: try nextOneOffSortOrder(on: dayKey, list: list, context: context),
             createdAt: now,
-            bumpLimit: bumpLimit
+            bumpLimit: bumpLimit,
+            deadlineDayKey: deadlineDayKey
         )
         context.insert(occurrence)
         try context.save()
@@ -356,7 +386,7 @@ enum ListService {
         )
         context.insert(item)
         if rule.occurs(on: today, startDayKey: today, calendar: calendar) {
-            context.insert(makeOccurrence(for: item, on: today, now: now, calendar: calendar))
+            context.insert(makeOccurrence(for: item, scheduledOn: today, on: today, now: now, calendar: calendar))
         }
         try context.save()
         return item
@@ -385,14 +415,20 @@ enum ListService {
     }
 
     /// Deletes from today: the item stops from today onwards (`endDayKey = today`), today's and later
-    /// occurrences that weren't done or bumped are removed, and earlier days keep theirs.
+    /// occurrences that weren't done or bumped are removed, and earlier days keep theirs. As with
+    /// `deleteOneOff`, a removed copy that was bumped in sends its source day back to open.
     /// The rest of the list closes up.
     static func deleteItem(_ item: Item, todayKey: String, context: ModelContext) throws {
         item.endDayKey = max(todayKey, item.startDayKey)
         for occurrence in try occurrences(ofItem: item.id, from: todayKey, context: context)
         where occurrence.state == .open || occurrence.state == .skipped {
-            if let fromID = occurrence.bumpedFromID, let source = try self.occurrence(id: fromID, context: context) {
+            if let fromID = occurrence.bumpedFromID, let source = try self.occurrence(id: fromID, context: context),
+               source.bumpedToID == occurrence.id {
                 source.bumpedToID = nil
+                if source.state == .bumped {
+                    source.state = .open
+                    source.completedAt = nil
+                }
             }
             context.delete(occurrence)
         }
@@ -404,8 +440,17 @@ enum ListService {
 
     // MARK: - Helpers
 
-    static func makeOccurrence(for item: Item, on dayKey: String, now: Date, calendar: Calendar) -> Occurrence {
+    /// The row for `item`'s occurrence scheduled on `scheduledDayKey`, placed on `dayKey` (the same
+    /// day, or a later day in its period). Its id is derived from (item, scheduled day).
+    static func makeOccurrence(
+        for item: Item,
+        scheduledOn scheduledDayKey: String,
+        on dayKey: String,
+        now: Date,
+        calendar: Calendar
+    ) -> Occurrence {
         Occurrence(
+            id: OccurrenceID.forItem(item.id, scheduledDayKey: scheduledDayKey),
             itemID: item.id,
             list: item.list,
             dayKey: dayKey,
@@ -413,9 +458,34 @@ enum ListService {
             sortOrder: item.sortOrder,
             createdAt: now,
             bumpLimit: item.defaultBumpLimit,
-            scheduledDayKey: dayKey,
-            periodEndDayKey: item.repeatRule.periodEnd(for: dayKey, startDayKey: item.startDayKey, calendar: calendar)
+            scheduledDayKey: scheduledDayKey,
+            periodEndDayKey: item.repeatRule.periodEnd(for: scheduledDayKey, startDayKey: item.startDayKey, calendar: calendar)
         )
+    }
+
+    /// The item's most recent scheduled day before `dayKey`, looking back at most one longest period.
+    private static func latestOccurrence(of item: Item, before dayKey: String, math: DayMath) -> String? {
+        let rule = item.repeatRule
+        let lookback = 366 * max(1, rule.interval) + 31
+        var day = math.adding(days: -1, to: dayKey)
+        var steps = 0
+        while day >= item.startDayKey && steps < lookback {
+            if rule.occurs(on: day, startDayKey: item.startDayKey, math: math) {
+                return day
+            }
+            day = math.adding(days: -1, to: day)
+            steps += 1
+        }
+        return nil
+    }
+
+    /// Whether any row (on any day, bumped copies included) exists for this occurrence.
+    private static func hasRow(itemID: UUID, scheduledDayKey: String, context: ModelContext) throws -> Bool {
+        let target: UUID? = itemID
+        let scheduled: String? = scheduledDayKey
+        var descriptor = FetchDescriptor<Occurrence>(predicate: #Predicate { $0.itemID == target && $0.scheduledDayKey == scheduled })
+        descriptor.fetchLimit = 1
+        return try !context.fetch(descriptor).isEmpty
     }
 
     private static func occurrences(ofItem itemID: UUID, from dayKey: String, context: ModelContext) throws -> [Occurrence] {

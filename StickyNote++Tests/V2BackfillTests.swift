@@ -249,6 +249,43 @@ final class V2BackfillTests: XCTestCase {
         XCTAssertEqual(today.first?.itemID, template.id)
     }
 
+    /// The app backfills and the user ticks a row; then the widget, which hadn't seen the flag yet,
+    /// backfills too. Existing rows are never overwritten, so the tick survives.
+    func testBackfillTwiceWithATickInBetweenKeepsTheTick() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("V2BackfillRace-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Shared.store")
+        let schema = SharedPersistence.appSchema()
+        func open() throws -> ModelContainer {
+            try ModelContainer(for: schema, migrationPlan: StickyNotesMigrationPlan.self,
+                               configurations: [ModelConfiguration(schema: schema, url: url)])
+        }
+
+        let app = try open()
+        let appContext = ModelContext(app)
+        let seed = try seedV1(into: appContext)
+        let (appDefaults, appName) = StoreTestSupport.makeDefaults()
+        let (widgetDefaults, widgetName) = StoreTestSupport.makeDefaults()
+        defer {
+            appDefaults.removePersistentDomain(forName: appName)
+            widgetDefaults.removePersistentDomain(forName: widgetName)
+        }
+
+        try V2Backfill.runIfNeeded(context: appContext, defaults: appDefaults, now: now, calendar: munich)
+        let third = try occurrence(seed.third.id, in: appContext)
+        XCTAssertTrue(try ListService.complete(third, at: now, context: appContext))
+
+        let widgetContext = ModelContext(try open())
+        try V2Backfill.runIfNeeded(context: widgetContext, defaults: widgetDefaults, now: now, calendar: munich)
+
+        let check = ModelContext(try open())
+        XCTAssertEqual(try ListService.occurrence(id: seed.third.id, context: check)?.state, .done)
+        XCTAssertEqual(try StoreTestSupport.all(Occurrence.self, in: check).count, 9)
+        XCTAssertEqual(try StoreTestSupport.all(Item.self, in: check).count, 2)
+    }
+
     // MARK: - On disk
 
     /// A store written by the V1 app opens through the migration plan as V2 and backfills.

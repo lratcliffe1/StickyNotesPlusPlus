@@ -37,4 +37,6 @@ struct FactRow: OccurrenceFacts {
     var completedAt: Date? = nil
     var state: OccurrenceState
     var bumpLimit: BumpLimit = .unlimited
+    var scheduledDayKey: String? = nil
+    var periodEndDayKey: String? = nil
 }

@@ -85,6 +85,119 @@ final class ListServiceTests: XCTestCase {
         XCTAssertTrue(try rows(on: "2026-10-14").isEmpty)
     }
 
+    func testItemOccurrenceIdIsDerivedFromItemAndScheduledDay() throws {
+        let water = insertItem("Water")
+        _ = try ensure("2026-10-14")
+        let row = try XCTUnwrap(rows(on: "2026-10-14").first)
+        XCTAssertEqual(row.id, OccurrenceID.forItem(water.id, scheduledDayKey: "2026-10-14"))
+        XCTAssertNotEqual(row.id, OccurrenceID.forItem(water.id, scheduledDayKey: "2026-10-15"))
+        XCTAssertEqual(OccurrenceID.forItem(water.id, scheduledDayKey: "2026-10-14"), OccurrenceID.forItem(water.id, scheduledDayKey: "2026-10-14"))
+    }
+
+    // MARK: - Two processes (two containers on one store file)
+
+    private func onDiskContainers() throws -> (ModelContainer, ModelContainer, URL) {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ListServiceTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("Shared.store")
+        let schema = SharedPersistence.appSchema()
+        func open() throws -> ModelContainer {
+            try ModelContainer(for: schema, migrationPlan: StickyNotesMigrationPlan.self,
+                               configurations: [ModelConfiguration(schema: schema, url: url)])
+        }
+        return (try open(), try open(), directory)
+    }
+
+    /// The widget materialising today after the app did (and after a tick) changes nothing.
+    func testSecondMaterialiseInAnotherProcessKeepsTheTick() throws {
+        let (app, widget, directory) = try onDiskContainers()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let appContext = ModelContext(app)
+        appContext.insert(Item(list: .morning, title: "Water", sortOrder: 0, repeatRule: .daily, startDayKey: "2026-10-01"))
+        try appContext.save()
+        _ = try ListService.ensureOccurrences(on: "2026-10-14", context: appContext, now: noon("2026-10-14"), calendar: munich)
+        let row = try XCTUnwrap(ListService.occurrences(on: "2026-10-14", list: .morning, context: appContext).first)
+        try ListService.complete(row, at: noon("2026-10-14"), context: appContext)
+
+        let widgetContext = ModelContext(widget)
+        XCTAssertFalse(try ListService.ensureOccurrences(on: "2026-10-14", context: widgetContext, now: noon("2026-10-14"), calendar: munich))
+
+        let rows = try ListService.occurrences(on: "2026-10-14", list: .morning, context: ModelContext(app))
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.state, .done)
+    }
+
+    /// Both processes create today's row before either has seen the other's: same id, so one row.
+    func testSimultaneousCreatesLeaveOneRow() throws {
+        let (app, widget, directory) = try onDiskContainers()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let setup = ModelContext(app)
+        setup.insert(Item(list: .morning, title: "Water", sortOrder: 0, repeatRule: .daily, startDayKey: "2026-10-01"))
+        try setup.save()
+
+        let appContext = ModelContext(app)
+        let widgetContext = ModelContext(widget)
+        for context in [appContext, widgetContext] {
+            let item = try XCTUnwrap(context.fetch(FetchDescriptor<Item>()).first)
+            context.insert(ListService.makeOccurrence(for: item, scheduledOn: "2026-10-14", on: "2026-10-14", now: noon("2026-10-14"), calendar: munich))
+        }
+        try appContext.save()
+        try? widgetContext.save()
+
+        XCTAssertEqual(try ListService.occurrences(on: "2026-10-14", list: .morning, context: ModelContext(app)).count, 1)
+    }
+
+    // MARK: - Less often than daily
+
+    /// A weekly Monday item; the app is first opened on Wednesday.
+    private func weeklyMondayOpenedWednesday() throws -> Occurrence {
+        insertItem("Gym", list: .day, rule: .weekly(on: [2]), start: "2026-10-12")
+        _ = try ListService.addOneOff(list: .day, dayKey: "2026-10-11", title: "Post", context: context)
+        try ListService.complete(try rows(on: "2026-10-11", list: .day)[0], at: noon("2026-10-11"), context: context)
+        XCTAssertTrue(try ensure("2026-10-14"))
+        return try XCTUnwrap(rows(on: "2026-10-14", list: .day).first)
+    }
+
+    private func dayStreak(through key: String) throws -> HomeModel.StreakState {
+        try ListService.streakState(for: .day, through: key, morningMode: .cutoff(time: DateComponents(hour: 9, minute: 0)), context: context, calendar: munich)
+    }
+
+    func testUnopenedWeeklyOccurrenceAppearsLaterInItsPeriod() throws {
+        let gym = try weeklyMondayOpenedWednesday()
+        XCTAssertEqual(gym.title, "Gym")
+        XCTAssertEqual(gym.scheduledDayKey, "2026-10-12")
+        XCTAssertEqual(gym.periodEndDayKey, "2026-10-18")
+        XCTAssertEqual(gym.id, OccurrenceID.forItem(try XCTUnwrap(gym.itemID), scheduledDayKey: "2026-10-12"))
+        XCTAssertTrue(ListService.canBump(gym, calendar: munich))
+        XCTAssertFalse(try ensure("2026-10-14"))
+        XCTAssertFalse(try ensure("2026-10-15"), "not created twice in the same period")
+        XCTAssertTrue(try rows(on: "2026-10-15", list: .day).isEmpty)
+    }
+
+    func testWeeklyOccurrenceDoneLaterInItsPeriodIsNoMiss() throws {
+        let gym = try weeklyMondayOpenedWednesday()
+        try ListService.complete(gym, at: noon("2026-10-14"), context: context)
+        XCTAssertEqual(try dayStreak(through: "2026-10-19"), HomeModel.StreakState(count: 2, isFrozen: false))
+        XCTAssertTrue(try ListService.unopenedMissDays(for: .day, before: "2026-10-19", context: context, calendar: munich).isEmpty)
+    }
+
+    func testWeeklyOccurrenceNotDoneBySundayIsAMissOnSundayOnly() throws {
+        _ = try weeklyMondayOpenedWednesday()
+        XCTAssertEqual(try dayStreak(through: "2026-10-18"), HomeModel.StreakState(count: 1, isFrozen: false))
+        XCTAssertEqual(try dayStreak(through: "2026-10-19"), HomeModel.StreakState(count: 1, isFrozen: true))
+    }
+
+    func testOpenMondayRowIsAMissOnSundayNotMonday() throws {
+        insertItem("Gym", list: .day, rule: .weekly(on: [2]), start: "2026-10-12")
+        _ = try ListService.addOneOff(list: .day, dayKey: "2026-10-11", title: "Post", context: context)
+        try ListService.complete(try rows(on: "2026-10-11", list: .day)[0], at: noon("2026-10-11"), context: context)
+        _ = try ensure("2026-10-12")
+        XCTAssertFalse(try ensure("2026-10-14"), "Monday's row exists, so nothing is carried to Wednesday")
+        XCTAssertEqual(try dayStreak(through: "2026-10-14"), HomeModel.StreakState(count: 1, isFrozen: false))
+        XCTAssertEqual(try dayStreak(through: "2026-10-19"), HomeModel.StreakState(count: 1, isFrozen: true))
+    }
+
     // MARK: - Bumping
 
     func testBumpLinksBothWaysAndKeepsTheChainsFirstAddedDay() throws {
@@ -111,6 +224,26 @@ final class ListServiceTests: XCTestCase {
         XCTAssertEqual(fourth.title, "Call the bank today", "no new title keeps the current one")
         XCTAssertNil(try ListService.bump(fourth, now: noon("2026-10-17"), calendar: munich, context: context), "up to 3 days")
         XCTAssertEqual(fourth.state, .open)
+    }
+
+    func testDeadlineIsIndependentOfTheBumpLimit() throws {
+        let task = try XCTUnwrap(ListService.addOneOff(list: .day, dayKey: "2026-10-14", title: "Tax return",
+                                                       bumpLimit: .upToDays(3), deadlineDayKey: "2026-10-20", context: context))
+        XCTAssertEqual(task.bumpLimit, .upToDays(3))
+        XCTAssertEqual(task.deadlineDayKey, "2026-10-20")
+
+        task.bumpLimit = .unlimited
+        XCTAssertEqual(task.deadlineDayKey, "2026-10-20", "changing the limit keeps the deadline")
+        task.bumpLimit = .upToDays(3)
+
+        let moved = try XCTUnwrap(ListService.bump(task, now: noon("2026-10-14"), calendar: munich, context: context))
+        XCTAssertEqual(moved.deadlineDayKey, "2026-10-20")
+        XCTAssertEqual(moved.bumpLimit, .upToDays(3))
+
+        moved.bumpLimit = .untilDeadline(dayKey: "2026-10-16")
+        XCTAssertEqual(moved.deadlineDayKey, "2026-10-16", "the deadline limit sets the deadline")
+        XCTAssertEqual(moved.bumpLimit, .untilDeadline(dayKey: "2026-10-16"))
+        XCTAssertTrue(ListService.canBump(moved, calendar: munich))
     }
 
     func testDailyRepeatCannotBeBumped() throws {
@@ -229,6 +362,20 @@ final class ListServiceTests: XCTestCase {
         _ = try ensure("2026-10-13")
         XCTAssertEqual(try rows(on: "2026-10-12").map(\.title), ["Teeth"], "not recreated")
         XCTAssertEqual(try rows(on: "2026-10-13").map(\.title), ["Teeth"])
+    }
+
+    func testDeleteItemUndoesABumpIntoToday() throws {
+        let gym = insertItem("Gym", list: .day, rule: .weekly(on: []), start: "2026-10-14")
+        _ = try ensure("2026-10-14")
+        let wednesday = try XCTUnwrap(rows(on: "2026-10-14", list: .day).first)
+        _ = try XCTUnwrap(ListService.bump(wednesday, now: noon("2026-10-14"), calendar: munich, context: context))
+
+        try ListService.deleteItem(gym, todayKey: "2026-10-15", context: context)
+
+        XCTAssertTrue(try rows(on: "2026-10-15", list: .day).isEmpty)
+        XCTAssertEqual(wednesday.state, .open, "as with deleteOneOff, the source day goes back to open")
+        XCTAssertNil(wednesday.bumpedToID)
+        XCTAssertNil(wednesday.completedAt)
     }
 
     func testDeleteKeepsTodaysOccurrenceIfDone() throws {

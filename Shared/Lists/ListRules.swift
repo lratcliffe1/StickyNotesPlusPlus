@@ -11,6 +11,10 @@ protocol OccurrenceFacts {
     var completedAt: Date? { get }
     var state: OccurrenceState { get }
     var bumpLimit: BumpLimit { get }
+    /// Repeating occurrences: the day they were scheduled for.
+    var scheduledDayKey: String? { get }
+    /// Repeating occurrences: the last day they can still be done or bumped to.
+    var periodEndDayKey: String? { get }
 }
 
 /// How one day counts towards one list's streak.
@@ -84,6 +88,10 @@ enum ListRules {
     /// Streak for one list's occurrences. `deadline` gives a day's cutoff (morning) or nil (midnight).
     /// `schedules` are the list's items (ended ones too): past days nobody opened are judged against
     /// what was due on them (`unopenedMisses`) instead of counting as neutral.
+    ///
+    /// An open repeating occurrence whose period runs past its own day (less often than daily) isn't
+    /// counted on that day: it can still be done later in the period. If it is still open, it is a miss
+    /// on its period end, once that day is before the anchor.
     static func streakState<T: OccurrenceFacts>(
         through anchorKey: String,
         occurrences: [T],
@@ -92,24 +100,54 @@ enum ListRules {
         deadline: (String) -> Date?
     ) -> HomeModel.StreakState {
         var byDay: [String: [T]] = [:]
+        var openedDays: Set<String> = []
+        var materialised: Set<String> = []
+        var periodEndMisses: Set<String> = []
         for occurrence in occurrences where occurrence.dayKey <= anchorKey {
+            openedDays.insert(occurrence.dayKey)
+            if let itemID = occurrence.itemID {
+                materialised.insert(materialisedKey(itemID, occurrence.scheduledDayKey ?? occurrence.dayKey))
+            }
+            if isDeferred(occurrence) {
+                if let periodEnd = occurrence.periodEndDayKey, periodEnd < anchorKey {
+                    periodEndMisses.insert(periodEnd)
+                }
+                continue
+            }
             byDay[occurrence.dayKey, default: []].append(occurrence)
         }
         var statuses: [String: DayStatus] = [:]
         for (key, rows) in byDay {
             statuses[key] = dayStatus(rows, deadline: deadline(key))
         }
-        let misses = unopenedMisses(schedules: schedules, openedDays: Set(byDay.keys), before: anchorKey, calendar: calendar)
-        for key in misses {
+        let unopened = unopenedMisses(
+            schedules: schedules, openedDays: openedDays, materialised: materialised,
+            before: anchorKey, calendar: calendar
+        )
+        for key in periodEndMisses.union(unopened) {
             statuses[key] = .missed
         }
         return streakState(through: anchorKey, statuses: statuses)
+    }
+
+    /// An open repeating occurrence that can still be done after its own day.
+    static func isDeferred<T: OccurrenceFacts>(_ occurrence: T) -> Bool {
+        guard occurrence.itemID != nil, occurrence.state == .open, let periodEnd = occurrence.periodEndDayKey else {
+            return false
+        }
+        return periodEnd > occurrence.dayKey
+    }
+
+    /// "itemID|scheduledDayKey": one occurrence of one item.
+    static func materialisedKey(_ itemID: UUID, _ scheduledDayKey: String) -> String {
+        "\(itemID.uuidString)|\(scheduledDayKey)"
     }
 
     // MARK: - Days nobody opened
 
     /// An item's schedule, as plain values.
     struct ItemSchedule {
+        let itemID: UUID
         let rule: RepeatRule
         let startDayKey: String
         /// The first day the item no longer exists on.
@@ -132,9 +170,12 @@ enum ListRules {
     /// itself is the miss; for a weekly item the miss lands on its period end (Sunday), whether or
     /// not that day was opened, and the unopened days inside the period aren't misses by themselves.
     /// A day that was opened is judged by its own rows (opening creates every item due that day).
+    /// An occurrence that got a row later in its period (`materialised`, "itemID|scheduledDayKey")
+    /// is judged by that row instead.
     static func unopenedMisses(
         schedules: [ItemSchedule],
         openedDays: Set<String>,
+        materialised: Set<String> = [],
         before anchorKey: String,
         calendar: Calendar = .current
     ) -> Set<String> {
@@ -146,6 +187,7 @@ enum ListRules {
             if !openedDays.contains(day) {
                 for schedule in schedules where schedule.isActive(on: day) {
                     guard schedule.rule.occurs(on: day, startDayKey: schedule.startDayKey, math: math) else { continue }
+                    guard !materialised.contains(materialisedKey(schedule.itemID, day)) else { continue }
                     let periodEnd = schedule.rule.periodEnd(for: day, startDayKey: schedule.startDayKey, calendar: calendar)
                     if periodEnd < anchorKey {
                         misses.insert(periodEnd)
