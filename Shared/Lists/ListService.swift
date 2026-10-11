@@ -220,23 +220,118 @@ enum ListService {
         )
     }
 
-    /// How each day through `endKey` looks for a list (`ListRules.dayLooks`), with misses counted
-    /// only on days before `todayKey`. The ring and calendar show these, so they match the streak.
+    // MARK: - The calendar and the 7-day ring (step 4)
+
+    /// Every list's occurrences from `startKey` through `endKey`, sorted by day.
+    static func occurrences(from startKey: String, through endKey: String, context: ModelContext) throws -> [Occurrence] {
+        let start = startKey
+        let end = endKey
+        let descriptor = FetchDescriptor<Occurrence>(
+            predicate: #Predicate { $0.dayKey >= start && $0.dayKey <= end },
+            sortBy: [SortDescriptor(\.dayKey)]
+        )
+        return try context.fetch(descriptor)
+    }
+
+    /// Every list's items (ended ones too), in their set order.
+    static func allItems(context: ModelContext) throws -> [Item] {
+        try context.fetch(FetchDescriptor<Item>(sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.createdAt)]))
+    }
+
+    /// The first day each list was in use: its earliest item start or occurrence, whichever is
+    /// first. A list never used is absent. Two one-row fetches per list.
+    static func firstUseDayKeys(context: ModelContext) throws -> [ListKind: String] {
+        var firstUse: [ListKind: String] = [:]
+        for list in ListKind.allCases {
+            let raw = list.rawValue
+            var itemDescriptor = FetchDescriptor<Item>(
+                predicate: #Predicate { $0.listRaw == raw },
+                sortBy: [SortDescriptor(\.startDayKey)]
+            )
+            itemDescriptor.fetchLimit = 1
+            var rowDescriptor = FetchDescriptor<Occurrence>(
+                predicate: #Predicate { $0.listRaw == raw },
+                sortBy: [SortDescriptor(\.dayKey)]
+            )
+            rowDescriptor.fetchLimit = 1
+            let candidates = [
+                try context.fetch(itemDescriptor).first?.startDayKey,
+                try context.fetch(rowDescriptor).first?.dayKey,
+            ].compactMap { $0 }
+            if let first = candidates.min() {
+                firstUse[list] = first
+            }
+        }
+        return firstUse
+    }
+
+    /// What the calendar and the ring draw for the days from `startKey` through `endKey` (today or
+    /// earlier): each list's day looks (`ListRules.dayLooks`, the streak's own rule) and the days with
+    /// a bump. Fetches only the rows those days need: from `CalendarRules.fetchStart` (the longest
+    /// repeat period before `startKey`; `startKey` itself with only daily items) through `endKey`,
+    /// plus the items' schedules.
     static func dayLooks(
-        for list: ListKind,
+        from startKey: String,
         through endKey: String,
         todayKey: String,
         history: DayRulesHistory,
         context: ModelContext,
+        items: [Item]? = nil,
         calendar: Calendar = .current
-    ) throws -> [String: ListRules.DayLook] {
-        ListRules.dayLooks(
-            occurrences: try occurrences(through: endKey, list: list, context: context),
-            schedules: try schedules(for: list, context: context),
-            missesBefore: todayKey,
-            calendar: calendar,
-            deadline: deadline(for: list, history: history, calendar: calendar)
+    ) throws -> (looks: [ListKind: [String: ListRules.DayLook]], bumpedDays: Set<String>) {
+        guard startKey <= endKey else { return ([:], []) }
+        let itemList = try items ?? allItems(context: context)
+        let fetchStart = CalendarRules.fetchStart(for: startKey, schedules: itemList.map(\.schedule), calendar: calendar)
+        let rows = try occurrences(from: fetchStart, through: endKey, context: context)
+        var looks: [ListKind: [String: ListRules.DayLook]] = [:]
+        for list in ListKind.allCases {
+            let listLooks = ListRules.dayLooks(
+                occurrences: rows.filter { $0.list == list },
+                schedules: itemList.filter { $0.list == list }.map(\.schedule),
+                missesBefore: todayKey,
+                calendar: calendar,
+                window: fetchStart...endKey,
+                deadline: deadline(for: list, history: history, calendar: calendar)
+            )
+            looks[list] = listLooks.filter { $0.key >= startKey }
+        }
+        let bumped = ListRules.bumpedDays(rows.filter { $0.dayKey >= startKey })
+        return (looks, bumped)
+    }
+
+    /// Days from `startKey` through `endKey` with something planned (`CalendarRules.plannedDays`):
+    /// any row on them, or a recurring item falling due.
+    static func plannedDayKeys(
+        from startKey: String,
+        through endKey: String,
+        context: ModelContext,
+        items: [Item]? = nil,
+        calendar: Calendar = .current
+    ) throws -> Set<String> {
+        guard startKey <= endKey else { return [] }
+        let itemList = try items ?? allItems(context: context)
+        let rows = try occurrences(from: startKey, through: endKey, context: context)
+        return CalendarRules.plannedDays(
+            rowDayKeys: Set(rows.map(\.dayKey)),
+            schedules: itemList.map(\.schedule),
+            from: startKey,
+            through: endKey,
+            calendar: calendar
         )
+    }
+
+    /// A list's recurring items that fall due on `dayKey` and have no row of their own there yet:
+    /// what Home shows as planned on a future day (rows are only ever created on the day itself).
+    static func dueItemsWithoutRows(on dayKey: String, list: ListKind, context: ModelContext, calendar: Calendar = .current) throws -> [Item] {
+        let math = DayMath(calendar: calendar)
+        let rows = try occurrences(on: dayKey, list: list, context: context)
+        let materialised = Set(rows.compactMap { row in
+            row.itemID.map { ListRules.materialisedKey($0, row.scheduledDayKey ?? row.dayKey) }
+        })
+        return try items(in: list, context: context).filter { item in
+            CalendarRules.isDue(item.schedule, on: dayKey, math: math)
+                && !materialised.contains(ListRules.materialisedKey(item.id, dayKey))
+        }
     }
 
     /// A list's streak deadline for a day: the morning's comes from that day's own rules (its set

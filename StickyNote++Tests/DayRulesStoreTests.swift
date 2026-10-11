@@ -293,8 +293,8 @@ final class DayRulesStoreTests: XCTestCase {
         let history = DayRulesHistory(stored: ["2026-10-11": doneOrSkipped])
 
         let looks = try ListService.dayLooks(
-            for: .morning, through: "2026-10-12", todayKey: "2026-10-13", history: history, context: context, calendar: munich
-        )
+            from: "2026-10-01", through: "2026-10-12", todayKey: "2026-10-13", history: history, context: context, calendar: munich
+        ).looks[.morning] ?? [:]
         XCTAssertEqual(looks["2026-10-10"]?.status, .missed, "pre-feature day: 10:30 is after 09:00")
         XCTAssertEqual(looks["2026-10-11"]?.status, .complete, "its own rules: before 12:00")
         XCTAssertEqual(looks["2026-10-12"]?.status, .complete, "inherits 11.10's 12:00")

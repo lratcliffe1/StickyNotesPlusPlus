@@ -125,11 +125,16 @@ enum ListRules {
     /// - An item ended (deleted) on or before a period end never costs a miss on it: deleting an item
     ///   never costs a streak day after the delete.
     /// Days with nothing counted and nothing missed are absent (neutral).
+    ///
+    /// With a `window`, only days nobody opened inside it are judged, and only looks inside it are
+    /// returned. Given every row inside the window, the looks from `CalendarRules.fetchStart` on are
+    /// the same as from the whole history (the calendar fetches one month at a time).
     static func dayLooks<T: OccurrenceFacts>(
         occurrences: [T],
         schedules: [ItemSchedule],
         missesBefore cutoffKey: String,
         calendar: Calendar = .current,
+        window: ClosedRange<String>? = nil,
         deadline: (String) -> Date?
     ) -> [String: DayLook] {
         var endByItem: [UUID: String] = [:]
@@ -159,12 +164,12 @@ enum ListRules {
         }
         let unopened = unopenedMissCounts(
             schedules: schedules, openedDays: openedDays, materialised: materialised,
-            before: cutoffKey, calendar: calendar
+            before: cutoffKey, calendar: calendar, window: window
         )
         extraMisses.merge(unopened, uniquingKeysWith: +)
 
         var looks: [String: DayLook] = [:]
-        for key in Set(counted.keys).union(extraMisses.keys) {
+        for key in Set(counted.keys).union(extraMisses.keys) where window?.contains(key) ?? true {
             let rows = counted[key] ?? []
             let missed = extraMisses[key] ?? 0
             let total = rows.count + missed
@@ -238,18 +243,20 @@ enum ListRules {
     /// period aren't misses by themselves. An occurrence that got a row later in its period
     /// (`materialised`, "itemID|scheduledDayKey") is judged by that row instead.
     /// Returns the number of missed occurrences per day.
+    /// With a `window`, only the unopened days inside it are walked (the caller has every row in it).
     static func unopenedMissCounts(
         schedules: [ItemSchedule],
         openedDays: Set<String>,
         materialised: Set<String> = [],
         before anchorKey: String,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        window: ClosedRange<String>? = nil
     ) -> [String: Int] {
         guard let firstStart = schedules.map(\.startDayKey).min(), firstStart < anchorKey else { return [:] }
         let math = DayMath(calendar: calendar)
         var misses: [String: Int] = [:]
-        var day = firstStart
-        while day < anchorKey {
+        var day = max(firstStart, window?.lowerBound ?? firstStart)
+        while day < anchorKey && day <= (window?.upperBound ?? day) {
             if !openedDays.contains(day) {
                 for schedule in schedules where schedule.isActive(on: day) {
                     guard schedule.rule.occurs(on: day, startDayKey: schedule.startDayKey, math: math) else { continue }
