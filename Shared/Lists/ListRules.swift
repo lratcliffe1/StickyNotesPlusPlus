@@ -285,6 +285,19 @@ enum ListRules {
         return occurrence.bumpLimit == .cantBump ? 1 : 2
     }
 
+    // MARK: - Bumps
+
+    /// Days that had something bumped from them (the ↻ mark on the ring and calendar).
+    static func bumpedDays<T: OccurrenceFacts>(_ occurrences: [T]) -> Set<String> {
+        Set(occurrences.filter { $0.state == .bumped }.map(\.dayKey))
+    }
+
+    /// Bump actions on days from `startKey` through `endKey`: each bumped row is one bump, on the day
+    /// it was bumped from.
+    static func bumpCount<T: OccurrenceFacts>(_ occurrences: [T], from startKey: String, through endKey: String) -> Int {
+        occurrences.filter { $0.state == .bumped && $0.dayKey >= startKey && $0.dayKey <= endKey }.count
+    }
+
     // MARK: - Duplicates
 
     /// Of several rows for the same item and day, the one to keep: the most progressed

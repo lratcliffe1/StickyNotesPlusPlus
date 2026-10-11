@@ -29,20 +29,33 @@ echo "== installing and capturing"
 xcrun simctl install "$UDID" "$APP"
 mkdir -p "$OUT"
 
-# name | scenario | screen | appearance. The status-bar clock matches each scenario's time.
+# name | scenario | screen | appearance | list (optional: -uiList). The status-bar clock matches
+# each scenario's time. Long-press menus and Menus can't be opened from launch arguments, so
+# 16-add-options shows the add menu's result and 17-add-deadline the sheet its "Deadline…" opens.
 SHOTS=(
-  "01-home-morning|morning|home|light"
-  "02-home-daily|daily|home|light"
-  "03-home-empty|empty|home|light"
-  "04-calendar|daily|calendar|light"
-  "05-settings|daily|settings|light"
-  "06-home-morning-dark|morning|home|dark"
-  "07-banner-missed-yesterday|missedYesterday|home|light"
-  "08-banner-missed-twice|missedTwice|home|light"
+  "01-home-morning|morning|home|light|"
+  "02-home-daily|daily|home|light|"
+  "03-home-empty|empty|home|light|"
+  "04-calendar|daily|calendar|light|"
+  "05-settings|daily|settings|light|"
+  "06-home-morning-dark|morning|home|dark|"
+  "07-banner-missed-yesterday|missedYesterday|home|light|"
+  "08-banner-missed-twice|missedTwice|home|light|"
+  "09-home-evening|daily|home|light|evening"
+  "10-edit-lists-morning|daily|editLists|light|morning"
+  "11-edit-lists-day|daily|editLists|light|day"
+  "12-edit-lists-evening|daily|editLists|light|evening"
+  "13-item-editor|daily|itemEditor|light|day"
+  "14-repeat-picker|daily|repeatPicker|light|day"
+  "15-bump-sheet-retype|daily|bump|light|"
+  "16-add-options|daily|addOptions|light|"
+  "17-add-deadline|daily|deadline|light|"
 )
 
 for shot in "${SHOTS[@]}"; do
-  IFS='|' read -r name scenario screen appearance <<<"$shot"
+  IFS='|' read -r name scenario screen appearance list <<<"$shot"
+  list_args=()
+  if [[ -n "$list" ]]; then list_args=(-uiList "$list"); fi
   # simctl refuses to replace an active override (it misreports this as "non-ISO date/time"),
   # so clear it first. A clock that still won't set only costs the status bar: warn and go on.
   clock="2:00"  # simctl only accepts 12-hour times here; "14:00" is rejected
@@ -54,7 +67,7 @@ for shot in "${SHOTS[@]}"; do
   fi
   xcrun simctl ui "$UDID" appearance "$appearance"
   xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
-  xcrun simctl launch "$UDID" "$BUNDLE_ID" -uiScenario "$scenario" -uiScreen "$screen" >/dev/null
+  xcrun simctl launch "$UDID" "$BUNDLE_ID" -uiScenario "$scenario" -uiScreen "$screen" ${list_args[@]+"${list_args[@]}"} >/dev/null
   sleep "$SETTLE_SECONDS"
   xcrun simctl io "$UDID" screenshot "$OUT/$name.png" >/dev/null
   "$GREYSCALE" "$OUT/$name.png" "$OUT/$name-grey.png"

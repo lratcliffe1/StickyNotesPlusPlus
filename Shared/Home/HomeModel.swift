@@ -7,9 +7,29 @@ enum HomeModel {
         case sinceWakeUp(wakeUpTime: DateComponents, durationMinutes: Int)
     }
 
-    enum ContextualList {
+    /// Which list the sticky note shows. The app picks morning or daily by time; the flip button
+    /// cycles through all three (DECISIONS.md, 2b).
+    enum ContextualList: CaseIterable {
         case morning
         case daily
+        case evening
+
+        /// The flip button's order: morning → day → evening → morning.
+        var next: ContextualList {
+            switch self {
+            case .morning: return .daily
+            case .daily: return .evening
+            case .evening: return .morning
+            }
+        }
+
+        var listKind: ListKind {
+            switch self {
+            case .morning: return .morning
+            case .daily: return .day
+            case .evening: return .evening
+            }
+        }
     }
 
     struct CompletionState: Equatable {
@@ -33,6 +53,8 @@ enum HomeModel {
         let date: Date
         let morning: CompletionState
         let daily: CompletionState
+        /// Something on any list was bumped from this day (the ↻ mark).
+        var hasBump: Bool = false
 
         var id: Date { date }
     }

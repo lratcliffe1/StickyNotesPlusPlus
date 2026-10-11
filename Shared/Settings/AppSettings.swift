@@ -17,6 +17,14 @@ enum AppSettings {
     static let defaultWakeUpMinutes = 7 * 60
     static let defaultMorningWindowDurationMinutes = 90
 
+    /// Retype to bump (DECISIONS.md, 2b): on by default, the bump sheet's title field starts empty.
+    static let retypeToBumpKey = "retype_to_bump"
+    static let defaultRetypeToBump = true
+
+    static func retypeToBump(in defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: retypeToBumpKey) as? Bool ?? defaultRetypeToBump
+    }
+
     static func minutesFromMidnight(from date: Date, calendar: Calendar = .current) -> Int {
         let components = calendar.dateComponents([.hour, .minute], from: date)
         let hour = components.hour ?? 0

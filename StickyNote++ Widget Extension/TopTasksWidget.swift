@@ -12,6 +12,7 @@ struct TopTasksEntry: TimelineEntry {
     let date: Date
     let list: WidgetContextualList
     let items: [WidgetTaskItem]
+    var retypeToBump: Bool = AppSettings.defaultRetypeToBump
 }
 
 struct TopTasksProvider: AppIntentTimelineProvider {
@@ -32,7 +33,8 @@ struct TopTasksProvider: AppIntentTimelineProvider {
         return TopTasksEntry(
             date: snapshot.date,
             list: snapshot.list,
-            items: snapshot.items
+            items: snapshot.items,
+            retypeToBump: snapshot.retypeToBump
         )
     }
 
@@ -41,7 +43,8 @@ struct TopTasksProvider: AppIntentTimelineProvider {
         let entry = TopTasksEntry(
             date: snapshot.date,
             list: snapshot.list,
-            items: snapshot.items
+            items: snapshot.items,
+            retypeToBump: snapshot.retypeToBump
         )
         return Timeline(entries: [entry], policy: .after(snapshot.nextRefreshDate))
     }
@@ -89,22 +92,19 @@ struct TopTasksWidgetEntryView: View {
                         .buttonStyle(.plain)
 
                         if item.canBump {
-                            Button(intent: BumpTopTaskIntent(taskID: item.id, list: item.list)) {
-                                Image(systemName: "arrowshape.right.circle.fill")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.orange)
-                                    .frame(width: 26, height: 26)
-                                    .background(
-                                        StickyNotePalette.chipSurface,
-                                        in: Circle()
-                                    )
-                                    .overlay {
-                                        Circle()
-                                            .stroke(StickyNotePalette.cardBorder, lineWidth: 1)
-                                    }
+                            if entry.retypeToBump {
+                                // Retype to bump: open the app's bump sheet, never a one-tap bump.
+                                Link(destination: BumpDeepLink.url(for: item.id)) {
+                                    bumpIcon
+                                }
+                                .accessibilityLabel("Bump task to tomorrow in the app")
+                            } else {
+                                Button(intent: BumpTopTaskIntent(taskID: item.id, list: item.list)) {
+                                    bumpIcon
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Bump task to tomorrow")
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Bump task to tomorrow")
                         }
                     }
                 }
@@ -138,6 +138,23 @@ struct TopTasksWidgetEntryView: View {
                 .accessibilityLabel("Add daily task")
             }
         }
+    }
+}
+
+extension TopTasksWidgetEntryView {
+    var bumpIcon: some View {
+        Image(systemName: "arrowshape.right.circle.fill")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.orange)
+            .frame(width: 26, height: 26)
+            .background(
+                StickyNotePalette.chipSurface,
+                in: Circle()
+            )
+            .overlay {
+                Circle()
+                    .stroke(StickyNotePalette.cardBorder, lineWidth: 1)
+            }
     }
 }
 

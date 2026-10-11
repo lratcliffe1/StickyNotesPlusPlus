@@ -8,6 +8,8 @@ struct HomeHeaderCard: View {
     let isDailyTaskStreakFrozen: Bool
     let sevenDayProgress: [HomeModel.DayProgress]
     let selectedDay: Date
+    /// "N bumps in 7 days" under the streaks (the ring's days); hidden at 0.
+    var bumpsInSevenDays: Int = 0
     let onTap: () -> Void
 
     private let calendar = Calendar.current
@@ -16,49 +18,58 @@ struct HomeHeaderCard: View {
         Button {
             onTap()
         } label: {
-            GeometryReader { proxy in
-                let metrics = headerMetrics(for: proxy.size.width)
+            VStack(alignment: .leading, spacing: 2) {
+                GeometryReader { proxy in
+                    let metrics = headerMetrics(for: proxy.size.width)
 
-                HStack(alignment: .center, spacing: metrics.horizontalSpacing) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        StreakValue(
-                            icon: "sun.max.fill",
-                            value: morningStreakCount,
-                            isFrozen: isMorningStreakFrozen,
-                            tint: .yellow
-                        )
-                        StreakValue(
-                            icon: "flame.fill",
-                            value: dailyTaskStreakCount,
-                            isFrozen: isDailyTaskStreakFrozen,
-                            tint: .orange
-                        )
-                    }
-                    .frame(width: metrics.streakWidth, alignment: .leading)
+                    HStack(alignment: .center, spacing: metrics.horizontalSpacing) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            StreakValue(
+                                icon: "sun.max.fill",
+                                value: morningStreakCount,
+                                isFrozen: isMorningStreakFrozen,
+                                tint: .yellow
+                            )
+                            StreakValue(
+                                icon: "flame.fill",
+                                value: dailyTaskStreakCount,
+                                isFrozen: isDailyTaskStreakFrozen,
+                                tint: .orange
+                            )
+                        }
+                        .frame(width: metrics.streakWidth, alignment: .leading)
 
-                    HStack(spacing: metrics.daySpacing) {
-                        if sevenDayProgress.isEmpty {
-                            ForEach(0..<7, id: \.self) { _ in
-                                Circle()
-                                    .fill(AppTheme.progressCircleBase)
-                                    .frame(width: metrics.daySize, height: metrics.daySize)
-                            }
-                        } else {
-                            ForEach(sevenDayProgress) { day in
-                                DayProgressCell(
-                                    day: day,
-                                    isSelected: calendar.isDate(day.date, inSameDayAs: selectedDay),
-                                    isToday: calendar.isDateInToday(day.date),
-                                    diameter: metrics.daySize
-                                )
+                        HStack(spacing: metrics.daySpacing) {
+                            if sevenDayProgress.isEmpty {
+                                ForEach(0..<7, id: \.self) { _ in
+                                    Circle()
+                                        .fill(AppTheme.progressCircleBase)
+                                        .frame(width: metrics.daySize, height: metrics.daySize)
+                                }
+                            } else {
+                                ForEach(sevenDayProgress) { day in
+                                    DayProgressCell(
+                                        day: day,
+                                        isSelected: calendar.isDate(day.date, inSameDayAs: selectedDay),
+                                        isToday: calendar.isDateInToday(day.date),
+                                        diameter: metrics.daySize
+                                    )
+                                }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                .frame(height: 60)
+
+                if bumpsInSevenDays > 0 {
+                    Label(bumpsText, systemImage: "arrow.clockwise")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 6)
+                }
             }
-            .frame(height: 60)
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -66,6 +77,11 @@ struct HomeHeaderCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open calendar")
+        .accessibilityValue(bumpsInSevenDays > 0 ? bumpsText : "")
+    }
+
+    private var bumpsText: String {
+        "\(bumpsInSevenDays) \(bumpsInSevenDays == 1 ? "bump" : "bumps") in 7 days"
     }
 
     private func headerMetrics(for width: CGFloat) -> HeaderMetrics {
@@ -141,6 +157,12 @@ private struct DayProgressCell: View {
                 completionTickDiameter: diameter
             )
             .frame(width: diameter, height: diameter)
+            .overlay(alignment: .topTrailing) {
+                if day.hasBump {
+                    BumpBadge(diameter: diameter)
+                        .offset(x: diameter * 0.22, y: -diameter * 0.22)
+                }
+            }
             .overlay {
                 if isSelected {
                     Circle()
@@ -170,7 +192,8 @@ private struct DayProgressCell: View {
         let dailyPercent = Int((day.daily.value * 100).rounded())
         let selectedPrefix = isSelected ? "Selected, " : ""
         let todayPrefix = isToday ? "Today, " : ""
-        return "\(selectedPrefix)\(todayPrefix)\(day.date.formatted(date: .abbreviated, time: .omitted)), morning \(morningPercent) percent, daily \(dailyPercent) percent, \(completionSummary)"
+        let bumped = day.hasBump ? ", bumped" : ""
+        return "\(selectedPrefix)\(todayPrefix)\(day.date.formatted(date: .abbreviated, time: .omitted)), morning \(morningPercent) percent, daily \(dailyPercent) percent, \(completionSummary)\(bumped)"
     }
 
     private var isMorningCompleted: Bool {

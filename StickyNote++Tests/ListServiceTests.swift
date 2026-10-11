@@ -316,7 +316,7 @@ final class ListServiceTests: XCTestCase {
         _ = try ensure("2026-10-14")
         let day = try rows(on: "2026-10-14")
         XCTAssertTrue(try ListService.complete(day[0], at: noon("2026-10-14"), context: context))
-        XCTAssertTrue(try ListService.skip(day[1], context: context))
+        XCTAssertTrue(try ListService.skip(day[1], todayKey: "2026-10-14", context: context))
         XCTAssertEqual(ListRules.completion(try rows(on: "2026-10-14")), HomeModel.CompletionState(value: 1, isNeutral: false))
     }
 

@@ -21,6 +21,10 @@ protocol HomeRepository {
         morningMode: HomeModel.MorningMode,
         context: ModelContext
     ) throws -> [String: ListRules.DayLook]
+    /// Days from `startKey` through `endKey` with a bump on any list (the ↻ mark).
+    func bumpedDayKeys(from startKey: String, through endKey: String, context: ModelContext) throws -> Set<String>
+    /// Bump actions on days from `startKey` through `endKey`, all lists.
+    func bumpCount(from startKey: String, through endKey: String, context: ModelContext) throws -> Int
 }
 
 struct SwiftDataHomeRepository: HomeRepository {
@@ -56,5 +60,13 @@ struct SwiftDataHomeRepository: HomeRepository {
         context: ModelContext
     ) throws -> [String: ListRules.DayLook] {
         try ListService.dayLooks(for: list, through: endKey, todayKey: todayKey, morningMode: morningMode, context: context, calendar: .current)
+    }
+
+    func bumpedDayKeys(from startKey: String, through endKey: String, context: ModelContext) throws -> Set<String> {
+        try ListService.bumpedDayKeys(from: startKey, through: endKey, context: context)
+    }
+
+    func bumpCount(from startKey: String, through endKey: String, context: ModelContext) throws -> Int {
+        try ListService.bumpCount(from: startKey, through: endKey, context: context)
     }
 }

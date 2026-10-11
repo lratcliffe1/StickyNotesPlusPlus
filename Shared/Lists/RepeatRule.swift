@@ -98,6 +98,35 @@ struct RepeatRule: Hashable {
         return max(blockEnd, dayKey)
     }
 
+    /// The end of the rule's period block for an occurrence on `dayKey`, ignoring the next
+    /// occurrence (`periodEnd` stops before that). Compared with `periodEnd`, it tells whether the
+    /// next due day cuts a bump window short.
+    func naturalPeriodEnd(for dayKey: String, startDayKey: String, calendar: Calendar = .current) -> String {
+        max(blockEnd(for: dayKey, startDayKey: startDayKey, math: DayMath(calendar: calendar)), dayKey)
+    }
+
+    /// The period's name, for "Until the end of its week": "day", "week", "2 weeks", "month", "year"…
+    var periodName: String {
+        switch kind {
+        case .daily:
+            return "day"
+        case .everyNDays:
+            return interval == 1 ? "day" : "\(interval) days"
+        case .weekdays, .weekends, .weekly:
+            return "week"
+        case .everyTwoWeeks:
+            return "2 weeks"
+        case .everyNWeeks:
+            return interval == 1 ? "week" : "\(interval) weeks"
+        case .monthly:
+            return "month"
+        case .everyNMonths:
+            return interval == 1 ? "month" : "\(interval) months"
+        case .yearly:
+            return "year"
+        }
+    }
+
     func occurs(on dayKey: String, startDayKey: String, math: DayMath) -> Bool {
         guard dayKey >= startDayKey, let day = DayMath.parse(dayKey), let start = DayMath.parse(startDayKey) else {
             return false
