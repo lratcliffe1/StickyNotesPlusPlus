@@ -52,25 +52,55 @@ extension HomeViewModel {
         }
     }
 
-    /// How each day through `endKey` looks for a list: the same rules as the streak.
-    func dayLooks(for list: ListKind, through endKey: String, context: ModelContext) -> [String: ListRules.DayLook] {
+    /// How each day from `startKey` through `endKey` (today or earlier) looks, per list, and the
+    /// days with a bump: the same rules as the streak, fetching only those days' rows.
+    func dayLooks(
+        from startKey: String,
+        through endKey: String,
+        context: ModelContext
+    ) -> (looks: [ListKind: [String: ListRules.DayLook]], bumpedDays: Set<String>) {
+        guard startKey <= endKey else { return ([:], []) }
         do {
             return try repository.dayLooks(
-                for: list, through: endKey, todayKey: HomeModel.dayKey(for: now),
+                from: startKey, through: endKey, todayKey: HomeModel.dayKey(for: now),
                 history: dayRulesHistory, context: context
             )
         } catch {
-            AppLogger.persistence.error("Day looks for \(list.rawValue, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            AppLogger.persistence.error("Day looks failed: \(error.localizedDescription, privacy: .public)")
+            return ([:], [])
+        }
+    }
+
+    /// The first day each list was in use.
+    func firstUseDayKeys(context: ModelContext) -> [ListKind: String] {
+        do {
+            return try repository.firstUseDayKeys(context: context)
+        } catch {
+            AppLogger.persistence.error("First use failed: \(error.localizedDescription, privacy: .public)")
             return [:]
         }
     }
 
-    /// Days from `startKey` through `endKey` with a bump on any list.
-    func bumpedDayKeys(from startKey: String, through endKey: String, context: ModelContext) -> Set<String> {
+    /// Days from `startKey` through `endKey` with something planned.
+    func plannedDayKeys(from startKey: String, through endKey: String, context: ModelContext) -> Set<String> {
+        guard startKey <= endKey else { return [] }
         do {
-            return try repository.bumpedDayKeys(from: startKey, through: endKey, context: context)
+            return try repository.plannedDayKeys(from: startKey, through: endKey, context: context)
         } catch {
-            AppLogger.persistence.error("Bumped days failed: \(error.localizedDescription, privacy: .public)")
+            AppLogger.persistence.error("Planned days failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    /// The recurring items planned on a future day (due there, no row yet), every list.
+    func fetchPlannedItems(on dayKey: String, context: ModelContext) -> [PlannedItem] {
+        do {
+            return try ListKind.allCases.flatMap { list in
+                try repository.dueItemsWithoutRows(on: dayKey, list: list, context: context)
+                    .map { PlannedItem(id: $0.id, title: $0.title, list: list) }
+            }
+        } catch {
+            AppLogger.persistence.error("Planned items failed: \(error.localizedDescription, privacy: .public)")
             return []
         }
     }

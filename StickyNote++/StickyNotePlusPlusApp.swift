@@ -37,7 +37,8 @@ struct StickyNotePlusPlusApp: App {
                     viewModel: harness.viewModel,
                     initialDestination: harness.initialDestination,
                     editListsLaunch: harness.editListsLaunch,
-                    initialSheet: harness.initialSheet
+                    initialSheet: harness.initialSheet,
+                    calendarMonthOffset: harness.calendarMonthOffset
                 )
                 .preferredColorScheme(harness.colorScheme)
             } else {

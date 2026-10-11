@@ -30,37 +30,38 @@ extension HomeViewModel {
         refreshNeverMissTwiceState(anchorDay: anchorDay, anchorStreaks: streaks, context: context)
     }
 
+    /// The ring's seven days, ending on the selected day, drawn like calendar days: past days and
+    /// today with one segment per list in use (the streak's own day looks, fetched for these days
+    /// only), later days plain with a dot when something is planned.
     private func refreshSevenDayProgress(
         anchoredOn endDay: Date,
         context: ModelContext
     ) {
         let calendar = Calendar.current
-        guard let startRaw = calendar.date(byAdding: .day, value: -(progressWindowDays - 1), to: endDay) else {
-            sevenDayProgress = []
-            return
-        }
-
-        let startDay = HomeModel.normalizedDay(startRaw, calendar: calendar)
+        let math = DayMath(calendar: calendar)
         let endKey = HomeModel.dayKey(for: endDay, calendar: calendar)
-        // The same day looks the streak uses (ListRules.dayLooks); a day absent from them is neutral.
-        let morningLooks = dayLooks(for: .morning, through: endKey, context: context)
-        let dailyLooks = dayLooks(for: .day, through: endKey, context: context)
-        let startKey = HomeModel.dayKey(for: startDay, calendar: calendar)
-        let bumpedDays = bumpedDayKeys(from: startKey, through: endKey, context: context)
+        let startKey = math.adding(days: -(progressWindowDays - 1), to: endKey)
+        let todayKey = HomeModel.dayKey(for: now, calendar: calendar)
+
+        let firstUse = firstUseDayKeys(context: context)
+        let past = dayLooks(from: startKey, through: min(endKey, todayKey), context: context)
+        let planned = plannedDayKeys(from: max(startKey, math.adding(days: 1, to: todayKey)), through: endKey, context: context)
 
         sevenDayProgress = (0..<progressWindowDays).compactMap { offset in
-            guard let dayRaw = calendar.date(byAdding: .day, value: offset, to: startDay) else { return nil }
-            let day = HomeModel.normalizedDay(dayRaw, calendar: calendar)
-            let key = HomeModel.dayKey(for: day, calendar: calendar)
+            let key = math.adding(days: offset, to: startKey)
+            guard let date = HomeModel.date(fromDayKey: key, calendar: calendar) else { return nil }
+            let isFuture = key > todayKey
             return HomeModel.DayProgress(
-                date: day,
-                morning: morningLooks[key]?.completion ?? .neutral,
-                daily: dailyLooks[key]?.completion ?? .neutral,
-                hasBump: bumpedDays.contains(key)
+                date: HomeModel.normalizedDay(date, calendar: calendar),
+                dayKey: key,
+                segments: isFuture ? [] : CalendarRules.segments(on: key, firstUse: firstUse, looks: past.looks),
+                hasBump: !isFuture && past.bumpedDays.contains(key),
+                isFuture: isFuture,
+                isPlanned: planned.contains(key)
             )
         }
-        // The same seven days the ring draws, so the count matches the ↻ marks on show.
-        bumpsInSevenDays = bumpCount(from: startKey, through: endKey, context: context)
+        // The ring's days up to today (later days show no ↻), so the count matches the marks on show.
+        bumpsInSevenDays = bumpCount(from: startKey, through: min(endKey, todayKey), context: context)
     }
 
     private struct ListStreaks {

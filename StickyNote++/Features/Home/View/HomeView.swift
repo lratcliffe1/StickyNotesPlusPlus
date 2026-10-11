@@ -26,6 +26,8 @@ struct HomeView: View {
     /// Screenshot harness only.
     private var editListsLaunch: EditListsLaunch?
     private var initialSheet: HomeSheet?
+    /// The calendar's first month, as months after the current one (`-uiCalendarMonth`).
+    private var calendarMonthOffset = 0
 #endif
     private let calendarTransitionSourceID = "home-calendar-header"
 
@@ -49,11 +51,13 @@ struct HomeView: View {
         viewModel: HomeViewModel,
         initialDestination: HomeInitialDestination,
         editListsLaunch: EditListsLaunch?,
-        initialSheet: HomeSheet?
+        initialSheet: HomeSheet?,
+        calendarMonthOffset: Int = 0
     ) {
         self.init(viewModel: viewModel, initialDestination: initialDestination)
         self.editListsLaunch = editListsLaunch
         self.initialSheet = initialSheet
+        self.calendarMonthOffset = calendarMonthOffset
     }
 #endif
 
@@ -260,6 +264,7 @@ struct HomeView: View {
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
                 bumpsInSevenDays: vm.bumpsInSevenDays,
+                today: vm.now,
                 onTap: openCalendar
             )
             .frame(maxWidth: .infinity)
@@ -276,6 +281,7 @@ struct HomeView: View {
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
                 bumpsInSevenDays: vm.bumpsInSevenDays,
+                today: vm.now,
                 onTap: openCalendar
             )
             .frame(maxWidth: .infinity)
@@ -295,12 +301,23 @@ struct HomeView: View {
     private var calendarView: some View {
         CalendarView(
             selectedDay: vm.selectedDay,
+            now: vm.now,
+            defaults: vm.defaults,
+            context: modelContext,
+            initialMonthOffset: initialCalendarMonthOffset,
             onSelectDay: { day in
                 setSelectedDay(day, preferredList: .daily)
                 isShowingCalendar = false
-            },
-            defaults: vm.defaults
+            }
         )
+    }
+
+    private var initialCalendarMonthOffset: Int {
+#if DEBUG
+        calendarMonthOffset
+#else
+        0
+#endif
     }
 
     private var dayAnimation: Animation {

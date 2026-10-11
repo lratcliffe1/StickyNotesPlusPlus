@@ -14,6 +14,8 @@ struct HomeHeaderCard: View {
     let selectedDay: Date
     /// "N bumps in 7 days" under the streaks (the ring's days); hidden at 0.
     var bumpsInSevenDays: Int = 0
+    /// Today (Home's clock, which the screenshot harness fixes).
+    var today: Date = Date()
     let onTap: () -> Void
 
     private let calendar = Calendar.current
@@ -66,7 +68,8 @@ struct HomeHeaderCard: View {
                                     DayProgressCell(
                                         day: day,
                                         isSelected: calendar.isDate(day.date, inSameDayAs: selectedDay),
-                                        isToday: calendar.isDateInToday(day.date),
+                                        isToday: calendar.isDate(day.date, inSameDayAs: today),
+                                        todayKey: HomeModel.dayKey(for: today, calendar: calendar),
                                         diameter: metrics.daySize
                                     )
                                 }
@@ -181,44 +184,66 @@ private struct StreakValue: View {
     }
 }
 
+/// One ring day: the same segmented circle as the calendar (lists in use, evening included), or,
+/// after today, a plain day with a dot when something is planned.
 private struct DayProgressCell: View {
     let day: HomeModel.DayProgress
     let isSelected: Bool
     let isToday: Bool
+    let todayKey: String
     let diameter: CGFloat
 
     var body: some View {
         VStack(spacing: max(2, diameter * 0.14)) {
-            DiagonalSplitCircle(
-                morning: day.morning,
-                daily: day.daily,
-                completionTickDiameter: diameter
-            )
-            .frame(width: diameter, height: diameter)
-            .overlay(alignment: .topTrailing) {
-                if day.hasBump {
-                    BumpBadge(diameter: diameter)
-                        .offset(x: diameter * 0.22, y: -diameter * 0.22)
+            circle
+                .frame(width: diameter, height: diameter)
+                .overlay(alignment: .topTrailing) {
+                    if day.hasBump {
+                        BumpBadge(diameter: diameter)
+                            .offset(x: diameter * 0.22, y: -diameter * 0.22)
+                    }
                 }
-            }
-            .overlay {
-                if isSelected {
-                    Circle()
-                        .stroke(.primary, lineWidth: 2)
-                } else if isToday {
-                    Circle()
-                        .stroke(.secondary, lineWidth: 1)
+                .background {
+                    if isSelected {
+                        Circle()
+                            .fill(AppTheme.selectedDayTint)
+                            .padding(-2)
+                    }
                 }
-            }
 
             Text(label)
                 .font(.system(size: max(7, diameter * 0.33)))
-                .foregroundStyle(isSelected ? .primary : .secondary)
-                .fontWeight(isSelected ? .bold : .regular)
+                .foregroundStyle(isSelected || isToday ? .primary : .secondary)
+                .fontWeight(isSelected || isToday ? .bold : .regular)
+                .underline(isToday)
         }
         .frame(width: max(diameter + 2, 18))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    @ViewBuilder
+    private var circle: some View {
+        if day.isFuture {
+            Circle()
+                .fill(Color.secondary)
+                .frame(width: max(3, diameter * 0.2), height: max(3, diameter * 0.2))
+                .opacity(day.isPlanned ? 1 : 0)
+        } else {
+            SegmentedDayRing(segments: day.segments, lineWidth: max(3, diameter * 0.27))
+                .overlay {
+                    if isAllDone {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: max(5, diameter * 0.3), weight: .black))
+                            .foregroundStyle(.primary)
+                    }
+                }
+        }
+    }
+
+    /// Every list in use that day is done (the streak's verdict, so a late morning isn't).
+    private var isAllDone: Bool {
+        !day.segments.isEmpty && day.segments.allSatisfy { $0.look?.status == .complete }
     }
 
     private var label: String {
@@ -226,32 +251,14 @@ private struct DayProgressCell: View {
     }
 
     private var accessibilityLabel: String {
-        let morningPercent = Int((day.morning.value * 100).rounded())
-        let dailyPercent = Int((day.daily.value * 100).rounded())
-        let selectedPrefix = isSelected ? "Selected, " : ""
-        let todayPrefix = isToday ? "Today, " : ""
-        let bumped = day.hasBump ? ", bumped" : ""
-        return "\(selectedPrefix)\(todayPrefix)\(day.date.formatted(date: .abbreviated, time: .omitted)), morning \(morningPercent) percent, daily \(dailyPercent) percent, \(completionSummary)\(bumped)"
-    }
-
-    private var isMorningCompleted: Bool {
-        day.morning.isComplete
-    }
-
-    private var isDailyCompleted: Bool {
-        day.daily.isComplete
-    }
-
-    private var completionSummary: String {
-        switch (isMorningCompleted, isDailyCompleted) {
-        case (true, true):
-            return "morning and daily complete"
-        case (true, false):
-            return "morning complete only"
-        case (false, true):
-            return "daily complete only"
-        case (false, false):
-            return "not complete"
-        }
+        let label = CalendarRules.accessibilityLabel(
+            dayKey: day.dayKey,
+            todayKey: todayKey,
+            segments: day.segments,
+            hasBump: day.hasBump,
+            isPlanned: day.isPlanned,
+            calendar: .current
+        )
+        return isSelected ? "Selected, \(label)" : label
     }
 }

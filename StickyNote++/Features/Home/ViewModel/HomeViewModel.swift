@@ -37,6 +37,9 @@ final class HomeViewModel: ObservableObject {
     @Published var sevenDayProgress: [HomeModel.DayProgress] = []
     /// Bump actions on the ring's seven days, all lists ("N bumps in 7 days"; hidden at 0).
     @Published var bumpsInSevenDays: Int = 0
+    /// On a future day: the recurring items that fall due then, every list. They get rows only on
+    /// the day itself, so Home lists them as planned, read-only (provisional, step 4).
+    @Published var plannedItems: [PlannedItem] = []
     /// Items behind today's rows that have ended (deleted or replaced by a repeat change): their
     /// rows get no Edit… or Delete.
     @Published var endedItemIDs: Set<UUID> = []
@@ -106,6 +109,7 @@ final class HomeViewModel: ObservableObject {
         dailyTasks = fetchOccurrences(on: dayKey, list: .day, context: context)
         eveningEntries = fetchOccurrences(on: dayKey, list: .evening, context: context)
         endedItemIDs = (try? ListService.endedItemIDs(among: morningEntries + dailyTasks + eveningEntries, context: context)) ?? []
+        plannedItems = isFutureDay ? fetchPlannedItems(on: dayKey, context: context) : []
 
         isEveningInUse = (try? repository.isInUse(.evening, context: context)) ?? false
         recalculateDerivedState(context: context)
@@ -167,6 +171,16 @@ final class HomeViewModel: ObservableObject {
 
     var canCompleteSelectedDay: Bool {
         HomeModel.isToday(selectedDay, now: now)
+    }
+
+    /// A day after today: its tasks can be added, edited and deleted, not completed.
+    var isFutureDay: Bool {
+        HomeModel.normalizedDay(selectedDay) > HomeModel.normalizedDay(now)
+    }
+
+    /// The planned recurring items of the list on screen (future days only).
+    var activePlannedItems: [PlannedItem] {
+        plannedItems.filter { $0.list == contextualList.listKind }
     }
 
     var canAddNewTask: Bool {
@@ -383,4 +397,11 @@ final class HomeViewModel: ObservableObject {
         self.isNeverMissTwiceDailyRisk = isNeverMissTwiceDailyRisk
     }
 #endif
+}
+
+/// A recurring item due on a future day, shown on Home before it has a row (step 4).
+struct PlannedItem: Identifiable, Equatable {
+    let id: UUID
+    let title: String
+    let list: ListKind
 }
