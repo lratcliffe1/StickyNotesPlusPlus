@@ -75,7 +75,8 @@ final class VaultSync: ObservableObject {
     let calendar: Calendar
     let now: () -> Date
     let role: Role
-    let lock: VaultFileLock
+    /// nil without an App Group container: the widget then never imports.
+    let lock: VaultFileLock?
     private var isWritingHabits = false
 #if DEBUG
     /// Screenshot harness only: Settings opens the Vault link screen once, on appear.
@@ -97,7 +98,7 @@ final class VaultSync: ObservableObject {
         calendar: Calendar = .current,
         timeout: TimeInterval = 20,
         role: Role = .app,
-        lock: VaultFileLock = .shared(),
+        lock: VaultFileLock? = .shared(),
         now: @escaping () -> Date = { Date() }
     ) {
         self.tokenStore = tokenStore
@@ -164,6 +165,8 @@ final class VaultSync: ObservableObject {
         case newerVersion
         case badFile
         case storeFailed
+        /// The lock file couldn't be opened: nothing imported (shown in the status).
+        case lockFailed
         case reconciled(ListService.VaultReconcileResult)
     }
 
@@ -213,11 +216,25 @@ final class VaultSync: ObservableObject {
         case let .tasks(tasks):
             // One reconcile at a time across the app and the widget: the app waits up to 1 s, the
             // widget not at all; either skips if the other is still at it.
-            guard let held = await lock.lock(waitingUpTo: role == .app ? 1 : 0) else {
-                AppLogger.vault.info("Reconcile skipped: another process holds the lock")
+            var held: VaultFileLock.Held?
+            if let lock {
+                switch await lock.lock(waitingUpTo: role == .app ? 1 : 0) {
+                case let .held(lockHeld):
+                    held = lockHeld
+                case .busy:
+                    AppLogger.vault.info("Reconcile skipped: another process holds the lock")
+                    return .busy
+                case .unavailable:
+                    if role == .app { setStatus(VaultStatus(kind: .lockFailed, date: now())) }
+                    return .lockFailed
+                }
+            } else if role == .widget {
+                AppLogger.vault.info("Widget import skipped: no App Group container to lock in")
                 return .busy
+            } else {
+                AppLogger.vault.info("No App Group container: the app imports without a lock (the widget doesn't import)")
             }
-            defer { held.release() }
+            defer { held?.release() }
             do {
                 let result = try ListService.reconcileVaultTasks(tasks, now: now(), calendar: calendar, context: context, defaults: defaults)
                 // Only after the store saved: a failed save fetches the whole file again next time.
@@ -227,8 +244,8 @@ final class VaultSync: ObservableObject {
                 if let newETag {
                     defaults.set(newETag, forKey: Self.etagKey)
                 }
-                setStatus(result.manifestUnreadable
-                          ? VaultStatus(kind: .manifestUnreadable, date: now())
+                setStatus(result.manifestRebuilt
+                          ? VaultStatus(kind: .manifestRebuilt, date: now())
                           : VaultStatus(kind: .updated, date: now()))
                 AppLogger.vault.info("Tasks reconciled: +\(result.added.count, privacy: .public) ~\(result.updated.count, privacy: .public) -\(result.removed.count, privacy: .public)")
                 if result.changedStore {

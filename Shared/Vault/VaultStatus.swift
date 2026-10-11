@@ -21,8 +21,10 @@ struct VaultStatus: Codable, Equatable {
         case badFile
         /// Rate limited, a GitHub error, or the store couldn't save.
         case problem
-        /// The app's record of imported tasks couldn't be read: it only adds, never changes or removes.
-        case manifestUnreadable
+        /// The app's record of imported tasks couldn't be read and was rebuilt from the store.
+        case manifestRebuilt
+        /// The lock file for importing couldn't be opened: nothing was imported.
+        case lockFailed
     }
 
     var kind: Kind
@@ -54,7 +56,7 @@ struct VaultStatus: Codable, Equatable {
     /// Whether the line is a problem to look at (an error tint and a warning shape, never colour alone).
     var isProblem: Bool {
         switch kind {
-        case .tokenNotAccepted, .tokenExpired, .newerVersion, .badFile, .problem, .manifestUnreadable: return true
+        case .tokenNotAccepted, .tokenExpired, .newerVersion, .badFile, .problem, .manifestRebuilt, .lockFailed: return true
         case .notSetUp, .connected, .updated, .noTasksFile, .offline: return false
         }
     }
@@ -72,7 +74,8 @@ struct VaultStatus: Codable, Equatable {
         case .newerVersion: return "arrow.up.circle"
         case .badFile: return "exclamationmark.triangle.fill"
         case .problem: return "exclamationmark.triangle"
-        case .manifestUnreadable: return "exclamationmark.triangle"
+        case .manifestRebuilt: return "arrow.triangle.2.circlepath"
+        case .lockFailed: return "lock.trianglebadge.exclamationmark"
         }
     }
 
@@ -90,7 +93,8 @@ struct VaultStatus: Codable, Equatable {
         case .offline: return "Offline"
         case .newerVersion: return "tasks.json is newer than this app"
         case .badFile: return "tasks.json couldn’t be read"
-        case .manifestUnreadable: return "Imported tasks: adding only"
+        case .manifestRebuilt: return "Imported tasks: rebuilt; a task deleted in the app may come back once"
+        case .lockFailed: return "Imported tasks: couldn’t lock"
         case .problem:
             if let code { return "GitHub didn’t answer (\(code))" }
             return "GitHub didn’t answer"

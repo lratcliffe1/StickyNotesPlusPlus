@@ -143,7 +143,8 @@ struct VaultLinkView: View {
             }
             if vault.hasToken {
                 Button {
-                    Task { await vault.refreshTasks(context: modelContext) }
+                    // A fresh context, so rows the widget changed are read from the store.
+                    Task { await vault.refreshTasks(context: ModelContext(modelContext.container)) }
                 } label: {
                     Label("Check now", systemImage: "arrow.clockwise")
                 }
@@ -230,8 +231,10 @@ struct VaultLinkView: View {
             return "Update the app to read it. Your lists are unchanged."
         case .badFile:
             return "Nothing was changed. The next routine run should fix the file."
-        case .manifestUnreadable:
-            return "The app’s record of imported tasks couldn’t be read, so new tasks are still added but none are changed or removed. Nothing was lost."
+        case .manifestRebuilt:
+            return "The app’s record of imported tasks couldn’t be read, so it was rebuilt from your lists. Ticks and bumps are kept; a task you deleted here may come back once."
+        case .lockFailed:
+            return "The app couldn’t take its import lock, so nothing was imported this time. It tries again when you next open it."
         default:
             if vault.tokenLocation == .appOnly {
                 return "The widget shows what the app last imported; it doesn’t fetch on its own."
@@ -255,7 +258,7 @@ struct VaultLinkView: View {
             draft = ""
             saveError = nil
             Task {
-                await vault.refreshTasks(context: modelContext)
+                await vault.refreshTasks(context: ModelContext(modelContext.container))
                 TaskWidgetReloader.reloadTopTasksWidget()
             }
         } catch {

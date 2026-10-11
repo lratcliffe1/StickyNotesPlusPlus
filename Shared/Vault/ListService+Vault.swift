@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import os
 
 /// The vault link's writes and reads, through the one write path (`docs/VAULT-API.md`).
 /// Imported tasks are ordinary one-offs; which rows came from the vault is kept in the manifest
@@ -13,12 +14,13 @@ extension ListService {
         var updated: [String] = []
         /// An open, never-bumped row on today or later was deleted (gone from the file, or moved).
         var removed: [String] = []
-        /// Done, skipped or bumped for this scheduling: ticks and bumps always win.
+        /// Done, skipped or bumped (or settled earlier): ticks and bumps always win.
         var untouched: [String] = []
         /// Imported, then deleted in the app: left deleted.
         var deletedInApp: [String] = []
-        /// The manifest couldn't be read: only rows whose ids didn't exist were added.
-        var manifestUnreadable = false
+        /// The manifest couldn't be read and was rebuilt from the store (deletions in the app are
+        /// forgotten, so such a task may come back once).
+        var manifestRebuilt = false
 
         var changedStore: Bool { !(added.isEmpty && updated.isEmpty && removed.isEmpty) }
     }
@@ -26,21 +28,27 @@ extension ListService {
     /// Brings imported one-offs in line with `tasks.json` (`docs/VAULT-API.md`). One row per task
     /// per day (`VaultTaskID`); rows dated before today are history and never change.
     ///
-    /// For each task, with T = its day, or today if that day is past:
+    /// For each task, with F = the file's day, today D, and T = F, or D if F is past:
     /// - T's row exists: if still open and never bumped, it takes the file's title, list, deadline
     ///   and bump limit when the file's task changed since the last import (so an edit made in the
     ///   app lasts until Now.md changes it). Its day never changes.
-    /// - No row at T: one is added, unless the task is settled for this scheduling: a row on or after
-    ///   the file's day is done, skipped or bumped (a bumped chain owns its own future), or was
-    ///   deleted in the app. An open row left on a past day stays there, as that day's miss.
-    /// - Any other open, never-bumped row of the task on today or later is removed (the task moved).
+    /// - T's row was imported and deleted in the app: it stays deleted.
+    /// - No row at T: one is added, unless the task is settled. A task settles on the day of its
+    ///   latest done, skipped or bumped row, or of a row deleted in the app (`settledOn`). The
+    ///   routines carry a still-listed action forward to today, so a settled task stays settled
+    ///   until the file schedules it again: an explicit future day, or coming back after being
+    ///   gone from the file (`scheduledFor`). A bumped chain owns its own future. An OPEN row left
+    ///   on a past day doesn't settle the task: it stays as that day's miss, and today gets a row.
+    /// - When T has a row, any other open, never-bumped row of the task on today or later is removed
+    ///   (the task moved).
     /// A task gone from the file loses its open, never-bumped rows on today or later; everything
-    /// else stays. An existing row is never inserted again, so a tick can't be reset.
+    /// else stays, and the task is forgotten 62 days after it left. An existing row is never
+    /// inserted again (fetched by id first), so a tick can't be reset.
     ///
-    /// If the manifest can't be read, it fails safe: only rows whose ids don't exist are added;
-    /// nothing is updated or removed, and the stored manifest is left as it is.
+    /// An unreadable manifest is rebuilt from the store first (`rebuildVaultManifest`).
     /// Saves once, then writes the manifest (never before the save). Callers that may race another
-    /// process hold `VaultFileLock` around it.
+    /// process hold `VaultFileLock` around it, and pass a fresh context so rows another process
+    /// changed are read from the store.
     @discardableResult
     static func reconcileVaultTasks(
         _ tasks: [VaultTask],
@@ -52,34 +60,47 @@ extension ListService {
         let todayKey = dayKey(for: now, calendar: calendar)
         var result = VaultReconcileResult()
 
-        guard var manifest = VaultManifest.load(from: defaults) else {
-            result.manifestUnreadable = true
-            for task in tasks {
-                let target = max(task.dayKey, todayKey)
-                let rowID = VaultTaskID.occurrenceID(for: task.id, dayKey: target)
-                guard try occurrence(id: rowID, context: context) == nil else { continue }
-                try insertVaultRow(for: task, on: target, id: rowID, now: now, context: context)
-                result.added.append(task.id)
-            }
-            try saveVaultChanges(context: context)
-            return result
+        let stored = VaultManifest.load(from: defaults)
+        var manifest: VaultManifest
+        if let stored {
+            manifest = stored
+        } else {
+            manifest = try rebuildVaultManifest(taskIDs: tasks.map(\.id), todayKey: todayKey, calendar: calendar, context: context)
+            result.manifestRebuilt = true
         }
-        let before = manifest
 
+        let wanted = Set(tasks.map(\.id))
         for task in tasks {
             var entry = manifest.entries[task.id] ?? VaultManifest.Entry()
             let target = max(task.dayKey, todayKey)
+            if entry.absentSince != nil {
+                // Back in the file after being gone: a new scheduling.
+                entry.absentSince = nil
+                entry.scheduledFor = max(entry.scheduledFor ?? "", target)
+            }
+            if task.dayKey > todayKey {
+                // An explicit future day: a new scheduling (a later tick settles it again).
+                entry.scheduledFor = max(entry.scheduledFor ?? "", task.dayKey)
+            }
             let targetID = VaultTaskID.occurrenceID(for: task.id, dayKey: target)
             let fileChanged = entry.fingerprint != task.fingerprint
+
             // The task's rows the manifest knows, by day (nil: deleted in the app).
             var known: [(day: String, row: Occurrence?)] = []
-            for day in entry.rows.keys.sorted() where day != target {
+            for day in entry.rows.keys.sorted() {
                 if let id = entry.rows[day] {
                     known.append((day, try occurrence(id: id, context: context)))
                 }
             }
+            entry.settledOn = known
+                .filter { $0.row.map { !isOpenAndNeverBumped($0) } ?? true }
+                .map(\.day)
+                .max()
+            let settled = entry.settledOn.map { $0 >= (entry.scheduledFor ?? "") } ?? false
 
+            var hasTargetRow = false
             if let row = try occurrence(id: targetID, context: context) {
+                hasTargetRow = true
                 entry.rows[target] = targetID
                 if isOpenAndNeverBumped(row) {
                     if fileChanged, try applyVaultFields(of: task, to: row, context: context) {
@@ -91,56 +112,49 @@ extension ListService {
             } else if entry.rows[target] != nil {
                 // T's row was imported and then deleted in the app.
                 result.deletedInApp.append(task.id)
-            } else {
-                let settled = known.first { day, row in
-                    guard day >= task.dayKey else { return false }
-                    guard let row else { return true }
-                    return !isOpenAndNeverBumped(row)
-                }
-                if let settled {
-                    if settled.row == nil {
-                        result.deletedInApp.append(task.id)
-                    } else {
-                        result.untouched.append(task.id)
-                    }
+            } else if settled {
+                let byDeletion = known.contains { $0.day == entry.settledOn && $0.row == nil }
+                if byDeletion {
+                    result.deletedInApp.append(task.id)
                 } else {
-                    try insertVaultRow(for: task, on: target, id: targetID, now: now, context: context)
-                    entry.rows[target] = targetID
-                    result.added.append(task.id)
+                    result.untouched.append(task.id)
                 }
+            } else {
+                try insertVaultRow(for: task, on: target, id: targetID, now: now, context: context)
+                entry.rows[target] = targetID
+                hasTargetRow = true
+                result.added.append(task.id)
             }
 
-            // The task moved: its other open, never-bumped rows on today or later go.
-            for (day, row) in known where day >= todayKey {
-                guard let row, isOpenAndNeverBumped(row), row.dayKey >= todayKey else { continue }
-                context.delete(row)
-                entry.rows[day] = nil
-                if !result.removed.contains(task.id) { result.removed.append(task.id) }
+            if hasTargetRow {
+                // The task moved: its other open, never-bumped rows on today or later go.
+                for (day, row) in known where day >= todayKey && day != target {
+                    guard let row, isOpenAndNeverBumped(row), row.dayKey >= todayKey else { continue }
+                    context.delete(row)
+                    entry.rows[day] = nil
+                    if !result.removed.contains(task.id) { result.removed.append(task.id) }
+                }
             }
             entry.fingerprint = task.fingerprint
             manifest.entries[task.id] = entry
         }
 
-        let wanted = Set(tasks.map(\.id))
-        let pruneBefore = DayMath(calendar: calendar).adding(days: -62, to: todayKey)
-        for (taskID, original) in manifest.entries {
+        let forgetBefore = DayMath(calendar: calendar).adding(days: -62, to: todayKey)
+        for (taskID, original) in manifest.entries where !wanted.contains(taskID) {
             var entry = original
+            if entry.absentSince == nil {
+                entry.absentSince = todayKey
+            }
             for (day, id) in original.rows {
-                guard let row = try occurrence(id: id, context: context) else {
-                    // Deleted in the app: remembered only while the task is still in the file.
-                    if !wanted.contains(taskID) || day < pruneBefore { entry.rows[day] = nil }
-                    continue
-                }
-                if !wanted.contains(taskID), row.dayKey >= todayKey, isOpenAndNeverBumped(row) {
+                guard let row = try occurrence(id: id, context: context) else { continue }
+                if row.dayKey >= todayKey, isOpenAndNeverBumped(row) {
                     context.delete(row)
                     entry.rows[day] = nil
                     if !result.removed.contains(taskID) { result.removed.append(taskID) }
-                } else if day < pruneBefore {
-                    // Long past: kept in the store, no longer followed (habits are written by then).
-                    entry.rows[day] = nil
                 }
             }
-            if entry.rows.isEmpty && !wanted.contains(taskID) {
+            if let absent = entry.absentSince, absent < forgetBefore {
+                // Gone from Now.md for 62 days: forgotten (its rows stay in the store).
                 manifest.entries[taskID] = nil
             } else if entry != original {
                 manifest.entries[taskID] = entry
@@ -148,10 +162,40 @@ extension ListService {
         }
 
         try saveVaultChanges(context: context)
-        if manifest != before {
+        if manifest != stored {
             manifest.save(to: defaults)
         }
         return result
+    }
+
+    /// Rebuilds the manifest from the store when it can't be read: per-day ids are computable, so
+    /// for each task in the file it fetches the rows whose ids are `vault-task:<id>:<day>` for days
+    /// from 62 days ago to 60 days ahead, in one fetch. Done, skipped and bumped rows settle their
+    /// tasks again on the normal pass; which rows were deleted in the app is lost, and so are the
+    /// last-import fingerprints (an open row takes the file's fields once).
+    static func rebuildVaultManifest(
+        taskIDs: [String],
+        todayKey: String,
+        calendar: Calendar,
+        context: ModelContext
+    ) throws -> VaultManifest {
+        let math = DayMath(calendar: calendar)
+        let days = (-62...60).map { math.adding(days: $0, to: todayKey) }
+        var lookup: [UUID: (taskID: String, day: String)] = [:]
+        for taskID in taskIDs {
+            for day in days {
+                lookup[VaultTaskID.occurrenceID(for: taskID, dayKey: day)] = (taskID, day)
+            }
+        }
+        let ids = Array(lookup.keys)
+        let rows = try context.fetch(FetchDescriptor<Occurrence>(predicate: #Predicate { ids.contains($0.id) }))
+        var manifest = VaultManifest()
+        for row in rows {
+            guard let match = lookup[row.id] else { continue }
+            manifest.entries[match.taskID, default: VaultManifest.Entry()].rows[match.day] = row.id
+        }
+        AppLogger.vault.error("Vault manifest rebuilt from \(rows.count, privacy: .public) rows")
+        return manifest
     }
 
     /// Open, and never bumped from or into: the only state the vault may change.
@@ -230,12 +274,15 @@ extension ListService {
     ) throws -> [String: [VaultHabits.DoneTask]] {
         var byDay: [String: [VaultHabits.DoneTask]] = [:]
         var seen = Set<UUID>()
+        var countedTaskDays = Set<String>()
         for (taskID, entry) in (VaultManifest.load(from: defaults) ?? VaultManifest()).entries {
             for start in entry.rows.values {
                 var next: UUID? = start
                 var steps = 0
                 while let id = next, steps < 60, seen.insert(id).inserted, let row = try occurrence(id: id, context: context) {
-                    if row.state == .done, row.dayKey >= startKey, row.dayKey <= endKey {
+                    // Once per task per day, however many of its rows reach that day's tick.
+                    if row.state == .done, row.dayKey >= startKey, row.dayKey <= endKey,
+                       countedTaskDays.insert("\(taskID)|\(row.dayKey)").inserted {
                         byDay[row.dayKey, default: []].append(
                             VaultHabits.DoneTask(id: taskID, title: row.title, doneAt: row.completedAt)
                         )

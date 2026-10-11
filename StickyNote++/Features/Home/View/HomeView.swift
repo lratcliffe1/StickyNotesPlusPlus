@@ -144,8 +144,9 @@ struct HomeView: View {
                 vm.handleClockChange(context: modelContext)
             }
             // The vault link imported or changed tasks (launch, foreground, background refresh).
+            // The import runs in its own context: drop stale objects, then re-read.
             .onReceive(NotificationCenter.default.publisher(for: VaultSync.tasksDidChange)) { _ in
-                vm.refresh(context: modelContext)
+                syncFromExternalWrites()
             }
             .onOpenURL { url in
                 handleDeepLink(url)

@@ -32,6 +32,24 @@ struct VaultManifest: Codable, Equatable {
         var rows: [String: UUID] = [:]
         /// What the file said at the last import; an edit made in the app lasts until this changes.
         var fingerprint: String?
+        /// The day of the task's latest done, skipped or bumped row, or of a row deleted in the
+        /// app: the task is settled from then on, unless the file schedules it again (below).
+        var settledOn: String?
+        /// The latest explicit scheduling: a future day the file gave it, or the day it came back
+        /// to the file after being gone. A settling on or after it wins; one before it doesn't.
+        var scheduledFor: String?
+        /// The first day the task was seen missing from the file (nil while it is listed). An entry
+        /// is forgotten 62 days after that, never while the task is listed.
+        var absentSince: String?
+
+        init(rows: [String: UUID] = [:], fingerprint: String? = nil, settledOn: String? = nil,
+             scheduledFor: String? = nil, absentSince: String? = nil) {
+            self.rows = rows
+            self.fingerprint = fingerprint
+            self.settledOn = settledOn
+            self.scheduledFor = scheduledFor
+            self.absentSince = absentSince
+        }
     }
 
     var entries: [String: Entry] = [:]
@@ -39,7 +57,7 @@ struct VaultManifest: Codable, Equatable {
     static let storageKey = "vault_manifest_v2"
 
     /// The manifest; empty when there is none yet; nil when one is stored but can't be read (the
-    /// reconcile then only adds, and leaves the stored data alone).
+    /// reconcile then rebuilds it from the store, `ListService.rebuildVaultManifest`).
     static func load(from defaults: UserDefaults) -> VaultManifest? {
         guard let data = defaults.data(forKey: storageKey) else { return VaultManifest() }
         do {

@@ -37,10 +37,10 @@ final class VaultSyncTests: XCTestCase {
 
     private lazy var lockURL = FileManager.default.temporaryDirectory.appendingPathComponent("vault-sync-test-\(UUID().uuidString).lock")
 
-    private func makeSync(role: VaultSync.Role = .app) -> VaultSync {
+    private func makeSync(role: VaultSync.Role = .app, lock: VaultFileLock?? = nil) -> VaultSync {
         VaultSync(
             tokenStore: tokens, http: http, defaults: defaults, calendar: munich,
-            role: role, lock: VaultFileLock(url: lockURL), now: { [unowned self] in self.now }
+            role: role, lock: lock ?? VaultFileLock(url: lockURL), now: { [unowned self] in self.now }
         )
     }
 
@@ -446,7 +446,7 @@ final class VaultSyncTests: XCTestCase {
 
     func testAReconcileWaitsForTheOtherProcessThenSkips() async throws {
         http.handler = { _ in .init(status: 200, headers: ["ETag": "\"v1\""], body: self.goodFile) }
-        let held = try XCTUnwrap(VaultFileLock(url: lockURL).tryLock())
+        let held = try XCTUnwrap(VaultFileLock(url: lockURL).tryLock().held)
         let widget = await makeSync(role: .widget).refreshTasks(context: context)
         XCTAssertEqual(widget, .busy)
         XCTAssertEqual(try rowCount(), 0)
@@ -457,14 +457,63 @@ final class VaultSyncTests: XCTestCase {
         XCTAssertEqual(try rowCount(), 2)
     }
 
-    func testAnUnreadableManifestShowsInTheStatus() async throws {
+    func testARebuiltManifestShowsInTheStatusOnce() async throws {
         defaults.set(Data("garbage".utf8), forKey: VaultManifest.storageKey)
         http.handler = { _ in .init(status: 200, headers: ["ETag": "\"v1\""], body: self.goodFile) }
         let sync = makeSync()
         await sync.refreshTasks(context: context)
-        XCTAssertEqual(sync.status.kind, .manifestUnreadable)
+        XCTAssertEqual(sync.status.kind, .manifestRebuilt)
+        XCTAssertEqual(sync.status.text(), "Imported tasks: rebuilt; a task deleted in the app may come back once")
         XCTAssertTrue(sync.status.isProblem)
-        XCTAssertEqual(try rowCount(), 2, "new tasks are still added")
+        XCTAssertEqual(try rowCount(), 2)
+
+        http.handler = { _ in .init(status: 304) }
+        await sync.refreshTasks(context: context)
+        XCTAssertEqual(sync.status.kind, .updated, "the next import is back to normal")
+    }
+
+    func testAnUnopenableLockFileShowsInTheStatusAndImportsNothing() async throws {
+        http.handler = { _ in .init(status: 200, headers: ["ETag": "\"v1\""], body: self.goodFile) }
+        let broken = VaultFileLock(url: URL(fileURLWithPath: "/nonexistent-\(UUID().uuidString)/vault.lock"))
+        let sync = makeSync(lock: .some(broken))
+        let outcome = await sync.refreshTasks(context: context)
+        XCTAssertEqual(outcome, .lockFailed)
+        XCTAssertEqual(sync.status.text(), "Imported tasks: couldn’t lock")
+        XCTAssertEqual(try rowCount(), 0)
+    }
+
+    func testWithoutAContainerOnlyTheAppImports() async throws {
+        http.handler = { _ in .init(status: 200, headers: ["ETag": "\"v1\""], body: self.goodFile) }
+        let widget = await makeSync(role: .widget, lock: .some(nil)).refreshTasks(context: context)
+        XCTAssertEqual(widget, .busy)
+        XCTAssertEqual(try rowCount(), 0)
+        let app = await makeSync(lock: .some(nil)).refreshTasks(context: context)
+        guard case .reconciled = app else { return XCTFail("the app imports without a lock: \(app)") }
+        XCTAssertEqual(try rowCount(), 2)
+    }
+
+    func testAFreshContextSeesARowTheWidgetTicked() async throws {
+        http.handler = { _ in .init(status: 200, headers: ["ETag": "\"v1\""], body: self.goodFile) }
+        let sync = makeSync()
+        // The app's own context imports, and holds the row in memory.
+        await sync.refreshTasks(context: context)
+        let appRow = try XCTUnwrap(try ListService.occurrence(id: VaultTaskID.occurrenceID(for: "deel", dayKey: "2026-10-14"), context: context))
+        XCTAssertEqual(appRow.state, .open)
+
+        // The widget ticks it in its own context.
+        let widgetContext = ModelContext(context.container)
+        let widgetRow = try XCTUnwrap(try ListService.occurrence(id: appRow.id, context: widgetContext))
+        try ListService.complete(widgetRow, at: now, context: widgetContext)
+
+        // Now.md rewords it; the app imports in a fresh context, as the app does.
+        let reworded = Data(String(decoding: goodFile, as: UTF8.self).replacingOccurrences(of: "Chase Deel", with: "Chase Deel again").utf8)
+        http.handler = { _ in .init(status: 200, headers: ["ETag": "\"v2\""], body: reworded) }
+        await sync.refreshTasks(context: ModelContext(context.container))
+
+        let check = ModelContext(context.container)
+        let stored = try XCTUnwrap(try ListService.occurrence(id: appRow.id, context: check))
+        XCTAssertEqual(stored.state, .done, "the tick stands")
+        XCTAssertEqual(stored.title, "Chase Deel", "a ticked row is never retitled")
     }
 
     // MARK: - Status text

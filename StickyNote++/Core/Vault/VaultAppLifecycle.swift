@@ -30,7 +30,7 @@ enum VaultBackground {
     @MainActor
     static func runRefresh(vault: VaultSync, container: ModelContainer) async {
         scheduleRefresh()
-        await vault.refreshTasks(context: container.mainContext, quietWithoutToken: true)
+        await vault.refreshTasks(context: ModelContext(container), quietWithoutToken: true)
         TaskWidgetReloader.reloadTopTasksWidget()
     }
 
@@ -45,7 +45,7 @@ enum VaultBackground {
             token.end(in: application)
         }
         Task { @MainActor in
-            await vault.writeHabitsIfDue(reason: .background, context: container.mainContext)
+            await vault.writeHabitsIfDue(reason: .background, context: ModelContext(container))
             token.end(in: application)
         }
     }
@@ -88,8 +88,10 @@ struct VaultLifecycle: ViewModifier {
                     Task { @MainActor in
                         vault.reloadFromDefaults()
                         // Yesterday's results go out before the import can add today's rows.
-                        await vault.writeHabitsIfDue(reason: .launch, context: container.mainContext)
-                        await vault.refreshTasks(context: container.mainContext)
+                        // Fresh contexts, so rows the widget changed are read from the store; Home
+                        // re-reads after an import (`VaultSync.tasksDidChange`).
+                        await vault.writeHabitsIfDue(reason: .launch, context: ModelContext(container))
+                        await vault.refreshTasks(context: ModelContext(container))
                     }
                 case .background:
                     if schedulesBackgroundWork {
