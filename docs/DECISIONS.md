@@ -2,6 +2,27 @@
 
 **What this is for:** product rules Liam has decided, dated, newest first. Code and tests follow these. When a rule changes, add a new entry that names the one it replaces; never edit an old entry. **What must NOT go in here:** plans and status (→ `ROADMAP.md`).
 
+## 2026-10-11 (overnight, step 2b): controls, provisional calls
+
+Taken while building step 2b with Liam asleep (see the working rules in the evening entry below). Each is *provisional: Liam to confirm*.
+
+**From the plan**
+- **Editing an item's repeat applies from today.** The old item ends and a new one starts today, or tomorrow if today's occurrence is already done, skipped or bumped, so past days are never recounted. A copy already bumped onto a later day stays with the old item and finishes its period. A bump-limit edit changes the item and today's open occurrence only. A title-only edit is a rename from today, as before. *Provisional: Liam to confirm.*
+- **Delete on a recurring row** deletes the item from today on (as in Edit lists), after a confirmation. *Provisional: Liam to confirm.*
+- **Edit… on a one-off** edits its title, deadline and bump limit for that row only (not the rows earlier in its bump chain). On a recurring row it opens the item editor. *Provisional: Liam to confirm.*
+- **"N bumps this week"** counts bump actions on days in the current locale week up to today, across all three lists, whichever day Home is showing. *Provisional: Liam to confirm.*
+
+**Made while building**
+- **Bumping is only in the long-press menu.** The one-tap bump button on day-list rows is gone, since bumping should never be a single tap. *Provisional: Liam to confirm.*
+- **The add menu's bump limits** are Up to 1, 3 (the default) or 7 days, End of week, Until deadline, and Unlimited. Choosing Until deadline with no deadline opens the date picker. A deadline on its own leaves the limit as it is. The chosen options show in words under the add field, and reset after each add. *Provisional: Liam to confirm.*
+- **An item's bump limit** (non-daily repeats only) is one of: Until its period ends (the default), Up to N days, Until the end of the week, Can't bump. Items can't take a deadline. *Provisional: Liam to confirm.*
+- **The bump sheet's cost line counts bumps used before this one** ("2 of 3 bumps used" means this bump is the third). A repeat also gets a line for its window, "Until the end of its week (Sun 18 Oct)", or "Can bump until Wed 14 Oct, before it's next due" when its next occurrence comes first. *Provisional: Liam to confirm.*
+- **A skipped row** shows its title greyed, "Skipped today" under it and a skip icon. Tapping it still completes it. Past days have no long-press menu. *Provisional: Liam to confirm.*
+- **Deleting a one-off is confirmed too**, and the sticky note's title carries an icon per list (sun, checklist, moon), so the list reads in greyscale. *Provisional: Liam to confirm.*
+- **The ↻ marks and the weekly count include the evening list**, though the ring and calendar circles still show only morning and day (three segments are step 4). *Provisional: Liam to confirm.*
+- **The widget's bump doesn't ask you to retype** (a widget can't take text), as in 2a. *Provisional: Liam to confirm.*
+- **Settings → Edit Lists replaces Edit Morning Routine.** Settings is now Lists (Edit Lists) · Daily (Add Daily Tasks) · Bumping (Retype to bump) until step 3 rebuilds it. *Provisional: Liam to confirm.*
+
 ## 2026-10-11 (evening): controls, flip times, calendar, greyscale, vault link (grilling for steps 2b–6)
 
 **Working rules for the overnight run:** stacked PRs, nothing merged until Liam's phone check. An unsettled question takes the recommended default, recorded here as *provisional: Liam to confirm*. Anything that risks his data stops that step. Every UI and UX decision follows **Apple's Human Interface Guidelines**.
