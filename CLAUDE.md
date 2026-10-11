@@ -10,7 +10,7 @@ A SwiftUI iOS app (iOS 17+) with a home-screen widget. It tracks a **morning-rou
 | `StickyNote++ Widget Extension/` | The widget and its App Intents (complete and bump the top task) |
 | `Shared/` | Compiled into the app, the widget **and** the tests: models, `Lists/` (`ListService`, the one write path for app and widget; the pure repeat, bump and streak rules), `HomeModel` (dates), persistence and the one-time V1 → V2 backfill |
 | `StickyNote++Tests/` | XCTest unit tests. No host app, so they test `Shared/` code only |
-| `scripts/` | `screenshots.sh` (simulator screenshots) and `greyscale.swift` |
+| `scripts/` | `screenshots.sh` (simulator screenshots), `greyscale.swift`, and `ci-simulator.sh` (picks or creates the simulator both CI workflows run on) |
 
 The Xcode project uses **folder-synchronised groups**: a new `.swift` file dropped into one of these folders is compiled automatically, so there's no need to edit `project.pbxproj`.
 
@@ -26,7 +26,7 @@ The Xcode project uses **folder-synchronised groups**: a new `.swift` file dropp
 2. **One feature, one branch, one PR.** Never push product changes straight to `main`.
 3. **Verify like a user, and declare what you didn't.** Xcode is **not installed** on Liam's Mac, so verification happens in CI:
    - `iOS Quality` builds the app and widget and runs the unit tests.
-   - `Screenshots` opens each harness state in the simulator and uploads colour and **greyscale** PNGs. Download them (`gh run download <id> -n screenshots`) and actually look at them before calling a UI change done.
+   - `Screenshots` (every push, like `iOS Quality`) opens each harness state in the simulator and uploads colour and **greyscale** PNGs. Download them (`gh run download <id> -n screenshots`) and actually look at them before calling a UI change done.
    - Every PR body has a **Verified** and a **Not verified** list. Liam's phone is the final check.
 4. **Review before merge.** Get a fresh-context review that sees the plan's acceptance checks and the diff, not the builder's summary.
 
@@ -46,7 +46,7 @@ In Debug builds only, launching with `-uiScenario <morning|daily|empty|missedYes
 ## Shipping a build to the phone
 
 1. Run the **Build IPA for SideStore** workflow (Actions → Run workflow, or `gh workflow run "Build IPA for SideStore"`) and download the `StickyNotesPlusPlus-ipa` artifact.
-2. Copy the `.ipa` into iCloud Drive.
+2. Copy the `.ipa` into iCloud Drive as `StickyNotes-<branch>-<short-sha>.ipa`, so each build is told apart.
 3. Liam installs it: SideStore → My Apps → + → the file → "Register App ID for each extension". LocalDevVPN must be connected.
 
 ## Known weak spots (review, 2026-10-11)

@@ -4,22 +4,60 @@ on:
   push:
   workflow_dispatch:
 
+# A newer push to the same branch cancels the run it supersedes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Shared with scripts/screenshots.sh, so both workflows restore the same module cache.
+  DERIVED_DATA: build/DerivedData
+
 jobs:
   quality:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Show Xcode Version
-        run: xcodebuild -version
+      - name: Show Xcode version
+        id: xcode
+        run: |
+          xcodebuild -version
+          echo "version=$(xcodebuild -version | awk 'NR==1 {v=$2} NR==2 {b=$3} END {print v "-" b}')" >> "$GITHUB_OUTPUT"
 
-      - name: Build App
-        run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 16" build
+      # Only the compiler's module cache (system frameworks compiled for this SDK and these flags),
+      # never build products: a module is checked against its SDK inputs before use, so a stale entry
+      # is rebuilt rather than trusted, and our own code is always compiled from this checkout.
+      - name: Restore module cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.DERIVED_DATA }}/ModuleCache.noindex
+            ${{ env.DERIVED_DATA }}/SDKStatCaches.noindex
+          key: xcode-modules-${{ runner.os }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('StickyNote++.xcodeproj/project.pbxproj', '**/*.swift') }}
+          restore-keys: |
+            xcode-modules-${{ runner.os }}-${{ steps.xcode.outputs.version }}-
 
-      - name: Build Widget
-        run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++ Widget Extension" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 16" build
+      - name: Pick a simulator
+        id: sim
+        run: echo "udid=$(scripts/ci-simulator.sh)" >> "$GITHUB_OUTPUT"
 
+      # One build: the app (which embeds the widget) and the test bundle. The tests then run on
+      # exactly these products, without rebuilding.
+      - name: Build app, widget and tests
+        run: >
+          xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug
+          -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath "$DERIVED_DATA"
+          COMPILER_INDEX_STORE_ENABLE=NO build-for-testing
 
-      - name: Unit Tests
-        run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 16" test
+      - name: Boot the simulator
+        run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+
+      # Serial on the booted simulator: parallel testing would clone it first, which costs minutes.
+      - name: Unit tests
+        run: >
+          xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug
+          -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath "$DERIVED_DATA"
+          -parallel-testing-enabled NO test-without-building
