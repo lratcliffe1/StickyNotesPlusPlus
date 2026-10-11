@@ -51,11 +51,15 @@ SHOTS=(
 
 for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name scenario screen appearance <<<"$shot"
-  # simctl reads this as a 12-hour en_US time: "14:00" and ISO strings are rejected, "2:00" works.
-  clock="2:00"
-  case "$scenario" in morning|missedYesterday) clock="8:15" ;; esac
-  xcrun simctl status_bar "$UDID" override --time "$clock" \
-    --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
+  # simctl refuses to replace an active override (it misreports this as "non-ISO date/time"),
+  # so clear it first. A clock that still won't set only costs the status bar: warn and go on.
+  clock="14:00"
+  case "$scenario" in morning|missedYesterday) clock="08:15" ;; esac
+  xcrun simctl status_bar "$UDID" clear || true
+  if ! xcrun simctl status_bar "$UDID" override --time "$clock" \
+      --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3; then
+    echo "WARNING: status-bar clock not set for $name; its clock is wrong, not the app's time" >&2
+  fi
   xcrun simctl ui "$UDID" appearance "$appearance"
   xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
   xcrun simctl launch "$UDID" "$BUNDLE_ID" -uiScenario "$scenario" -uiScreen "$screen" >/dev/null
