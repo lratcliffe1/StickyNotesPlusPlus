@@ -5,7 +5,7 @@
 #
 # It picks the iOS version of the SDK this Xcode builds with (SIM_OS overrides, e.g. SIM_OS=26.2), and
 # falls back to the newest runtime listed. A `name=` destination would take the newest runtime, which
-# changes whenever the runner image adds one (and iOS 26.2 booted slower in the run we measured).
+# changes whenever the runner image adds one.
 #
 #   UDID=$(scripts/ci-simulator.sh)
 #
