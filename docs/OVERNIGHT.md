@@ -30,7 +30,7 @@ You are the **coordinator** of an approved, autonomous overnight run on Liam's i
 6. **Update the PR body** with **Verified** and **Not verified** lists (CI run IDs, tests by name, what you saw in which screenshot), plus anything deferred or provisional.
 7. Update `docs/ROADMAP.md` (the step's status) and this file's progress log, then move on.
 
-**Builders lie by accident.** Re-check every claim (run IDs, test counts with `grep -c "' passed on"` and `"' failed on"`, screenshots) before relaying it.
+**Builders lie by accident.** Re-check every claim (run IDs, test counts with `grep -c "' passed ("` and `"' failed ("` (the log prints `Test Case '-[…]' passed (0.004 seconds)`), screenshots) before relaying it.
 
 ## Lessons from today (don't relearn them)
 
@@ -80,3 +80,7 @@ All the decisions are in DECISIONS.md, in the 2026-10-11 evening entry. Extra de
 - 16:30: handoff written.
 - 16:55: CI speed-up done, PR #6 open. The next step is 2b, branched from `origin/ci-speedup`.
 - 16:57 (new coordinator chat): read the handoff and the repo docs; branched `step2b-controls` from `origin/ci-speedup`; first commit lands the evening decisions, the HIG rule and this file.
+- 17:05: PR #7 opened for 2b with its plan; builder running. Plans for 3–6, the step 6 file contract and `~/Desktop/StickyNotes token setup.md` drafted meanwhile.
+- 17:50: 2b built, green (00c52e9). Blind review: 1 HIGH, 2 MED, 6 LOW. Fix round started; step 3 started in parallel in a worktree (`~/code/sn-step3`), stacked on 2b.
+- 18:25: 2b fixes green (2bf5102, 167 tests). Re-review: all 8 fixed, 3 new LOWs deferred (listed in PR #7). Step 3 built and green (d78b826), PR #8; its blind review found 1 HIGH, 3 MED (two of them were the coordinator's provisional calls contradicting the evening decisions) → fix round. Step 4 started in `~/code/sn-step4`, stacked on 3.
+- 18:40: PR #7 body final (Verified / Not verified). 2b done, pending Liam's phone check.
