@@ -7,7 +7,8 @@ import os
 ///
 /// Launch with `-uiScenario <morning|daily|empty|missedYesterday|missedTwice>` and optionally
 /// `-uiScreen <home|calendar|settings>`.
-/// The app then runs on an in-memory store seeded with fixed sample data, at a fixed time of day,
+/// The app then runs on an in-memory store seeded with fixed sample data (V2 items and occurrences;
+/// the V1 tables stay empty, so the one-time backfill finds nothing), at a fixed time of day,
 /// with its own settings suite, and the app skips opening the shared on-disk store entirely,
 /// so real data and settings are never touched. It fixes the time of day only: dates are still
 /// relative to the real today, because some views read `Date()` directly. Debug builds only.
@@ -70,8 +71,8 @@ enum UITestHarness {
             )
             let context = container.mainContext
             if scenario != .empty {
-                seedHistory(today: today, missYesterday: scenario.missesYesterday, context: context, calendar: calendar)
-                seedToday(scenario: scenario, today: today, context: context, calendar: calendar)
+                let items = seedHistory(today: today, missYesterday: scenario.missesYesterday, context: context, calendar: calendar)
+                seedToday(scenario: scenario, items: items, today: today, context: context, calendar: calendar)
             }
             try context.save()
 
@@ -88,26 +89,42 @@ enum UITestHarness {
         }
     }
 
-    /// Twelve past days: routine done by 07:50 on all but two days, and three tasks a day, mostly done.
-    /// With `missYesterday`, yesterday's routine and tasks are left unfinished.
-    private static func seedHistory(today: Date, missYesterday: Bool, context: ModelContext, calendar: Calendar) {
-        for (order, title) in routineTitles.enumerated() {
-            context.insert(MorningRoutineTemplateItem(title: title, sortOrder: order))
+    /// Twelve past days of history on the V2 model: the six routine items (repeating daily) done by
+    /// 07:50 on all but two days, and three one-off tasks a day, mostly done. Two days exercise the
+    /// new streak rules without changing what's on screen: 8 days ago one routine item was skipped
+    /// (the rest done, so still complete), and 6 days ago "Stretch" was bumped to the next day and
+    /// done there. With `missYesterday`, yesterday's routine and tasks are left unfinished.
+    private static func seedHistory(today: Date, missYesterday: Bool, context: ModelContext, calendar: Calendar) -> [Item] {
+        guard let firstDay = calendar.date(byAdding: .day, value: -12, to: today) else { return [] }
+        let items = routineTitles.enumerated().map { order, title in
+            Item(
+                list: .morning,
+                title: title,
+                sortOrder: order,
+                repeatRule: .daily,
+                startDayKey: key(firstDay),
+                createdAt: firstDay
+            )
         }
+        for item in items {
+            context.insert(item)
+        }
+        var stretchToBump: Occurrence?
 
         for daysAgo in 1...12 {
             guard let day = calendar.date(byAdding: .day, value: -daysAgo, to: today) else { continue }
+            let dayKey = key(day)
             let missedThisDay = missYesterday && daysAgo == 1
             let routineMissed = daysAgo == 5 || daysAgo == 9 || missedThisDay
-            for (order, title) in routineTitles.enumerated() {
+            for (order, item) in items.enumerated() {
                 let done = !routineMissed || order < 3
+                let skipped = daysAgo == 8 && order == items.count - 1
                 context.insert(
-                    MorningRoutineEntry(
-                        date: day,
-                        titleSnapshot: title,
-                        sortOrderSnapshot: order,
-                        isCompleted: done,
-                        completedAt: done ? at(hour: 7, minute: 30 + order * 3, on: day, calendar: calendar) : nil
+                    routineOccurrence(
+                        item: item,
+                        dayKey: dayKey,
+                        state: skipped ? .skipped : (done ? .done : .open),
+                        completedAt: done && !skipped ? at(hour: 7, minute: 30 + order * 3, on: day, calendar: calendar) : nil
                     )
                 )
             }
@@ -115,29 +132,65 @@ enum UITestHarness {
             let tasks = ["Reply to emails", "Write for 30 minutes", "Stretch"]
             for (order, title) in tasks.enumerated() {
                 let done = !missedThisDay && (daysAgo != 3 || order == 0)
-                context.insert(
-                    DailyTask(
-                        date: day,
-                        title: title,
-                        isCompleted: done,
-                        completedAt: done ? at(hour: 18, minute: order * 10, on: day, calendar: calendar) : nil,
-                        sortOrder: order
-                    )
+                let task = Occurrence(
+                    list: .day,
+                    dayKey: dayKey,
+                    title: title,
+                    sortOrder: order,
+                    state: done ? .done : .open,
+                    completedAt: done ? at(hour: 18, minute: order * 10, on: day, calendar: calendar) : nil,
+                    createdAt: at(hour: 7, minute: order, on: day, calendar: calendar)
                 )
+                context.insert(task)
+                if daysAgo == 6 && title == "Stretch" {
+                    stretchToBump = task
+                }
             }
         }
+
+        if let stretchToBump {
+            seedBump(of: stretchToBump, today: today, context: context, calendar: calendar)
+        }
+        return items
     }
 
-    private static func seedToday(scenario: Scenario, today: Date, context: ModelContext, calendar: Calendar) {
-        let routineDoneCount = (scenario == .daily) ? routineTitles.count : 2
-        for (order, title) in routineTitles.enumerated() {
+    /// 6 days ago, "Stretch" was bumped (done for that day) and finished the next day.
+    private static func seedBump(of stretch: Occurrence, today: Date, context: ModelContext, calendar: Calendar) {
+        guard
+            let fromDay = calendar.date(byAdding: .day, value: -6, to: today),
+            let toDay = calendar.date(byAdding: .day, value: -5, to: today)
+        else { return }
+        let fromKey = key(fromDay)
+
+        let moved = Occurrence(
+            list: .day,
+            dayKey: key(toDay),
+            title: "Stretch",
+            sortOrder: 3,
+            state: .done,
+            completedAt: at(hour: 19, minute: 0, on: toDay, calendar: calendar),
+            createdAt: at(hour: 17, minute: 0, on: fromDay, calendar: calendar),
+            bumpedFromID: stretch.id,
+            bumpCount: 1,
+            firstAddedDayKey: fromKey,
+            firstAddedTitle: "Stretch"
+        )
+        context.insert(moved)
+        stretch.state = .bumped
+        stretch.completedAt = at(hour: 17, minute: 0, on: fromDay, calendar: calendar)
+        stretch.bumpedToID = moved.id
+    }
+
+    private static func seedToday(scenario: Scenario, items: [Item], today: Date, context: ModelContext, calendar: Calendar) {
+        let todayKey = key(today)
+        let routineDoneCount = (scenario == .daily) ? items.count : 2
+        for (order, item) in items.enumerated() {
             let done = order < routineDoneCount
             context.insert(
-                MorningRoutineEntry(
-                    date: today,
-                    titleSnapshot: title,
-                    sortOrderSnapshot: order,
-                    isCompleted: done,
+                routineOccurrence(
+                    item: item,
+                    dayKey: todayKey,
+                    state: done ? .done : .open,
                     completedAt: done ? at(hour: 7, minute: 20 + order * 4, on: today, calendar: calendar) : nil
                 )
             )
@@ -150,17 +203,41 @@ enum UITestHarness {
             ("Plan the week", false, 0),
         ]
         for (order, task) in tasks.enumerated() {
+            let firstAdded = calendar.date(byAdding: .day, value: -task.bumps, to: today) ?? today
             context.insert(
-                DailyTask(
-                    date: today,
+                Occurrence(
+                    list: .day,
+                    dayKey: todayKey,
                     title: task.title,
-                    isCompleted: task.done,
-                    completedAt: task.done ? at(hour: 9, minute: 30, on: today, calendar: calendar) : nil,
                     sortOrder: order,
-                    bumpCount: task.bumps
+                    state: task.done ? .done : .open,
+                    completedAt: task.done ? at(hour: 9, minute: 30, on: today, calendar: calendar) : nil,
+                    createdAt: at(hour: 7, minute: order, on: today, calendar: calendar),
+                    bumpLimit: .defaultForNewOneOffs,
+                    bumpCount: task.bumps,
+                    firstAddedDayKey: key(firstAdded)
                 )
             )
         }
+    }
+
+    private static func routineOccurrence(item: Item, dayKey: String, state: OccurrenceState, completedAt: Date?) -> Occurrence {
+        Occurrence(
+            itemID: item.id,
+            list: .morning,
+            dayKey: dayKey,
+            title: item.title,
+            sortOrder: item.sortOrder,
+            state: state,
+            completedAt: completedAt,
+            bumpLimit: .unlimited,
+            scheduledDayKey: dayKey,
+            periodEndDayKey: dayKey
+        )
+    }
+
+    private static func key(_ day: Date) -> String {
+        HomeModel.dayKey(for: day)
     }
 
     private static func at(hour: Int, minute: Int, on day: Date, calendar: Calendar) -> Date {
