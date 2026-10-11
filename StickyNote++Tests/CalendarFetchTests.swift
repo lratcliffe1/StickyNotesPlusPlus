@@ -22,15 +22,17 @@ final class CalendarFetchTests: XCTestCase {
         return item
     }
 
-    func testFirstUseIsTheEarlierOfAListsItemsAndRows() throws {
-        insertItem("Water", list: .morning, rule: .daily, start: "2026-10-05")
+    func testListsInUseAndTheFirstEntry() throws {
+        XCTAssertEqual(try ListService.listsInUse(context: context), [])
+        XCTAssertNil(try ListService.firstEntryDayKey(context: context))
+
+        insertItem("Read in bed", list: .evening, rule: .daily, start: "2026-10-05")
         context.insert(Occurrence(list: .morning, dayKey: "2026-10-03", title: "Early one-off"))
-        context.insert(Occurrence(list: .day, dayKey: "2026-10-08", title: "Post"))
         insertItem("Gym", list: .day, rule: .weekly(on: [2]), start: "2026-10-12")
         try context.save()
 
-        XCTAssertEqual(try ListService.firstUseDayKeys(context: context), [.morning: "2026-10-03", .day: "2026-10-08"],
-                       "evening never used")
+        XCTAssertEqual(try ListService.listsInUse(context: context), [.morning, .day, .evening])
+        XCTAssertEqual(try ListService.firstEntryDayKey(context: context), "2026-10-03", "the earlier of items and rows")
     }
 
     /// Nobody opened the week of Monday 28 September: the weekly item's miss lands on its period end,

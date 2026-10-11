@@ -71,13 +71,13 @@ extension HomeViewModel {
         }
     }
 
-    /// The first day each list was in use.
-    func firstUseDayKeys(context: ModelContext) -> [ListKind: String] {
+    /// The lists in use and the first entry's day: what a ring day's segments are.
+    func dayCircleBasis(context: ModelContext) -> (lists: [ListKind], firstEntryDayKey: String?) {
         do {
-            return try repository.firstUseDayKeys(context: context)
+            return (try repository.listsInUse(context: context), try repository.firstEntryDayKey(context: context))
         } catch {
-            AppLogger.persistence.error("First use failed: \(error.localizedDescription, privacy: .public)")
-            return [:]
+            AppLogger.persistence.error("Lists in use failed: \(error.localizedDescription, privacy: .public)")
+            return ([], nil)
         }
     }
 

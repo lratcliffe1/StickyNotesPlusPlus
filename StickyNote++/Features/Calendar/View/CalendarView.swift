@@ -40,7 +40,8 @@ struct CalendarView: View {
                         CalendarMonthSection(
                             month: month,
                             data: model.loaded[month.id],
-                            firstUse: model.firstUse,
+                            lists: model.lists,
+                            firstEntryDayKey: model.firstEntryDayKey,
                             todayKey: model.todayKey,
                             selectedKey: HomeModel.dayKey(for: selectedDay, calendar: model.calendar),
                             calendar: model.calendar,
@@ -96,7 +97,8 @@ struct CalendarView: View {
 private struct CalendarMonthSection: View {
     let month: CalendarRules.Month
     let data: CalendarModel.MonthData?
-    let firstUse: [ListKind: String]
+    let lists: [ListKind]
+    let firstEntryDayKey: String?
     let todayKey: String
     let selectedKey: String
     let calendar: Calendar
@@ -154,7 +156,9 @@ private struct CalendarMonthSection: View {
 
     private func dayCell(_ dayKey: String) -> some View {
         let isFuture = dayKey > todayKey
-        let segments = isFuture ? [] : CalendarRules.segments(on: dayKey, firstUse: firstUse, looks: data?.looks ?? [:])
+        let segments = isFuture ? [] : CalendarRules.segments(
+            on: dayKey, lists: lists, firstEntryDayKey: firstEntryDayKey, looks: data?.looks ?? [:]
+        )
         let hasBump = !isFuture && (data?.bumpedDays.contains(dayKey) ?? false)
         let isPlanned = isFuture && (data?.plannedDays.contains(dayKey) ?? false)
         return CalendarDayCell(

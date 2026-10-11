@@ -8,7 +8,7 @@ A SwiftUI iOS app (iOS 17+) with a home-screen widget. It tracks a **morning-rou
 |---|---|
 | `StickyNote++/` | The app: `Features/Home` (screen, view model split into `+Storage`, `+Mutations`, `+DerivedState`), `Features/Calendar` (SwiftUI months; `CalendarModel` fetches one month at a time), `Features/Settings`, `Core/` (theme, components such as `SegmentedDayRing`, the day circle the calendar and the 7-day ring share, `UITestHarness`) |
 | `StickyNote++ Widget Extension/` | The widget and its App Intents (complete and bump the top task) |
-| `Shared/` | Compiled into the app, the widget **and** the tests: models, `Lists/` (`ListService`, the one write path for app and widget; the pure repeat, bump and streak rules), `Calendar/` (`CalendarRules`: month range, grid, lists in use, planned days, fetch lookback), `HomeModel` (dates), persistence and the one-time V1 → V2 backfill |
+| `Shared/` | Compiled into the app, the widget **and** the tests: models, `Lists/` (`ListService`, the one write path for app and widget; the pure repeat, bump and streak rules), `Calendar/` (`CalendarRules`: month range, grid, a day's segments, planned days, fetch lookback), `HomeModel` (dates), persistence and the one-time V1 → V2 backfill |
 | `StickyNote++Tests/` | XCTest unit tests. No host app, so they test `Shared/` code only |
 | `scripts/` | `screenshots.sh` (simulator screenshots), `greyscale.swift`, and `ci-simulator.sh` (picks or creates the simulator both CI workflows run on) |
 

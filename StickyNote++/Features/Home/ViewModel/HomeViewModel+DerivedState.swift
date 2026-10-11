@@ -26,8 +26,10 @@ extension HomeViewModel {
         contextualList = HomeModel.shownList(automatic: automaticContextualList, flip: manualListFlip, now: now)
 
         refreshSevenDayProgress(anchoredOn: anchorDay, context: context)
-        let streaks = refreshStreaks(through: anchorDay, context: context)
-        refreshNeverMissTwiceState(anchorDay: anchorDay, anchorStreaks: streaks, context: context)
+        // On a future day the streaks stay as of today: days to come aren't misses yet.
+        let streakDay = min(anchorDay, HomeModel.normalizedDay(now, calendar: calendar))
+        let streaks = refreshStreaks(through: streakDay, context: context)
+        refreshNeverMissTwiceState(anchorDay: streakDay, anchorStreaks: streaks, context: context)
     }
 
     /// The ring's seven days, ending on the selected day, drawn like calendar days: past days and
@@ -43,7 +45,7 @@ extension HomeViewModel {
         let startKey = math.adding(days: -(progressWindowDays - 1), to: endKey)
         let todayKey = HomeModel.dayKey(for: now, calendar: calendar)
 
-        let firstUse = firstUseDayKeys(context: context)
+        let basis = dayCircleBasis(context: context)
         let past = dayLooks(from: startKey, through: min(endKey, todayKey), context: context)
         let planned = plannedDayKeys(from: max(startKey, math.adding(days: 1, to: todayKey)), through: endKey, context: context)
 
@@ -54,7 +56,9 @@ extension HomeViewModel {
             return HomeModel.DayProgress(
                 date: HomeModel.normalizedDay(date, calendar: calendar),
                 dayKey: key,
-                segments: isFuture ? [] : CalendarRules.segments(on: key, firstUse: firstUse, looks: past.looks),
+                segments: isFuture ? [] : CalendarRules.segments(
+                    on: key, lists: basis.lists, firstEntryDayKey: basis.firstEntryDayKey, looks: past.looks
+                ),
                 hasBump: !isFuture && past.bumpedDays.contains(key),
                 isFuture: isFuture,
                 isPlanned: planned.contains(key)

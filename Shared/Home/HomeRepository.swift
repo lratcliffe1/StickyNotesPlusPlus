@@ -22,8 +22,10 @@ protocol HomeRepository {
         history: DayRulesHistory,
         context: ModelContext
     ) throws -> (looks: [ListKind: [String: ListRules.DayLook]], bumpedDays: Set<String>)
-    /// The first day each list was in use (the lists a day's circle shows).
-    func firstUseDayKeys(context: ModelContext) throws -> [ListKind: String]
+    /// The lists in use, in order (a day's circle has a segment for each).
+    func listsInUse(context: ModelContext) throws -> [ListKind]
+    /// The first day with an entry on any list (days before it are plain in the ring).
+    func firstEntryDayKey(context: ModelContext) throws -> String?
     /// Days from `startKey` through `endKey` with something planned (the future days' dot).
     func plannedDayKeys(from startKey: String, through endKey: String, context: ModelContext) throws -> Set<String>
     /// A list's recurring items due on `dayKey` with no row there yet (planned, on a future day).
@@ -69,8 +71,12 @@ struct SwiftDataHomeRepository: HomeRepository {
         try ListService.dayLooks(from: startKey, through: endKey, todayKey: todayKey, history: history, context: context, calendar: .current)
     }
 
-    func firstUseDayKeys(context: ModelContext) throws -> [ListKind: String] {
-        try ListService.firstUseDayKeys(context: context)
+    func listsInUse(context: ModelContext) throws -> [ListKind] {
+        try ListService.listsInUse(context: context)
+    }
+
+    func firstEntryDayKey(context: ModelContext) throws -> String? {
+        try ListService.firstEntryDayKey(context: context)
     }
 
     func plannedDayKeys(from startKey: String, through endKey: String, context: ModelContext) throws -> Set<String> {

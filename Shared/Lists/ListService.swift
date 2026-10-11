@@ -238,31 +238,23 @@ enum ListService {
         try context.fetch(FetchDescriptor<Item>(sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.createdAt)]))
     }
 
-    /// The first day each list was in use: its earliest item start or occurrence, whichever is
-    /// first. A list never used is absent. Two one-row fetches per list.
-    static func firstUseDayKeys(context: ModelContext) throws -> [ListKind: String] {
-        var firstUse: [ListKind: String] = [:]
-        for list in ListKind.allCases {
-            let raw = list.rawValue
-            var itemDescriptor = FetchDescriptor<Item>(
-                predicate: #Predicate { $0.listRaw == raw },
-                sortBy: [SortDescriptor(\.startDayKey)]
-            )
-            itemDescriptor.fetchLimit = 1
-            var rowDescriptor = FetchDescriptor<Occurrence>(
-                predicate: #Predicate { $0.listRaw == raw },
-                sortBy: [SortDescriptor(\.dayKey)]
-            )
-            rowDescriptor.fetchLimit = 1
-            let candidates = [
-                try context.fetch(itemDescriptor).first?.startDayKey,
-                try context.fetch(rowDescriptor).first?.dayKey,
-            ].compactMap { $0 }
-            if let first = candidates.min() {
-                firstUse[list] = first
-            }
-        }
-        return firstUse
+    /// The lists in use (`isInUse`), in morning → day → evening order: a day's circle has a
+    /// segment for each.
+    static func listsInUse(context: ModelContext) throws -> [ListKind] {
+        try ListKind.allCases.filter { try isInUse($0, context: context) }
+    }
+
+    /// The first day with an entry on any list: the earliest item start or occurrence. The calendar
+    /// starts at its month (or the current month, if that is earlier). Two one-row fetches.
+    static func firstEntryDayKey(context: ModelContext) throws -> String? {
+        var itemDescriptor = FetchDescriptor<Item>(sortBy: [SortDescriptor(\.startDayKey)])
+        itemDescriptor.fetchLimit = 1
+        var rowDescriptor = FetchDescriptor<Occurrence>(sortBy: [SortDescriptor(\.dayKey)])
+        rowDescriptor.fetchLimit = 1
+        return [
+            try context.fetch(itemDescriptor).first?.startDayKey,
+            try context.fetch(rowDescriptor).first?.dayKey,
+        ].compactMap { $0 }.min()
     }
 
     /// What the calendar and the ring draw for the days from `startKey` through `endKey` (today or

@@ -94,27 +94,32 @@ final class CalendarRulesTests: XCTestCase {
         XCTAssertEqual(CalendarRules.weekdaySymbols(calendar: sundayFirst), sundayFirst.veryShortStandaloneWeekdaySymbols)
     }
 
-    // MARK: - Lists in use
+    // MARK: - A day's segments
 
-    func testListsInUseFromEachListsFirstDay() {
-        let firstUse: [ListKind: String] = [.evening: "2026-10-09", .morning: "2026-09-29", .day: "2026-10-03"]
-        XCTAssertEqual(CalendarRules.listsInUse(on: "2026-09-01", firstUse: firstUse), [])
-        XCTAssertEqual(CalendarRules.listsInUse(on: "2026-09-30", firstUse: firstUse), [.morning])
-        XCTAssertEqual(CalendarRules.listsInUse(on: "2026-10-03", firstUse: firstUse), [.morning, .day])
-        XCTAssertEqual(CalendarRules.listsInUse(on: "2026-10-11", firstUse: firstUse), [.morning, .day, .evening])
-        XCTAssertEqual(CalendarRules.firstEntryDayKey(firstUse: firstUse), "2026-09-29")
-        XCTAssertNil(CalendarRules.firstEntryDayKey(firstUse: [:]))
+    func testSegmentsAreTheListsInUseInOrderWithEachLook() {
+        let done = ListRules.DayLook(status: .complete, completion: .init(value: 1, isNeutral: false))
+        let looks: [ListKind: [String: ListRules.DayLook]] = [.morning: ["2026-10-12": done], .evening: ["2026-10-12": done]]
+
+        XCTAssertEqual(
+            CalendarRules.segments(on: "2026-10-12", lists: [.day, .morning], firstEntryDayKey: "2026-10-01", looks: looks),
+            [DaySegment(list: .morning, look: done), DaySegment(list: .day, look: nil)],
+            "morning first; the day list counted nothing (neutral); evening isn't in use, so its look isn't drawn"
+        )
+        XCTAssertEqual(
+            CalendarRules.segments(on: "2026-10-12", lists: [.morning], firstEntryDayKey: "2026-10-01", looks: looks).count, 1
+        )
+        XCTAssertEqual(
+            CalendarRules.segments(on: "2026-10-12", lists: [.evening, .day, .morning], firstEntryDayKey: "2026-10-01", looks: looks)
+                .map(\.list),
+            [.morning, .day, .evening]
+        )
     }
 
-    func testSegmentsCarryEachListsLookAndNeutralIsNil() {
-        let done = ListRules.DayLook(status: .complete, completion: .init(value: 1, isNeutral: false))
-        let segments = CalendarRules.segments(
-            on: "2026-10-12",
-            firstUse: [.morning: "2026-10-01", .day: "2026-10-01"],
-            looks: [.morning: ["2026-10-12": done], .evening: ["2026-10-12": done]]
-        )
-        XCTAssertEqual(segments, [DaySegment(list: .morning, look: done), DaySegment(list: .day, look: nil)],
-                       "evening isn't in use yet, so its look isn't drawn")
+    func testDaysBeforeTheFirstEntryHaveNoSegments() {
+        XCTAssertTrue(CalendarRules.segments(on: "2026-09-30", lists: [.morning], firstEntryDayKey: "2026-10-01", looks: [:]).isEmpty)
+        XCTAssertTrue(CalendarRules.segments(on: "2026-10-05", lists: [.morning], firstEntryDayKey: nil, looks: [:]).isEmpty)
+        XCTAssertEqual(CalendarRules.segments(on: "2026-10-01", lists: [.morning], firstEntryDayKey: "2026-10-01", looks: [:]),
+                       [DaySegment(list: .morning, look: nil)])
     }
 
     // MARK: - Planned days

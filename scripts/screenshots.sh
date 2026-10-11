@@ -38,6 +38,7 @@ mkdir -p "$OUT"
 # 04-calendar opens on the current month, 24 on the next one (-uiCalendarMonth +1); 25 is Home three
 # days ahead (-uiDay +3), with a planned one-off and the recurring items due that day. The calendar
 # shots use a British locale (-AppleLocale en_GB), so weeks start on Monday as on Liam's phone.
+# 27 and 28 keep only the morning list, then morning and day (-uiOnlyLists): one and two segments.
 SHOTS=(
   "01-home-morning|morning|home|light|"
   "02-home-daily|daily|home|light|"
@@ -65,6 +66,8 @@ SHOTS=(
   "24-calendar-next-month|daily|calendar|light||-uiCalendarMonth +1 -AppleLocale en_GB"
   "25-home-future-day|daily|home|light||-uiDay +3"
   "26-calendar-dark|daily|calendar|dark||-AppleLocale en_GB"
+  "27-calendar-one-list|daily|calendar|light||-uiOnlyLists morning -AppleLocale en_GB"
+  "28-calendar-two-lists|daily|calendar|light||-uiOnlyLists morning,day -AppleLocale en_GB"
 )
 
 for shot in "${SHOTS[@]}"; do

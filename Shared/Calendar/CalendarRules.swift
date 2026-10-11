@@ -94,29 +94,21 @@ enum CalendarRules {
         return (0..<7).map { symbols[(calendar.firstWeekday - 1 + $0) % 7] }
     }
 
-    // MARK: - Lists in use
+    // MARK: - A day's segments
 
-    /// The lists a day's circle shows: those in use on that day, from the first day each had an
-    /// item or an occurrence (`firstUse`), in morning → day → evening order.
-    static func listsInUse(on dayKey: String, firstUse: [ListKind: String]) -> [ListKind] {
-        ListKind.allCases.filter { list in
-            guard let first = firstUse[list] else { return false }
-            return first <= dayKey
-        }
-    }
-
-    /// The first day any list was in use (the calendar's first entry).
-    static func firstEntryDayKey(firstUse: [ListKind: String]) -> String? {
-        firstUse.values.min()
-    }
-
-    /// The segments of a day's circle: one per list in use that day, each with its day look.
+    /// The segments of a day's circle: one per list in use (`ListService.isInUse`, the same rule as
+    /// the header's evening streak), in morning → day → evening order, each with its day look. A day
+    /// before the first entry has none: it's drawn as a plain date.
     static func segments(
         on dayKey: String,
-        firstUse: [ListKind: String],
+        lists: [ListKind],
+        firstEntryDayKey: String?,
         looks: [ListKind: [String: ListRules.DayLook]]
     ) -> [DaySegment] {
-        listsInUse(on: dayKey, firstUse: firstUse).map { DaySegment(list: $0, look: looks[$0]?[dayKey]) }
+        guard let firstEntryDayKey, dayKey >= firstEntryDayKey else { return [] }
+        return ListKind.allCases
+            .filter { lists.contains($0) }
+            .map { DaySegment(list: $0, look: looks[$0]?[dayKey]) }
     }
 
     // MARK: - Planned days

@@ -23,8 +23,10 @@ final class CalendarModel: ObservableObject {
     /// The calendar's months: from the first entry's month (or the current one, if earlier) through
     /// the next 12 months.
     let months: [CalendarRules.Month]
-    /// The first day each list was in use: a day's circle has a segment per list in use then.
-    let firstUse: [ListKind: String]
+    /// The lists in use (a day's circle has a segment for each) and the first entry's day (days
+    /// before it are plain).
+    let lists: [ListKind]
+    let firstEntryDayKey: String?
     @Published private(set) var loaded: [String: MonthData] = [:]
 
     private let items: [Item]
@@ -34,23 +36,22 @@ final class CalendarModel: ObservableObject {
         self.calendar = calendar
         let todayKey = HomeModel.dayKey(for: now, calendar: calendar)
         self.todayKey = todayKey
-        var firstUse: [ListKind: String] = [:]
+        var lists: [ListKind] = []
+        var firstEntryDayKey: String?
         var items: [Item] = []
         do {
-            firstUse = try ListService.firstUseDayKeys(context: context)
+            lists = try ListService.listsInUse(context: context)
+            firstEntryDayKey = try ListService.firstEntryDayKey(context: context)
             items = try ListService.allItems(context: context)
         } catch {
             AppLogger.persistence.error("Calendar setup failed: \(error.localizedDescription, privacy: .public)")
         }
-        self.firstUse = firstUse
+        self.lists = lists
+        self.firstEntryDayKey = firstEntryDayKey
         self.items = items
         // Each day is judged by its own stored rules; today by the settings if it has none yet.
-        var history = DayRulesStore.history(in: defaults)
-        if history.stored[todayKey] == nil {
-            history.stored[todayKey] = AppSettings.currentRules(in: defaults)
-        }
-        self.history = history
-        months = CalendarRules.months(firstEntryDayKey: CalendarRules.firstEntryDayKey(firstUse: firstUse), todayKey: todayKey)
+        history = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey)
+        months = CalendarRules.months(firstEntryDayKey: firstEntryDayKey, todayKey: todayKey)
     }
 
     var currentMonth: CalendarRules.Month? {
