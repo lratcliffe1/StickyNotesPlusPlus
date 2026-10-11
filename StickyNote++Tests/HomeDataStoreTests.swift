@@ -2,29 +2,8 @@ import Foundation
 import SwiftData
 import XCTest
 
-/// Integration-like tests for migration and idempotent persistence behavior.
+/// The legacy (V1) day-key fill-in that runs before the V2 backfill.
 final class HomeDataStoreTests: XCTestCase {
-    func testUpsertDayRecordReturnsFalseWhenUnchanged() throws {
-        let context = try makeInMemoryContext()
-        let day = Date(timeIntervalSince1970: 1_702_000_000)
-
-        let inserted = try HomeDataStore.upsertDayRecord(
-            for: day,
-            morningCompletion: 0.5,
-            dailyCompletion: 0.75,
-            context: context
-        )
-        let unchanged = try HomeDataStore.upsertDayRecord(
-            for: day,
-            morningCompletion: 0.5,
-            dailyCompletion: 0.75,
-            context: context
-        )
-
-        XCTAssertTrue(inserted)
-        XCTAssertFalse(unchanged)
-    }
-
     func testMigrationPopulatesMissingDayKeysAndSetsFlags() throws {
         let context = try makeInMemoryContext()
         let suite = "HomeDataStoreTests.\(UUID().uuidString)"

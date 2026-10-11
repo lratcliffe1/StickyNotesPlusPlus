@@ -28,7 +28,7 @@ enum SharedPersistence {
     }
 
     static func appSchema() -> Schema {
-        Schema(versionedSchema: StickyNotesSchemaV1.self)
+        Schema(versionedSchema: StickyNotesSchemaV2.self)
     }
 
     static func makeContainer(schema: Schema = appSchema()) throws -> ModelContainer {
