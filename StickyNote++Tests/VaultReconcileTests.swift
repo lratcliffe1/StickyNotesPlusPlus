@@ -408,6 +408,33 @@ final class VaultReconcileTests: XCTestCase {
         XCTAssertEqual(try allRows().count, 1)
     }
 
+    func testAFutureTaskMovedToTodayAndTickedIsNotAddedAgain() throws {
+        // Imported on the 14th for the 18th.
+        try reconcile([task("a", day: "2026-10-18")])
+        // On the 16th, Now.md says "do it today".
+        let moved = try reconcile([task("a", day: "2026-10-16")], at: TestCalendars.date("2026-10-16", 8))
+        XCTAssertEqual(moved.added, ["a"])
+        XCTAssertEqual(moved.removed, ["a"])
+        XCTAssertNil(try row("a", on: "2026-10-18"))
+        XCTAssertEqual(VaultManifest.load(from: defaults)?.entries["a"]?.scheduledFor, "2026-10-16")
+        try ListService.complete(try XCTUnwrap(row("a", on: "2026-10-16")), at: TestCalendars.date("2026-10-16", 10), context: context)
+
+        for day in ["2026-10-17", "2026-10-18"] {
+            let carried = try reconcile([task("a", day: day)], at: TestCalendars.date(day, 9))
+            XCTAssertTrue(carried.added.isEmpty, "carried to \(day): settled by the tick on the 16th")
+        }
+        XCTAssertEqual(try allRows().count, 1)
+    }
+
+    func testAFutureTaskMovedToTodayButNotTickedGetsAFreshRowTheNextDay() throws {
+        try reconcile([task("a", day: "2026-10-18")])
+        try reconcile([task("a", day: "2026-10-16")], at: TestCalendars.date("2026-10-16", 8))
+        let carried = try reconcile([task("a", day: "2026-10-17")], at: TestCalendars.date("2026-10-17", 9))
+        XCTAssertEqual(carried.added, ["a"])
+        XCTAssertEqual(try row("a", on: "2026-10-16")?.state, .open, "the 16th stays its miss")
+        XCTAssertEqual(try row("a", on: "2026-10-17")?.state, .open)
+    }
+
     func testATaskGoneAndBackWithAnEarlierDayIsSettledByItsTick() throws {
         try reconcile([task("a", day: "2026-10-20")])
         try reconcile([], at: TestCalendars.date("2026-10-15", 9))

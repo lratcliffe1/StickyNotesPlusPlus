@@ -84,6 +84,10 @@ extension ListService {
                 // An explicit future day: the scheduling is that day, earlier or later than before
                 // (a tick on or after it settles the task again).
                 entry.scheduledFor = task.dayKey
+            } else if let scheduled = entry.scheduledFor, scheduled > todayKey {
+                // Was scheduled for a later day, now due today (or carried): the scheduling is
+                // today, so a tick today settles it.
+                entry.scheduledFor = todayKey
             }
             // Rows older than 62 days leave the manifest (they stay in the store); a settling among
             // them is kept in `settledOnTrimmed`.
