@@ -136,10 +136,33 @@ enum ListService {
         calendar: Calendar = .current
     ) throws -> HomeModel.StreakState {
         let rows = try occurrences(through: anchorKey, list: list, context: context)
-        return ListRules.streakState(through: anchorKey, occurrences: rows) { key in
+        let schedules = try self.schedules(for: list, context: context)
+        return ListRules.streakState(through: anchorKey, occurrences: rows, schedules: schedules, calendar: calendar) { key in
             guard list == .morning, let day = HomeModel.date(fromDayKey: key, calendar: calendar) else { return nil }
             return HomeModel.morningDeadline(for: day, mode: morningMode, calendar: calendar)
         }
+    }
+
+    /// Every item of a list (ended ones too), as schedules for judging days nobody opened.
+    static func schedules(for list: ListKind, context: ModelContext) throws -> [ListRules.ItemSchedule] {
+        try items(in: list, context: context).map(\.schedule)
+    }
+
+    /// Past days (before `anchorKey`) that count as misses for a list although nobody opened them
+    /// (see `ListRules.unopenedMisses`). The ring and calendar show these as 0%.
+    static func unopenedMissDays(
+        for list: ListKind,
+        before anchorKey: String,
+        context: ModelContext,
+        calendar: Calendar = .current
+    ) throws -> Set<String> {
+        let opened = Set(try occurrences(through: anchorKey, list: list, context: context).map(\.dayKey))
+        return ListRules.unopenedMisses(
+            schedules: try schedules(for: list, context: context),
+            openedDays: opened,
+            before: anchorKey,
+            calendar: calendar
+        )
     }
 
     // MARK: - Completing, skipping

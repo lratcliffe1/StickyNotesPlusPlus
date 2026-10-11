@@ -16,6 +16,7 @@ private enum CalendarMonthLayoutMetrics {
 
 struct CalendarView: View {
     @Query(sort: \Occurrence.dayKey) private var occurrences: [Occurrence]
+    @Query(sort: \Item.sortOrder) private var items: [Item]
 
     let selectedDay: Date
     let onSelectDay: (Date) -> Void
@@ -140,16 +141,29 @@ struct CalendarView: View {
     /// Morning and day lists only; the evening list isn't shown yet.
     private var dayProgressLookup: [Date: HomeModel.DayProgress] {
         let byDayKey = Dictionary(grouping: occurrences, by: \.dayKey)
-        var lookup: [Date: HomeModel.DayProgress] = [:]
-        lookup.reserveCapacity(byDayKey.count)
+        // Past days nobody opened, with something due, show as 0% rather than neutral grey.
+        let todayKey = HomeModel.dayKey(for: Date())
+        func misses(_ list: ListKind) -> Set<String> {
+            ListRules.unopenedMisses(
+                schedules: items.filter { $0.list == list }.map(\.schedule),
+                openedDays: Set(occurrences.filter { $0.list == list }.map(\.dayKey)),
+                before: todayKey
+            )
+        }
+        let morningMisses = misses(.morning)
+        let dailyMisses = misses(.day)
 
-        for (dayKey, rows) in byDayKey {
+        var lookup: [Date: HomeModel.DayProgress] = [:]
+        lookup.reserveCapacity(byDayKey.count + morningMisses.count + dailyMisses.count)
+
+        for dayKey in Set(byDayKey.keys).union(morningMisses).union(dailyMisses) {
             guard let parsed = HomeModel.date(fromDayKey: dayKey, calendar: calendar) else { continue }
             let day = HomeModel.normalizedDay(parsed, calendar: calendar)
+            let rows = byDayKey[dayKey] ?? []
             lookup[day] = HomeModel.DayProgress(
                 date: day,
-                morning: ListRules.completion(rows.filter { $0.list == .morning }),
-                daily: ListRules.completion(rows.filter { $0.list == .day })
+                morning: ListRules.completion(rows.filter { $0.list == .morning }, isUnopenedMiss: morningMisses.contains(dayKey)),
+                daily: ListRules.completion(rows.filter { $0.list == .day }, isUnopenedMiss: dailyMisses.contains(dayKey))
             )
         }
 

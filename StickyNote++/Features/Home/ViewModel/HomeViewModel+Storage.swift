@@ -52,6 +52,15 @@ extension HomeViewModel {
         }
     }
 
+    func unopenedMissDays(for list: ListKind, context: ModelContext) -> Set<String> {
+        do {
+            return try repository.unopenedMissDays(for: list, before: HomeModel.dayKey(for: now), context: context)
+        } catch {
+            AppLogger.persistence.error("Unopened misses for \(list.rawValue, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
     // MARK: - Writing
 
     /// Runs one `ListService` write, logging (and rolling back) on failure.

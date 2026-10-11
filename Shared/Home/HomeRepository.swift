@@ -13,6 +13,8 @@ protocol HomeRepository {
         morningMode: HomeModel.MorningMode,
         context: ModelContext
     ) throws -> HomeModel.StreakState
+    /// Past days nobody opened that still count as misses (something was due).
+    func unopenedMissDays(for list: ListKind, before anchorKey: String, context: ModelContext) throws -> Set<String>
 }
 
 struct SwiftDataHomeRepository: HomeRepository {
@@ -38,5 +40,9 @@ struct SwiftDataHomeRepository: HomeRepository {
         context: ModelContext
     ) throws -> HomeModel.StreakState {
         try ListService.streakState(for: list, through: anchorKey, morningMode: morningMode, context: context, calendar: .current)
+    }
+
+    func unopenedMissDays(for list: ListKind, before anchorKey: String, context: ModelContext) throws -> Set<String> {
+        try ListService.unopenedMissDays(for: list, before: anchorKey, context: context, calendar: .current)
     }
 }

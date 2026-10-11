@@ -82,9 +82,13 @@ enum ListRules {
     }
 
     /// Streak for one list's occurrences. `deadline` gives a day's cutoff (morning) or nil (midnight).
+    /// `schedules` are the list's items (ended ones too): past days nobody opened are judged against
+    /// what was due on them (`unopenedMisses`) instead of counting as neutral.
     static func streakState<T: OccurrenceFacts>(
         through anchorKey: String,
         occurrences: [T],
+        schedules: [ItemSchedule] = [],
+        calendar: Calendar = .current,
         deadline: (String) -> Date?
     ) -> HomeModel.StreakState {
         var byDay: [String: [T]] = [:]
@@ -95,7 +99,71 @@ enum ListRules {
         for (key, rows) in byDay {
             statuses[key] = dayStatus(rows, deadline: deadline(key))
         }
+        let misses = unopenedMisses(schedules: schedules, openedDays: Set(byDay.keys), before: anchorKey, calendar: calendar)
+        for key in misses {
+            statuses[key] = .missed
+        }
         return streakState(through: anchorKey, statuses: statuses)
+    }
+
+    // MARK: - Days nobody opened
+
+    /// An item's schedule, as plain values.
+    struct ItemSchedule {
+        let rule: RepeatRule
+        let startDayKey: String
+        /// The first day the item no longer exists on.
+        let endDayKey: String?
+
+        func isActive(on dayKey: String) -> Bool {
+            guard dayKey >= startDayKey else { return false }
+            if let endDayKey { return dayKey < endDayKey }
+            return true
+        }
+    }
+
+    /// Misses that rows can't show, because nobody opened the day the item was due.
+    ///
+    /// Only today's rows are ever created, so a past day with no rows for a list was never opened.
+    /// "Neutral" means nothing was due, not nothing was created: for each unopened day S before the
+    /// anchor, every item that existed on S and whose rule falls on S was due and was never done.
+    /// That occurrence counts as a miss on its period end P (`RepeatRule.periodEnd`), the last day it
+    /// could have been done, if P is before the anchor. For a daily item P == S, so the unopened day
+    /// itself is the miss; for a weekly item the miss lands on its period end (Sunday), whether or
+    /// not that day was opened, and the unopened days inside the period aren't misses by themselves.
+    /// A day that was opened is judged by its own rows (opening creates every item due that day).
+    static func unopenedMisses(
+        schedules: [ItemSchedule],
+        openedDays: Set<String>,
+        before anchorKey: String,
+        calendar: Calendar = .current
+    ) -> Set<String> {
+        guard let firstStart = schedules.map(\.startDayKey).min(), firstStart < anchorKey else { return [] }
+        let math = DayMath(calendar: calendar)
+        var misses: Set<String> = []
+        var day = firstStart
+        while day < anchorKey {
+            if !openedDays.contains(day) {
+                for schedule in schedules where schedule.isActive(on: day) {
+                    guard schedule.rule.occurs(on: day, startDayKey: schedule.startDayKey, math: math) else { continue }
+                    let periodEnd = schedule.rule.periodEnd(for: day, startDayKey: schedule.startDayKey, calendar: calendar)
+                    if periodEnd < anchorKey {
+                        misses.insert(periodEnd)
+                    }
+                }
+            }
+            day = math.adding(days: 1, to: day)
+        }
+        return misses
+    }
+
+    /// A day's completion for the ring and calendar: a past day nobody opened with something due
+    /// shows as 0% (a miss), not as neutral grey.
+    static func completion<T: OccurrenceFacts>(_ occurrences: [T], isUnopenedMiss: Bool) -> HomeModel.CompletionState {
+        if occurrences.isEmpty && isUnopenedMiss {
+            return HomeModel.CompletionState(value: 0, isNeutral: false)
+        }
+        return completion(occurrences)
     }
 
     // MARK: - Order

@@ -268,6 +268,37 @@ final class ListServiceTests: XCTestCase {
         XCTAssertEqual(try streak(.day), HomeModel.StreakState(count: 0, isFrozen: false), "an empty list is neutral")
     }
 
+    /// Not opening the app is a miss when something was due: here the morning on Sunday 11.10.
+    func testUnopenedMorningWithItemsDueIsAMiss() throws {
+        let cutoff = HomeModel.MorningMode.cutoff(time: DateComponents(hour: 9, minute: 0))
+        insertItem("Water", start: "2026-10-10")
+        context.insert(Occurrence(list: .morning, dayKey: "2026-10-10", title: "Water", state: .done, completedAt: TestCalendars.date("2026-10-10", 8)))
+        try context.save()
+
+        XCTAssertEqual(try ListService.unopenedMissDays(for: .morning, before: "2026-10-12", context: context, calendar: munich), ["2026-10-11"])
+        let streak = try ListService.streakState(for: .morning, through: "2026-10-12", morningMode: cutoff, context: context, calendar: munich)
+        XCTAssertEqual(streak, HomeModel.StreakState(count: 1, isFrozen: true))
+        XCTAssertTrue(try ListService.unopenedMissDays(for: .day, before: "2026-10-12", context: context, calendar: munich).isEmpty,
+                      "the day list has no items, so nothing was due on it")
+    }
+
+    func testDeletedItemDoesNotCountDaysAfterItsDeletion() throws {
+        let cutoff = HomeModel.MorningMode.cutoff(time: DateComponents(hour: 9, minute: 0))
+        let water = insertItem("Water", start: "2026-10-09")
+        for key in ["2026-10-09", "2026-10-10"] {
+            context.insert(Occurrence(itemID: water.id, list: .morning, dayKey: key, title: "Water", state: .done,
+                                      completedAt: TestCalendars.date(key, 8), scheduledDayKey: key, periodEndDayKey: key))
+        }
+        try context.save()
+        func streak() throws -> HomeModel.StreakState {
+            try ListService.streakState(for: .morning, through: "2026-10-13", morningMode: cutoff, context: context, calendar: munich)
+        }
+        XCTAssertEqual(try streak(), HomeModel.StreakState(count: 0, isFrozen: false), "11 and 12 unopened with Water due")
+
+        try ListService.deleteItem(water, todayKey: "2026-10-11", context: context)
+        XCTAssertEqual(try streak(), HomeModel.StreakState(count: 2, isFrozen: false))
+    }
+
     func testMorningCutoffAppliesOnlyToTheMorningList() throws {
         let cutoff = HomeModel.MorningMode.cutoff(time: DateComponents(hour: 9, minute: 0))
         context.insert(Occurrence(list: .morning, dayKey: "2026-10-11", title: "Water", state: .done, completedAt: TestCalendars.date("2026-10-11", 10)))

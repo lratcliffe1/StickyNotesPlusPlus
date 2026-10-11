@@ -108,6 +108,76 @@ final class StreakRuleTests: XCTestCase {
         XCTAssertEqual(streak(late, through: "2026-10-13", deadline: cutoff).count, 0)
     }
 
+    // MARK: - Days nobody opened
+
+    private func schedule(_ rule: RepeatRule = .daily, start: String, end: String? = nil) -> ListRules.ItemSchedule {
+        ListRules.ItemSchedule(rule: rule, startDayKey: start, endDayKey: end)
+    }
+
+    private func streak(_ rows: [FactRow], schedules: [ListRules.ItemSchedule], through anchor: String) -> HomeModel.StreakState {
+        ListRules.streakState(through: anchor, occurrences: rows, schedules: schedules, calendar: TestCalendars.munich) { _ in nil }
+    }
+
+    func testUnopenedDayWithADailyItemDueIsAMiss() {
+        let rows = [row("2026-10-10", .done)]
+        let daily = [schedule(start: "2026-10-10")]
+        XCTAssertEqual(streak(rows, schedules: daily, through: "2026-10-12"), HomeModel.StreakState(count: 1, isFrozen: true))
+        XCTAssertEqual(streak(rows, through: "2026-10-12"), HomeModel.StreakState(count: 1, isFrozen: false), "without items it stays neutral")
+    }
+
+    /// Sunday 11.10 unopened: one item starts later, one ended the day before, and a Saturday-weekly
+    /// item isn't scheduled on Sunday (its Saturday was opened).
+    func testUnopenedDayWithNothingDueIsNeutral() {
+        let rows = [row("2026-10-10", .done)]
+        let schedules = [
+            schedule(start: "2026-10-12"),
+            schedule(start: "2026-10-10", end: "2026-10-11"),
+            schedule(.weekly(on: [7]), start: "2026-10-10"),
+        ]
+        XCTAssertEqual(
+            ListRules.unopenedMisses(schedules: schedules, openedDays: ["2026-10-10"], before: "2026-10-12", calendar: TestCalendars.munich),
+            []
+        )
+        XCTAssertEqual(streak(rows, schedules: schedules, through: "2026-10-12"), HomeModel.StreakState(count: 1, isFrozen: false))
+    }
+
+    func testTwoUnopenedDaysInARowReset() {
+        let rows = [row("2026-10-08", .done), row("2026-10-09", .done)]
+        XCTAssertEqual(streak(rows, schedules: [schedule(start: "2026-10-08")], through: "2026-10-12"), HomeModel.StreakState(count: 0, isFrozen: false))
+    }
+
+    func testItemEndedBeforeAnUnopenedDayIsNotCountedAgainstIt() {
+        let rows = [row("2026-10-09", .done), row("2026-10-10", .done)]
+        let ended = [schedule(start: "2026-10-09", end: "2026-10-11")]
+        XCTAssertEqual(streak(rows, schedules: ended, through: "2026-10-13"), HomeModel.StreakState(count: 2, isFrozen: false))
+    }
+
+    /// A Wednesday-weekly item due on unopened Wednesday 7.10 is a miss on its period end,
+    /// Sunday 11.10, not on the Wednesday; the opened days in between still count.
+    func testUnopenedWeeklyOccurrenceIsAMissOnItsPeriodEnd() {
+        let weekly = [schedule(.weekly(on: [4]), start: "2026-10-07")]
+        let opened: Set<String> = ["2026-10-08", "2026-10-09", "2026-10-10"]
+        XCTAssertEqual(
+            ListRules.unopenedMisses(schedules: weekly, openedDays: opened, before: "2026-10-13", calendar: TestCalendars.munich),
+            ["2026-10-11"]
+        )
+        let rows = opened.map { row($0, .done) }
+        XCTAssertEqual(streak(rows, schedules: weekly, through: "2026-10-13"), HomeModel.StreakState(count: 3, isFrozen: true))
+    }
+
+    func testUnopenedMissIsNotCountedBeforeItsPeriodEndHasPassed() {
+        let weekly = [schedule(.weekly(on: [4]), start: "2026-10-07")]
+        XCTAssertEqual(
+            ListRules.unopenedMisses(schedules: weekly, openedDays: [], before: "2026-10-11", calendar: TestCalendars.munich),
+            [], "Sunday is the anchor (today): still time"
+        )
+    }
+
+    func testUnopenedMissShowsAsZeroNotNeutral() {
+        XCTAssertEqual(ListRules.completion([FactRow](), isUnopenedMiss: true), HomeModel.CompletionState(value: 0, isNeutral: false))
+        XCTAssertEqual(ListRules.completion([FactRow](), isUnopenedMiss: false), .neutral)
+    }
+
     // MARK: - Order and duplicates
 
     func testOrderIsItemsThenCantBumpOneOffsThenOthersByCreation() {

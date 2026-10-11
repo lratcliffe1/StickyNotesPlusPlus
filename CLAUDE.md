@@ -53,7 +53,8 @@ In Debug builds only, launching with `-uiScenario <morning|daily|empty|missedYes
 Fix these as the planned work reaches them, not in passing:
 - Leaving the app open overnight leaves it on yesterday.
 - The morning cutoff has no settings screen, so it's fixed at 09:00.
-- Only today's occurrences are created, when the app or widget first reads the day. A day nobody opens has no rows, so it's neutral for every streak.
+- Only today's occurrences are created, when the app or widget first reads the day. A day nobody opens has no rows, so streaks judge it by what was due (`ListRules.unopenedMisses`): an item due that day is a miss on its period end. Any row at all for a list marks the day as opened for that list, including a one-off added ahead of time or bumped in.
+- Streaks, the ring and the calendar read each list's whole history on every refresh. Fine at today's size; not measured at years of data.
 - The app and the widget both write the store without coordinating.
 - `CalendarView` uses a UIKit collection view with hand-computed heights. Its weeks start on Sunday, and it shows whole years (the current year ±1, widened to fit the data, plus a year's padding each side).
 - Xcode 26 will respect the targets' `SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor`, which Xcode 16 ignores. Expect to mark the schema enums (and similar) `nonisolated` when CI moves up.

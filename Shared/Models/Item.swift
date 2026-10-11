@@ -68,6 +68,10 @@ final class Item {
         BumpLimit(kindRaw: defaultBumpLimitRaw, days: defaultBumpLimitDays, deadlineDayKey: nil)
     }
 
+    var schedule: ListRules.ItemSchedule {
+        ListRules.ItemSchedule(rule: repeatRule, startDayKey: startDayKey, endDayKey: endDayKey)
+    }
+
     /// Whether the item exists on `dayKey` (whether it falls due there is the repeat rule's call).
     func isActive(on dayKey: String) -> Bool {
         guard dayKey >= startDayKey else { return false }

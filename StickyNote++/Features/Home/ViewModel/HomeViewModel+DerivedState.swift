@@ -49,6 +49,9 @@ extension HomeViewModel {
             grouping: fetchOccurrences(from: startKey, through: endKey, list: .day, context: context),
             by: \.dayKey
         )
+        // Past days nobody opened, with something due: shown as 0%, not as neutral grey.
+        let morningMisses = unopenedMissDays(for: .morning, context: context)
+        let dailyMisses = unopenedMissDays(for: .day, context: context)
 
         sevenDayProgress = (0..<progressWindowDays).compactMap { offset in
             guard let dayRaw = calendar.date(byAdding: .day, value: offset, to: startDay) else { return nil }
@@ -56,8 +59,8 @@ extension HomeViewModel {
             let key = HomeModel.dayKey(for: day, calendar: calendar)
             return HomeModel.DayProgress(
                 date: day,
-                morning: ListRules.completion(morningByDay[key] ?? []),
-                daily: ListRules.completion(dailyByDay[key] ?? [])
+                morning: ListRules.completion(morningByDay[key] ?? [], isUnopenedMiss: morningMisses.contains(key)),
+                daily: ListRules.completion(dailyByDay[key] ?? [], isUnopenedMiss: dailyMisses.contains(key))
             )
         }
     }
