@@ -10,9 +10,7 @@ DERIVED="${DERIVED_DATA:-build/DerivedData}"
 SETTLE_SECONDS="${SETTLE_SECONDS:-5}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-# Pick (or create) the simulator and start it booting now: a first boot takes minutes, so it
-# overlaps the build instead of following it.
-UDID=$("$HERE/ci-simulator.sh" --boot)
+UDID=$("$HERE/ci-simulator.sh")
 
 xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug \
   -destination "id=$UDID" -derivedDataPath "$DERIVED" COMPILER_INDEX_STORE_ENABLE=NO build -quiet

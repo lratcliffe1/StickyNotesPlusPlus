@@ -40,10 +40,9 @@ jobs:
           restore-keys: |
             xcode-modules-${{ runner.os }}-${{ steps.xcode.outputs.version }}-
 
-      # Booting takes minutes on a fresh runner, so it runs in the background during the build.
-      - name: Pick a simulator and start booting it
+      - name: Pick a simulator
         id: sim
-        run: echo "udid=$(scripts/ci-simulator.sh --boot)" >> "$GITHUB_OUTPUT"
+        run: echo "udid=$(scripts/ci-simulator.sh)" >> "$GITHUB_OUTPUT"
 
       # One build: the app (which embeds the widget) and the test bundle. The tests then run on
       # exactly these products, without rebuilding.
@@ -53,7 +52,7 @@ jobs:
           -destination "id=${{ steps.sim.outputs.udid }}" -derivedDataPath "$DERIVED_DATA"
           COMPILER_INDEX_STORE_ENABLE=NO build-for-testing
 
-      - name: Wait for the simulator
+      - name: Boot the simulator
         run: xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
 
       # Serial on the booted simulator: parallel testing would clone it first, which costs minutes.
