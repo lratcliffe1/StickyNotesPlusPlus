@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Prints the UDID of an available iPhone simulator (DEVICE_NAME, default "iPhone 16"), preferring the
-# Xcode SDK's iOS version and creating one if none is listed. Fresh CI runners sometimes list no iPhone
-# at first, which breaks `-destination "platform=iOS Simulator,name=..."`; use `-destination id=<UDID>`.
+# Prints the UDID of an available iPhone simulator (DEVICE_NAME, default "iPhone 16") on the newest
+# iOS runtime installed (what a `name=` destination picks; set SIM_OS, e.g. "18.5", to pin a version),
+# creating one if none is listed. Fresh CI runners sometimes list no iPhone at first, which breaks
+# `-destination "platform=iOS Simulator,name=..."`; use `-destination id=<UDID>` instead.
 #
 #   UDID=$(scripts/ci-simulator.sh)
 #
@@ -13,27 +14,25 @@ set -euo pipefail
 DEVICE_NAME="${DEVICE_NAME:-iPhone 16}"
 DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.$(echo "$DEVICE_NAME" | tr ' ' '-')"
 
-# Prefer the iOS version of the SDK this Xcode builds against (what `name=` destinations pick, and
-# far quicker to boot than a newer runtime the runner also has), else the newest runtime listed.
-SDK_VERSION=$(xcrun --sdk iphonesimulator --show-sdk-version 2>/dev/null || true)
+SIM_OS="${SIM_OS:-}"
 
 # awk reads all of simctl's output (no early-exit pipe to trip pipefail). Sections are listed oldest
-# runtime first; "iPhone 16 (" excludes "iPhone 16 Pro". Prints the SDK-version match, else the last match.
+# runtime first; "iPhone 16 (" excludes "iPhone 16 Pro". Prints the SIM_OS match if set, else the newest.
 find_udid() {
   xcrun simctl list devices available \
-    | awk -v want="    ${DEVICE_NAME} (" -v sdk="-- iOS ${SDK_VERSION} --" '
-        /^-- / { ios = ($0 ~ /^-- iOS /); exact = ($0 == sdk) }
-        ios && index($0, want) == 1 { last = $0; if (exact) match_sdk = $0 }
-        END { if (match_sdk != "") print match_sdk; else if (last != "") print last }' \
+    | awk -v want="    ${DEVICE_NAME} (" -v os="-- iOS ${SIM_OS} --" -v pinned="${SIM_OS}" '
+        /^-- / { ios = ($0 ~ /^-- iOS /); exact = ($0 == os) }
+        ios && index($0, want) == 1 { last = $0; if (exact) match_os = $0 }
+        END { if (pinned != "") { if (match_os != "") print match_os } else if (last != "") print last }' \
     | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/'
 }
 
 # Runtime lines end with the identifier: "iOS 18.5 (18.5 - 22F77) - com.apple.CoreSimulator.SimRuntime.iOS-18-5".
 find_runtime() {
   xcrun simctl list runtimes available \
-    | awk -v sdk="iOS ${SDK_VERSION} (" '
-        /^iOS / { last = $NF; if (index($0, sdk) == 1) exact = $NF }
-        END { if (exact != "") print exact; else print last }'
+    | awk -v os="iOS ${SIM_OS} (" -v pinned="${SIM_OS}" '
+        /^iOS / { last = $NF; if (index($0, os) == 1) exact = $NF }
+        END { if (pinned != "") print exact; else print last }'
 }
 
 UDID=""
