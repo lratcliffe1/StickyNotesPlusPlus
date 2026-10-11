@@ -28,8 +28,16 @@ enum AppSettings {
         return DayRules(
             morningEnd: end,
             morningEndMinutes: endMinutes,
-            eveningStartMinutes: eveningOn ? eveningMinutes : nil
+            eveningStartMinutes: eveningOn ? clampedEveningStart(eveningMinutes) : nil
         )
+    }
+
+    /// The evening can start from 12:00 to 23:45 (the Settings picker's range): a start at 00:00
+    /// would make the whole day evening.
+    static let eveningStartRange = (12 * 60)...(23 * 60 + 45)
+
+    static func clampedEveningStart(_ minutes: Int) -> Int {
+        min(eveningStartRange.upperBound, max(eveningStartRange.lowerBound, minutes))
     }
 
     // MARK: - The removed wake-up window

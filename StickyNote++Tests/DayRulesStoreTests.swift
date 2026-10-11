@@ -61,13 +61,17 @@ final class DayRulesStoreTests: XCTestCase {
         XCTAssertEqual(DayRulesStore.history(in: defaults).stored, ["2026-10-12": setEight])
     }
 
-    func testSettingsChangeRewritesTodayOnly() {
+    func testSettingsChangeRewritesTodayOnly() throws {
         DayRulesStore.record(setEight, for: "2026-10-11", in: defaults)
         DayRulesStore.record(setEight, for: "2026-10-12", in: defaults)
         defaults.set(DayRules.MorningEnd.doneOrSkipped.rawValue, forKey: AppSettings.morningEndKey)
         defaults.set(false, forKey: AppSettings.eveningEnabledKey)
 
-        ListService.applySettingsToToday(now: TestCalendars.date("2026-10-12", 7), calendar: munich, defaults: defaults)
+        let context = try StoreTestSupport.makeContext()
+        let waits = try ListService.applySettingsToToday(
+            now: TestCalendars.date("2026-10-12", 7), calendar: munich, defaults: defaults, context: context
+        )
+        XCTAssertFalse(waits, "07:00 is before both 08:00 and 12:00, and the morning isn't done")
 
         let stored = DayRulesStore.history(in: defaults).stored
         XCTAssertEqual(stored["2026-10-11"], setEight, "past days never change")
@@ -96,7 +100,126 @@ final class DayRulesStoreTests: XCTestCase {
         defaults.set(junk, forKey: DayRulesStore.storageKey)
         XCTAssertFalse(DayRulesStore.record(setNine, for: "2026-10-12", in: defaults))
         XCTAssertEqual(defaults.data(forKey: DayRulesStore.storageKey), junk)
-        XCTAssertEqual(DayRulesStore.history(in: defaults).rules(for: "2026-10-12"), .legacy)
+        XCTAssertEqual(DayRulesStore.history(in: defaults).rules(for: "2026-10-11"), .legacy)
+        // App and widget fall back the same way: today from the settings as they are.
+        defaults.set(8 * 60, forKey: AppSettings.morningCutoffMinutesKey)
+        XCTAssertEqual(DayRulesStore.resolvedHistory(in: defaults, todayKey: "2026-10-12").rules(for: "2026-10-12"), setEight)
+    }
+
+    /// Each record reads on its own, and each field has a default: one bad record doesn't lose
+    /// the rest, and a record from a later build (an extra field, a new mode) still reads.
+    func testRecordsDecodeOneByOneWithFieldDefaults() {
+        let json = """
+        {
+          "2026-10-10": {"morningEnd": "setTime", "morningEndMinutes": 480, "eveningStartMinutes": 1260},
+          "2026-10-11": {"morningEnd": "doneOrSkipped", "morningEndMinutes": 540, "windDownMinutes": 30},
+          "2026-10-12": {"morningEnd": "someFutureMode"},
+          "2026-10-13": "not a record"
+        }
+        """
+        defaults.set(Data(json.utf8), forKey: DayRulesStore.storageKey)
+        let stored = DayRulesStore.history(in: defaults).stored
+        XCTAssertEqual(stored["2026-10-10"], setEight)
+        XCTAssertEqual(stored["2026-10-11"], doneOrSkipped, "the unknown field is ignored; no evening key means Off")
+        XCTAssertEqual(stored["2026-10-12"], DayRules(morningEnd: .setTime, morningEndMinutes: 9 * 60, eveningStartMinutes: nil))
+        XCTAssertNil(stored["2026-10-13"])
+        XCTAssertFalse(DayRulesStore.record(setNine, for: "2026-10-14", in: defaults), "not everything read: never written over")
+    }
+
+    func testEveningStartIsClampedToNoonThrough2345() {
+        defaults.set(0, forKey: AppSettings.eveningStartMinutesKey)
+        XCTAssertEqual(AppSettings.currentRules(in: defaults).eveningStartMinutes, 12 * 60, "00:00 would make the whole day evening")
+        defaults.set(23 * 60 + 59, forKey: AppSettings.eveningStartMinutesKey)
+        XCTAssertEqual(AppSettings.currentRules(in: defaults).eveningStartMinutes, 23 * 60 + 45)
+        defaults.set(20 * 60 + 30, forKey: AppSettings.eveningStartMinutesKey)
+        XCTAssertEqual(AppSettings.currentRules(in: defaults).eveningStartMinutes, 20 * 60 + 30)
+        XCTAssertEqual(AppSettings.clampedEveningStart(-5), 12 * 60)
+    }
+
+    // MARK: - A settings change never redecides a decided morning
+
+    /// Finished at 08:30 under 09:00; at 10:00 the time moves to 08:00. Today keeps 09:00, so it
+    /// stays complete; the 08:00 applies from tomorrow.
+    func testFinishedMorningKeepsItsTimeWhenTheSettingMovesEarlier() throws {
+        let context = try StoreTestSupport.makeContext()
+        context.insert(Occurrence(list: .morning, dayKey: "2026-10-12", title: "Water", state: .done,
+                                  completedAt: TestCalendars.date("2026-10-12", 8, 30)))
+        try context.save()
+        DayRulesStore.record(setNine, for: "2026-10-12", in: defaults)
+        defaults.set(8 * 60, forKey: AppSettings.morningCutoffMinutesKey)
+
+        let waits = try ListService.applySettingsToToday(
+            now: TestCalendars.date("2026-10-12", 10), calendar: munich, defaults: defaults, context: context
+        )
+        XCTAssertTrue(waits)
+        let history = DayRulesStore.history(in: defaults)
+        XCTAssertEqual(history.stored["2026-10-12"], setNine)
+        let looks = try ListService.dayLooks(
+            for: .morning, through: "2026-10-12", todayKey: "2026-10-13", history: history, context: context, calendar: munich
+        )
+        XCTAssertEqual(looks["2026-10-12"]?.status, .complete)
+
+        // Tomorrow is stored from the settings: 08:00.
+        try ListService.prepare(context: context, now: TestCalendars.date("2026-10-13", 7), calendar: munich, defaults: defaults)
+        XCTAssertEqual(DayRulesStore.history(in: defaults).stored["2026-10-13"], setEight)
+    }
+
+    /// Missed 09:00; at 10:00 the morning switches to "done or skipped" (12:00). That would rescue
+    /// a decided miss, so today keeps 09:00.
+    func testMissedMorningIsNotRescuedBySwitchingToDoneOrSkipped() throws {
+        let context = try StoreTestSupport.makeContext()
+        DayRulesStore.record(setNine, for: "2026-10-12", in: defaults)
+        defaults.set(DayRules.MorningEnd.doneOrSkipped.rawValue, forKey: AppSettings.morningEndKey)
+
+        let waits = try ListService.applySettingsToToday(
+            now: TestCalendars.date("2026-10-12", 10), calendar: munich, defaults: defaults, context: context
+        )
+        XCTAssertTrue(waits)
+        XCTAssertEqual(DayRulesStore.history(in: defaults).stored["2026-10-12"]?.morningEnd, .setTime)
+    }
+
+    /// Before both deadlines and not yet done, the morning change applies today; the evening start
+    /// always does (it never decides a streak), even when the morning waits.
+    func testUndecidedMorningAndEveningChangesApplyToday() {
+        let early = DayRules.todayAfterChange(
+            old: setNine, new: setEight, now: TestCalendars.date("2026-10-12", 7), morningComplete: false, calendar: munich
+        )
+        XCTAssertEqual(early.rules, setEight)
+        XCTAssertFalse(early.morningFromTomorrow)
+
+        let done = DayRules.todayAfterChange(
+            old: setNine, new: setEight, now: TestCalendars.date("2026-10-12", 7), morningComplete: true, calendar: munich
+        )
+        XCTAssertEqual(done.rules, setNine, "already complete: decided")
+        XCTAssertTrue(done.morningFromTomorrow)
+
+        var laterEvening = setEight
+        laterEvening.eveningStartMinutes = 22 * 60
+        let evening = DayRules.todayAfterChange(
+            old: setNine, new: laterEvening, now: TestCalendars.date("2026-10-12", 20), morningComplete: false, calendar: munich
+        )
+        XCTAssertEqual(evening.rules.eveningStartMinutes, 22 * 60)
+        XCTAssertEqual(evening.rules.morningEndMinutes, 9 * 60)
+        XCTAssertTrue(evening.morningFromTomorrow)
+
+        let eveningOnly = DayRules.todayAfterChange(
+            old: setNine, new: DayRules(morningEnd: .setTime, morningEndMinutes: 9 * 60, eveningStartMinutes: nil),
+            now: TestCalendars.date("2026-10-12", 20), morningComplete: false, calendar: munich
+        )
+        XCTAssertNil(eveningOnly.rules.eveningStartMinutes)
+        XCTAssertFalse(eveningOnly.morningFromTomorrow, "the morning didn't change")
+    }
+
+    func testListInUse() throws {
+        let context = try StoreTestSupport.makeContext()
+        XCTAssertFalse(try ListService.isInUse(.evening, context: context))
+        context.insert(Occurrence(list: .evening, dayKey: "2026-10-12", title: "Read", state: .open))
+        try context.save()
+        XCTAssertTrue(try ListService.isInUse(.evening, context: context))
+        XCTAssertFalse(try ListService.isInUse(.day, context: context))
+        context.insert(Item(list: .day, title: "Post", sortOrder: 0, repeatRule: .daily, startDayKey: "2026-10-12"))
+        try context.save()
+        XCTAssertTrue(try ListService.isInUse(.day, context: context))
     }
 
     // MARK: - The wake-up window migration

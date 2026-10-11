@@ -35,9 +35,36 @@ enum ListService {
         DayRulesStore.record(AppSettings.currentRules(in: defaults), for: dayKey(for: now, calendar: calendar), in: defaults)
     }
 
-    /// After a settings change: today takes the new rules too (today isn't over); past days keep theirs.
-    static func applySettingsToToday(now: Date = Date(), calendar: Calendar = .current, defaults: UserDefaults) {
-        DayRulesStore.overwrite(AppSettings.currentRules(in: defaults), for: dayKey(for: now, calendar: calendar), in: defaults)
+    /// After a settings change: today takes the new evening start, and the new morning only while
+    /// today's morning is still undecided (`DayRules.todayAfterChange`); past days keep theirs.
+    /// Returns whether the morning change waits until tomorrow.
+    @discardableResult
+    static func applySettingsToToday(
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        defaults: UserDefaults,
+        context: ModelContext
+    ) throws -> Bool {
+        let todayKey = dayKey(for: now, calendar: calendar)
+        let old = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey).rules(for: todayKey)
+        let morningComplete = ListRules.completion(try occurrences(on: todayKey, list: .morning, context: context)).isComplete
+        let change = DayRules.todayAfterChange(
+            old: old, new: AppSettings.currentRules(in: defaults), now: now,
+            morningComplete: morningComplete, calendar: calendar
+        )
+        DayRulesStore.overwrite(change.rules, for: todayKey, in: defaults)
+        return change.morningFromTomorrow
+    }
+
+    /// Whether a list is in use: it has any item (ended ones too) or any occurrence.
+    static func isInUse(_ list: ListKind, context: ModelContext) throws -> Bool {
+        let raw = list.rawValue
+        var items = FetchDescriptor<Item>(predicate: #Predicate { $0.listRaw == raw })
+        items.fetchLimit = 1
+        if try context.fetchCount(items) > 0 { return true }
+        var rows = FetchDescriptor<Occurrence>(predicate: #Predicate { $0.listRaw == raw })
+        rows.fetchLimit = 1
+        return try context.fetchCount(rows) > 0
     }
 
     /// Creates the occurrences of every item due on `dayKey` that aren't there yet. Safe to call

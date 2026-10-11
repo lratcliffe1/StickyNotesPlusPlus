@@ -48,9 +48,11 @@ final class FlipTimeTests: XCTestCase {
         XCTAssertEqual(list("2026-10-12", 8, 59, rules: doneOrSkipped), .morning)
         XCTAssertEqual(list("2026-10-12", 9, 0, rules: doneOrSkipped), .morning, "no set time: 09:00 means nothing")
         XCTAssertEqual(list("2026-10-12", 11, 59, rules: doneOrSkipped), .morning)
-        XCTAssertEqual(list("2026-10-12", 12, 0, rules: doneOrSkipped), .daily, "unfinished at 12:00: flips to the day list")
-        XCTAssertEqual(list("2026-10-12", 20, 59, rules: doneOrSkipped), .daily)
-        XCTAssertEqual(list("2026-10-12", 21, 0, rules: doneOrSkipped), .evening)
+        XCTAssertEqual(list("2026-10-12", 12, 0, rules: doneOrSkipped), .morning, "the list flips only when done, not at 12:00")
+        XCTAssertEqual(list("2026-10-12", 20, 59, rules: doneOrSkipped), .morning)
+        XCTAssertEqual(list("2026-10-12", 21, 0, rules: doneOrSkipped), .evening, "the evening takes over an unfinished morning")
+        XCTAssertEqual(list("2026-10-12", 12, 0, rules: doneOrSkipped, morning: finished), .daily)
+        XCTAssertEqual(list("2026-10-12", 21, 0, rules: doneOrSkipped, eveningIsEmpty: true), .morning)
         XCTAssertEqual(list("2026-10-12", 23, 59, rules: doneOrSkipped), .evening)
         XCTAssertEqual(list("2026-10-13", 0, 0, rules: doneOrSkipped), .morning)
     }
@@ -60,9 +62,10 @@ final class FlipTimeTests: XCTestCase {
             var off = rules
             off.eveningStartMinutes = nil
             XCTAssertEqual(list("2026-10-12", 8, 59, rules: off), .morning)
-            XCTAssertEqual(list("2026-10-12", 20, 59, rules: off), .daily)
-            XCTAssertEqual(list("2026-10-12", 21, 0, rules: off), .daily)
-            XCTAssertEqual(list("2026-10-12", 23, 59, rules: off), .daily)
+            for (hour, minute) in [(20, 59), (21, 0), (23, 59)] {
+                XCTAssertEqual(list("2026-10-12", hour, minute, rules: off, morning: finished), .daily)
+            }
+            XCTAssertEqual(list("2026-10-12", 21, 0, rules: off), rules.morningEnd == .setTime ? .daily : .morning)
             XCTAssertEqual(list("2026-10-13", 0, 0, rules: off), .morning)
         }
     }
@@ -93,6 +96,35 @@ final class FlipTimeTests: XCTestCase {
         XCTAssertEqual(otherDay, .daily)
     }
 
+    // MARK: - Manual flips
+
+    /// A flip lasts until the next moment the list would change on its own: a set time, the
+    /// evening's start, midnight. With no set time, 12:00 isn't one.
+    func testFlipExpiresAtTheNextListBoundary() {
+        let atEight = HomeModel.ManualListFlip.today(.daily, at: TestCalendars.date("2026-10-12", 8), rules: setNine, calendar: munich)
+        XCTAssertEqual(atEight.expiresAt, TestCalendars.date("2026-10-12", 9))
+        let atTen = HomeModel.ManualListFlip.today(.daily, at: TestCalendars.date("2026-10-12", 10), rules: doneOrSkipped, calendar: munich)
+        XCTAssertEqual(atTen.expiresAt, TestCalendars.date("2026-10-12", 21), "not 12:00")
+        var off = setNine
+        off.eveningStartMinutes = nil
+        let late = HomeModel.ManualListFlip.today(.morning, at: TestCalendars.date("2026-10-12", 22), rules: off, calendar: munich)
+        XCTAssertEqual(late.expiresAt, TestCalendars.date("2026-10-13"))
+    }
+
+    /// Flip to the day list at 08:00, put the phone away, open the app at 21:30: whatever refresh
+    /// runs first, the expired flip no longer hides the evening.
+    func testResumingPastABoundaryDropsTheFlip() {
+        let flip = HomeModel.ManualListFlip.today(.daily, at: TestCalendars.date("2026-10-12", 8), rules: doneOrSkipped, calendar: munich)
+        XCTAssertEqual(HomeModel.shownList(automatic: .morning, flip: flip, now: TestCalendars.date("2026-10-12", 11)), .daily)
+        XCTAssertEqual(HomeModel.shownList(automatic: .evening, flip: flip, now: TestCalendars.date("2026-10-12", 21, 30)), .evening)
+        XCTAssertEqual(HomeModel.shownList(automatic: .evening, flip: nil, now: TestCalendars.date("2026-10-12", 21, 30)), .evening)
+    }
+
+    func testFlipOnAnotherDayLastsUntilHomeLeavesIt() {
+        let flip = HomeModel.ManualListFlip.untilLeft(.evening)
+        XCTAssertEqual(HomeModel.shownList(automatic: .daily, flip: flip, now: TestCalendars.date("2026-10-13", 23, 59)), .evening)
+    }
+
     // MARK: - Streak deadlines
 
     func testStreakDeadlinesPerList() {
@@ -114,7 +146,7 @@ final class FlipTimeTests: XCTestCase {
         XCTAssertEqual(list("2026-03-29", 8, 59, rules: setNine), .morning)
         XCTAssertEqual(list("2026-03-29", 9, 0, rules: setNine), .daily)
         XCTAssertEqual(list("2026-03-29", 11, 59, rules: doneOrSkipped), .morning)
-        XCTAssertEqual(list("2026-03-29", 12, 0, rules: doneOrSkipped), .daily)
+        XCTAssertEqual(list("2026-03-29", 12, 0, rules: doneOrSkipped, morning: finished), .daily)
         XCTAssertEqual(list("2026-03-29", 21, 0, rules: setNine), .evening)
 
         let day = TestCalendars.date("2026-03-29")
@@ -135,7 +167,7 @@ final class FlipTimeTests: XCTestCase {
         XCTAssertEqual(list("2026-10-25", 8, 59, rules: setNine), .morning)
         XCTAssertEqual(list("2026-10-25", 9, 0, rules: setNine), .daily)
         XCTAssertEqual(list("2026-10-25", 11, 59, rules: doneOrSkipped), .morning)
-        XCTAssertEqual(list("2026-10-25", 12, 0, rules: doneOrSkipped), .daily)
+        XCTAssertEqual(list("2026-10-25", 12, 0, rules: doneOrSkipped, morning: finished), .daily)
         XCTAssertEqual(list("2026-10-25", 20, 59, rules: setNine), .daily)
         XCTAssertEqual(list("2026-10-25", 21, 0, rules: setNine), .evening)
 

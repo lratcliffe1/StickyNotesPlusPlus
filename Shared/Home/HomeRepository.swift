@@ -25,6 +25,8 @@ protocol HomeRepository {
     func bumpedDayKeys(from startKey: String, through endKey: String, context: ModelContext) throws -> Set<String>
     /// Bump actions on days from `startKey` through `endKey`, all lists.
     func bumpCount(from startKey: String, through endKey: String, context: ModelContext) throws -> Int
+    /// Whether a list has any item or occurrence (the header shows the evening streak only then).
+    func isInUse(_ list: ListKind, context: ModelContext) throws -> Bool
 }
 
 struct SwiftDataHomeRepository: HomeRepository {
@@ -68,5 +70,9 @@ struct SwiftDataHomeRepository: HomeRepository {
 
     func bumpCount(from startKey: String, through endKey: String, context: ModelContext) throws -> Int {
         try ListService.bumpCount(from: startKey, through: endKey, context: context)
+    }
+
+    func isInUse(_ list: ListKind, context: ModelContext) throws -> Bool {
+        try ListService.isInUse(list, context: context)
     }
 }

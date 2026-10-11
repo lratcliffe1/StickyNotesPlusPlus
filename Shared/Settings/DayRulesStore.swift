@@ -28,13 +28,24 @@ enum DayRulesStore {
     static let storageKey = "day_rules_v1"
 
     static func history(in defaults: UserDefaults) -> DayRulesHistory {
-        DayRulesHistory(stored: decoded(from: defaults) ?? [:])
+        DayRulesHistory(stored: decoded(from: defaults).stored)
+    }
+
+    /// What the app and the widget both judge by: every stored day, plus today from the settings
+    /// as they are if today has no record yet (or the records can't be written). One helper, so
+    /// the two never disagree.
+    static func resolvedHistory(in defaults: UserDefaults, todayKey: String) -> DayRulesHistory {
+        var resolved = history(in: defaults)
+        if resolved.stored[todayKey] == nil {
+            resolved.stored[todayKey] = AppSettings.currentRules(in: defaults)
+        }
+        return resolved
     }
 
     /// Stores `rules` for `dayKey` unless that day already has a record. Returns whether it wrote.
     @discardableResult
     static func record(_ rules: DayRules, for dayKey: String, in defaults: UserDefaults) -> Bool {
-        guard var stored = decoded(from: defaults) else { return false }
+        guard var stored = writable(from: defaults) else { return false }
         guard stored[dayKey] == nil else { return false }
         stored[dayKey] = rules
         return write(stored, to: defaults)
@@ -43,7 +54,7 @@ enum DayRulesStore {
     /// Replaces `dayKey`'s record (a settings change, for today only).
     @discardableResult
     static func overwrite(_ rules: DayRules, for dayKey: String, in defaults: UserDefaults) -> Bool {
-        guard var stored = decoded(from: defaults) else { return false }
+        guard var stored = writable(from: defaults) else { return false }
         guard stored[dayKey] != rules else { return false }
         stored[dayKey] = rules
         return write(stored, to: defaults)
@@ -51,16 +62,35 @@ enum DayRulesStore {
 
     // MARK: - Encoding
 
-    /// nil when the data is unreadable: writers then leave it alone, so a bad read can't wipe the
-    /// history (readers treat it as empty).
-    private static func decoded(from defaults: UserDefaults) -> [String: DayRules]? {
-        guard let data = defaults.data(forKey: storageKey) else { return [:] }
+    /// One record that may not read: it then drops out instead of failing the rest.
+    private struct Lossy: Decodable {
+        let rules: DayRules?
+
+        init(from decoder: Decoder) throws {
+            rules = try? DayRules(from: decoder)
+        }
+    }
+
+    /// Every readable record, and whether everything read. Unreadable data (not a dictionary, or
+    /// any record that didn't read) is never written over, so a bad read can't wipe the history.
+    private static func decoded(from defaults: UserDefaults) -> (stored: [String: DayRules], isWholly: Bool) {
+        guard let data = defaults.data(forKey: storageKey) else { return ([:], true) }
         do {
-            return try JSONDecoder().decode([String: DayRules].self, from: data)
+            let raw = try JSONDecoder().decode([String: Lossy].self, from: data)
+            let stored = raw.compactMapValues(\.rules)
+            if stored.count != raw.count {
+                AppLogger.persistence.error("Day rules: \(raw.count - stored.count, privacy: .public) records unreadable")
+            }
+            return (stored, stored.count == raw.count)
         } catch {
             AppLogger.persistence.error("Day rules unreadable: \(error.localizedDescription, privacy: .public)")
-            return nil
+            return ([:], false)
         }
+    }
+
+    private static func writable(from defaults: UserDefaults) -> [String: DayRules]? {
+        let result = decoded(from: defaults)
+        return result.isWholly ? result.stored : nil
     }
 
     private static func write(_ stored: [String: DayRules], to defaults: UserDefaults) -> Bool {

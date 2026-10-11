@@ -143,9 +143,10 @@ enum HomeModel {
     /// Morning → Day → Evening, by today's `rules`. On any day but today it is the day list.
     ///
     /// - **Evening**, from its start time (unless Off) until midnight, if it has anything on it.
-    ///   Once complete it stays showing, as done.
+    ///   Once complete it stays showing, as done. It takes over from an unfinished morning too.
     /// - **Morning**, while it has something still to do (not complete, and not empty or all
-    ///   skipped) and its end hasn't come: the set time, or 12:00 with no set time.
+    ///   skipped): until its set time, or, with no set time, until it's done ("the list itself
+    ///   flips only when you're done"; the streak still counts only until 12:00).
     /// - **Day** otherwise.
     static func automaticList(
         for selectedDay: Date,
@@ -159,9 +160,43 @@ enum HomeModel {
         if !eveningIsEmpty, let start = rules.eveningStart(on: now, calendar: calendar), now >= start {
             return .evening
         }
-        if !morning.isNeutral, morning.value < 1.0, now < rules.morningDeadline(on: now, calendar: calendar) {
-            return .morning
+        let morningOpen = !morning.isNeutral && morning.value < 1.0
+        switch rules.morningEnd {
+        case .setTime:
+            if morningOpen, now < rules.morningDeadline(on: now, calendar: calendar) { return .morning }
+        case .doneOrSkipped:
+            if morningOpen { return .morning }
         }
         return .daily
+    }
+
+    /// A list picked with the flip button. It lasts until `expiresAt`: the next moment the
+    /// automatic list could change on its own (`DayRules.nextListBoundary`), or for a day other
+    /// than today, until Home leaves that day.
+    struct ManualListFlip: Equatable {
+        let list: ContextualList
+        let expiresAt: Date
+
+        /// A flip made at `now` while today is on screen.
+        static func today(_ list: ContextualList, at now: Date, rules: DayRules, calendar: Calendar = .current) -> ManualListFlip {
+            ManualListFlip(list: list, expiresAt: rules.nextListBoundary(after: now, calendar: calendar))
+        }
+
+        /// A flip on another day, or one that never expires on its own (the screenshot harness).
+        static func untilLeft(_ list: ContextualList) -> ManualListFlip {
+            ManualListFlip(list: list, expiresAt: .distantFuture)
+        }
+
+        func isActive(at now: Date) -> Bool {
+            now < expiresAt
+        }
+    }
+
+    /// The list on screen: a manual flip while it lasts, otherwise the automatic choice. Read on
+    /// every refresh (foreground, timer, edits), so a flip can't outlive its boundary even when
+    /// the app was in the background as the boundary passed.
+    static func shownList(automatic: ContextualList, flip: ManualListFlip?, now: Date) -> ContextualList {
+        guard let flip, flip.isActive(at: now) else { return automatic }
+        return flip.list
     }
 }
