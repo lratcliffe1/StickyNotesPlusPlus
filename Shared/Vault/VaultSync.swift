@@ -15,29 +15,39 @@ enum VaultHabitsGate {
     /// The day of the last commit (or of giving up after two conflicts), in the App Group defaults.
     static let lastCommitKey = "vault_habits_last_commit_day"
 
-    /// The day to write through, or nil if nothing is due.
+    /// The days to write through, one per file (month), oldest first; empty if nothing is due.
     /// - One commit a day: nothing once today has had one.
     /// - Going to the background after the morning: this month through today (today still open).
-    ///   On the 1st, the previous month instead, so its last day is sent complete.
     /// - Launching (or returning) when yesterday had no commit at all: through yesterday, so a day
     ///   is never left unsent. That uses today's commit; today goes with tomorrow's.
+    /// - If the last commit was in an earlier month, that month is finished first (through its last
+    ///   day), so a month's last day never stays `open`. Only then can one sync make two commits,
+    ///   one per file (provisional exception, at most at a month end). Months in between, with no
+    ///   commit at all, are not written.
     static func plan(
         reason: Reason,
         todayKey: String,
         lastCommitDayKey: String?,
         morningOver: Bool,
         calendar: Calendar
-    ) -> String? {
-        if let last = lastCommitDayKey, last >= todayKey { return nil }
-        let yesterday = DayMath(calendar: calendar).adding(days: -1, to: todayKey)
+    ) -> [String] {
+        if let last = lastCommitDayKey, last >= todayKey { return [] }
+        let math = DayMath(calendar: calendar)
+        let yesterday = math.adding(days: -1, to: todayKey)
+        let target: String
         switch reason {
         case .background:
-            guard morningOver else { return nil }
-            return todayKey.hasSuffix("-01") ? yesterday : todayKey
+            guard morningOver else { return [] }
+            target = todayKey
         case .launch:
-            guard (lastCommitDayKey ?? "") < yesterday else { return nil }
-            return yesterday
+            guard (lastCommitDayKey ?? "") < yesterday else { return [] }
+            target = yesterday
         }
+        var throughs = [target]
+        if let last = lastCommitDayKey, last.prefix(7) < target.prefix(7), let ymd = DayMath.parse(last) {
+            throughs.insert(math.lastDayOfMonth(year: ymd.year, month: ymd.month), at: 0)
+        }
+        return throughs
     }
 }
 
@@ -64,11 +74,21 @@ final class VaultSync: ObservableObject {
     let defaults: UserDefaults
     let calendar: Calendar
     let now: () -> Date
+    let role: Role
+    let lock: VaultFileLock
     private var isWritingHabits = false
 #if DEBUG
     /// Screenshot harness only: Settings opens the Vault link screen once, on appear.
     var opensLinkScreenOnAppear = false
 #endif
+
+    /// Who is syncing. The widget never waits for the lock, makes one request for tasks.json (no
+    /// repo check on a 404), and writes the status only on success or an auth failure, so a
+    /// transient "Offline" in the widget never covers the app's status.
+    enum Role {
+        case app
+        case widget
+    }
 
     init(
         tokenStore: VaultTokenStore,
@@ -76,13 +96,20 @@ final class VaultSync: ObservableObject {
         defaults: UserDefaults,
         calendar: Calendar = .current,
         timeout: TimeInterval = 20,
+        role: Role = .app,
+        lock: VaultFileLock = .shared(),
         now: @escaping () -> Date = { Date() }
     ) {
         self.tokenStore = tokenStore
         self.defaults = defaults
         self.calendar = calendar
         self.now = now
-        self.github = VaultGitHubClient(http: http, timeout: timeout, expiryStore: VaultTokenExpiryStore(defaults: defaults), now: now)
+        self.role = role
+        self.lock = lock
+        self.github = VaultGitHubClient(
+            http: http, timeout: timeout, expiryStore: VaultTokenExpiryStore(defaults: defaults),
+            checksRepoOn404: role == .app, now: now
+        )
         let hasToken = tokenStore.read() != nil
         self.hasToken = hasToken
         self.status = hasToken ? (VaultStatus.load(from: defaults) ?? VaultStatus(kind: .connected)) : .notSetUp
@@ -163,7 +190,9 @@ final class VaultSync: ObservableObject {
         var newETag: String?
         switch await github.fetchTasks(token: token, etag: etag) {
         case let .failure(error):
-            setStatus(VaultStatus(error: error, at: now()))
+            if role == .app || error == .tokenNotAccepted || error == .tokenExpired {
+                setStatus(VaultStatus(error: error, at: now()))
+            }
             return .failed(error)
         case .success(.notModified):
             guard let cached else { return .failed(.badResponse) }
@@ -175,13 +204,20 @@ final class VaultSync: ObservableObject {
 
         switch VaultTasksFile.decode(body) {
         case .newerVersion:
-            setStatus(VaultStatus(kind: .newerVersion, date: now()))
+            if role == .app { setStatus(VaultStatus(kind: .newerVersion, date: now())) }
             return .newerVersion
         case let .invalid(reason):
             AppLogger.vault.error("tasks.json rejected: \(reason, privacy: .public)")
-            setStatus(VaultStatus(kind: .badFile, date: now()))
+            if role == .app { setStatus(VaultStatus(kind: .badFile, date: now())) }
             return .badFile
         case let .tasks(tasks):
+            // One reconcile at a time across the app and the widget: the app waits up to 1 s, the
+            // widget not at all; either skips if the other is still at it.
+            guard let held = await lock.lock(waitingUpTo: role == .app ? 1 : 0) else {
+                AppLogger.vault.info("Reconcile skipped: another process holds the lock")
+                return .busy
+            }
+            defer { held.release() }
             do {
                 let result = try ListService.reconcileVaultTasks(tasks, now: now(), calendar: calendar, context: context, defaults: defaults)
                 // Only after the store saved: a failed save fetches the whole file again next time.
@@ -191,7 +227,9 @@ final class VaultSync: ObservableObject {
                 if let newETag {
                     defaults.set(newETag, forKey: Self.etagKey)
                 }
-                setStatus(VaultStatus(kind: .updated, date: now()))
+                setStatus(result.manifestUnreadable
+                          ? VaultStatus(kind: .manifestUnreadable, date: now())
+                          : VaultStatus(kind: .updated, date: now()))
                 AppLogger.vault.info("Tasks reconciled: +\(result.added.count, privacy: .public) ~\(result.updated.count, privacy: .public) -\(result.removed.count, privacy: .public)")
                 if result.changedStore {
                     NotificationCenter.default.post(name: Self.tasksDidChange, object: self)
@@ -199,7 +237,7 @@ final class VaultSync: ObservableObject {
                 return .reconciled(result)
             } catch {
                 AppLogger.vault.error("Reconcile failed: \(error.localizedDescription, privacy: .public)")
-                setStatus(VaultStatus(kind: .problem, date: now()))
+                if role == .app { setStatus(VaultStatus(kind: .problem, date: now())) }
                 return .storeFailed
             }
         }
@@ -219,8 +257,9 @@ final class VaultSync: ObservableObject {
         case storeFailed
     }
 
-    /// Writes `habits/YYYY-MM.json` if the gate says it's due: GET for the sha, merge (the app's
-    /// days win), PUT with the sha. A 409/422 refetches the sha and retries once; a second
+    /// Writes `habits/YYYY-MM.json` if the gate says it's due (`VaultHabitsGate.plan`: usually one
+    /// file; two when an earlier month is still to finish). Per file: GET for the sha, merge (the
+    /// app's days win), PUT with the sha; a 409/422 refetches the sha and retries once, and a second
     /// conflict gives up until tomorrow. Other failures leave the day open for the next chance.
     @discardableResult
     func writeHabitsIfDue(reason: VaultHabitsGate.Reason, context: ModelContext) async -> HabitsOutcome {
@@ -231,17 +270,50 @@ final class VaultSync: ObservableObject {
         let todayKey = HomeModel.dayKey(for: current, calendar: calendar)
         let rules = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey).rules(for: todayKey)
         let morningOver = current >= rules.morningDeadline(on: current, calendar: calendar)
-        guard let targetKey = VaultHabitsGate.plan(
+        let throughs = VaultHabitsGate.plan(
             reason: reason,
             todayKey: todayKey,
             lastCommitDayKey: defaults.string(forKey: VaultHabitsGate.lastCommitKey),
             morningOver: morningOver,
             calendar: calendar
-        ) else { return .notDue }
+        )
+        guard let lastThrough = throughs.last else { return .notDue }
 
         isWritingHabits = true
         defer { isWritingHabits = false }
 
+        for targetKey in throughs {
+            switch await writeHabitsFile(through: targetKey, now: current, token: token, context: context) {
+            case .written:
+                continue
+            case .gaveUp:
+                defaults.set(todayKey, forKey: VaultHabitsGate.lastCommitKey)
+                recordHabits(.gaveUp, dayKey: targetKey)
+                return .gaveUp
+            case let .failed(error):
+                return failHabits(error, dayKey: targetKey)
+            case .storeFailed:
+                return .storeFailed
+            }
+        }
+        defaults.set(todayKey, forKey: VaultHabitsGate.lastCommitKey)
+        recordHabits(.sent, dayKey: lastThrough)
+        AppLogger.vault.info("Habits sent through \(lastThrough, privacy: .public)")
+        return .sent(dayKey: lastThrough)
+    }
+
+    private enum FileWrite {
+        case written
+        case gaveUp
+        case failed(VaultError)
+        case storeFailed
+    }
+
+    /// One month file through `targetKey`: GET for the sha, merge (the app's days win), PUT with
+    /// the sha; a 409/422 refetches and retries once. If the vault's file already holds exactly
+    /// what would be sent (apart from `updatedAt`), nothing is PUT: an earlier write whose answer
+    /// was lost (the background window ran out) isn't committed twice.
+    private func writeHabitsFile(through targetKey: String, now current: Date, token: String, context: ModelContext) async -> FileWrite {
         let document: JSONValue
         do {
             document = try ListService.vaultHabitsDocument(through: targetKey, now: current, calendar: calendar, context: context, defaults: defaults)
@@ -249,38 +321,37 @@ final class VaultSync: ObservableObject {
             AppLogger.vault.error("Habits not built: \(error.localizedDescription, privacy: .public)")
             return .storeFailed
         }
-
         let path = VaultAPI.habitsPath(month: String(targetKey.prefix(7)))
         let message = VaultHabits.commitMessage(for: targetKey)
         for attempt in 1...2 {
             let existing: VaultGitHubClient.RemoteFile?
             switch await github.getFile(path: path, token: token) {
             case let .failure(error):
-                return failHabits(error, dayKey: targetKey)
+                return .failed(error)
             case let .success(file):
                 existing = file
             }
+            let merged = VaultHabits.merge(document, into: existing?.content)
+            if let existing, VaultHabits.sameIgnoringUpdatedAt(merged, existing.content) {
+                AppLogger.vault.info("Habits already in the vault for \(targetKey, privacy: .public)")
+                return .written
+            }
             let content: Data
             do {
-                content = try VaultHabits.encode(VaultHabits.merge(document, into: existing?.content))
+                content = try VaultHabits.encode(merged)
             } catch {
                 return .storeFailed
             }
             switch await github.putFile(path: path, content: content, sha: existing?.sha, message: message, token: token) {
             case .success:
-                defaults.set(todayKey, forKey: VaultHabitsGate.lastCommitKey)
-                recordHabits(.sent, dayKey: targetKey)
-                AppLogger.vault.info("Habits sent for \(targetKey, privacy: .public)")
-                return .sent(dayKey: targetKey)
+                return .written
             case .failure(.conflict) where attempt == 1:
                 AppLogger.vault.info("Habits sha conflict; refetching once")
                 continue
             case .failure(.conflict):
-                defaults.set(todayKey, forKey: VaultHabitsGate.lastCommitKey)
-                recordHabits(.gaveUp, dayKey: targetKey)
                 return .gaveUp
             case let .failure(error):
-                return failHabits(error, dayKey: targetKey)
+                return .failed(error)
             }
         }
         return .gaveUp

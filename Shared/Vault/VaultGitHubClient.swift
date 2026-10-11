@@ -27,6 +27,9 @@ struct VaultGitHubClient {
     /// Where the token's expiry date is kept (GitHub sends it on every authenticated answer);
     /// a 401 after it reads as "Token expired". Not secret.
     var expiryStore: VaultTokenExpiryStore?
+    /// On a 404 for tasks.json, ask whether the token can see the repo at all (one more request).
+    /// The widget skips it, to stay at one request.
+    var checksRepoOn404 = true
     var now: () -> Date = { Date() }
 
     enum TasksResult: Equatable {
@@ -59,6 +62,7 @@ struct VaultGitHubClient {
                 return .success(.fetched(data: data, etag: response.value(forHTTPHeaderField: "ETag")))
             case 404:
                 // A token that can't see the repo gets 404s too: tell that apart from "no file yet".
+                guard checksRepoOn404 else { return .failure(.notFound) }
                 return .failure(await repoVisible(token: token) ? .notFound : .tokenNotAccepted)
             default:
                 return .failure(error(for: response, data: data))

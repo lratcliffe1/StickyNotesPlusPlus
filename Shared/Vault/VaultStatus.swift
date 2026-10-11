@@ -21,6 +21,8 @@ struct VaultStatus: Codable, Equatable {
         case badFile
         /// Rate limited, a GitHub error, or the store couldn't save.
         case problem
+        /// The app's record of imported tasks couldn't be read: it only adds, never changes or removes.
+        case manifestUnreadable
     }
 
     var kind: Kind
@@ -52,7 +54,7 @@ struct VaultStatus: Codable, Equatable {
     /// Whether the line is a problem to look at (an error tint and a warning shape, never colour alone).
     var isProblem: Bool {
         switch kind {
-        case .tokenNotAccepted, .tokenExpired, .newerVersion, .badFile, .problem: return true
+        case .tokenNotAccepted, .tokenExpired, .newerVersion, .badFile, .problem, .manifestUnreadable: return true
         case .notSetUp, .connected, .updated, .noTasksFile, .offline: return false
         }
     }
@@ -70,6 +72,7 @@ struct VaultStatus: Codable, Equatable {
         case .newerVersion: return "arrow.up.circle"
         case .badFile: return "exclamationmark.triangle.fill"
         case .problem: return "exclamationmark.triangle"
+        case .manifestUnreadable: return "exclamationmark.triangle"
         }
     }
 
@@ -87,6 +90,7 @@ struct VaultStatus: Codable, Equatable {
         case .offline: return "Offline"
         case .newerVersion: return "tasks.json is newer than this app"
         case .badFile: return "tasks.json couldn’t be read"
+        case .manifestUnreadable: return "Imported tasks: adding only"
         case .problem:
             if let code { return "GitHub didn’t answer (\(code))" }
             return "GitHub didn’t answer"

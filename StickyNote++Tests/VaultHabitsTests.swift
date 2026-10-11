@@ -144,7 +144,7 @@ final class VaultHabitsTests: XCTestCase {
             [VaultTask(id: "deel", title: "Chase Deel", list: .day, dayKey: "2026-10-14", deadlineDayKey: nil, bumpLimit: .upToDays(3))],
             now: now, calendar: munich, context: context, defaults: defaults
         )
-        let imported = try XCTUnwrap(try ListService.occurrence(id: VaultTaskID.occurrenceID(for: "deel"), context: context))
+        let imported = try XCTUnwrap(try ListService.occurrence(id: VaultTaskID.occurrenceID(for: "deel", dayKey: "2026-10-14"), context: context))
         try ListService.complete(imported, at: TestCalendars.date("2026-10-14", 15), context: context)
 
         let document = try ListService.vaultHabitsDocument(through: "2026-10-14", now: now, calendar: munich, context: context, defaults: defaults)

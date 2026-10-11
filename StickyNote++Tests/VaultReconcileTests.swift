@@ -3,7 +3,7 @@ import SwiftData
 import XCTest
 
 /// Reconciling tasks.json into the store (docs/VAULT-API.md, "App reconciliation"), on an in-memory
-/// V2 store. Today is Wednesday 14.10.2026 in Munich.
+/// V2 store: one row per task per day, past days frozen. Today is Wednesday 14.10.2026 in Munich.
 final class VaultReconcileTests: XCTestCase {
     private let munich = TestCalendars.munich
     private let today = "2026-10-14"
@@ -42,24 +42,26 @@ final class VaultReconcileTests: XCTestCase {
         try ListService.reconcileVaultTasks(tasks, now: date ?? now, calendar: munich, context: context, defaults: defaults)
     }
 
-    private func row(_ id: String) throws -> Occurrence? {
-        try ListService.occurrence(id: VaultTaskID.occurrenceID(for: id), context: context)
+    private func row(_ id: String, on day: String = "2026-10-14") throws -> Occurrence? {
+        try ListService.occurrence(id: VaultTaskID.occurrenceID(for: id, dayKey: day), context: context)
     }
 
     private func allRows() throws -> [Occurrence] {
         try StoreTestSupport.all(Occurrence.self, in: context)
     }
 
+    private var manifest: VaultManifest? { VaultManifest.load(from: defaults) }
+
     // MARK: - New
 
-    func testNewTasksAreAddedAsOneOffsWithDerivedIDs() throws {
+    func testNewTasksAreAddedAsOneOffsWithPerDayIDs() throws {
         let result = try reconcile([
             task("deel", "Chase Deel", day: "2026-10-16", deadline: "2026-10-16", limit: .untilDeadline(dayKey: "2026-10-16")),
             task("huts", "Book huts", list: .morning, limit: .cantBump),
         ])
         XCTAssertEqual(result.added, ["deel", "huts"])
 
-        let deel = try XCTUnwrap(row("deel"))
+        let deel = try XCTUnwrap(row("deel", on: "2026-10-16"))
         XCTAssertNil(deel.itemID, "a one-off")
         XCTAssertEqual(deel.title, "Chase Deel")
         XCTAssertEqual(deel.list, .day)
@@ -72,14 +74,14 @@ final class VaultReconcileTests: XCTestCase {
         XCTAssertEqual(huts.list, .morning)
         XCTAssertEqual(huts.bumpLimit, .cantBump)
 
-        let manifest = VaultManifest.load(from: defaults)
-        XCTAssertEqual(manifest.entries["deel"]?.occurrenceID, VaultTaskID.occurrenceID(for: "deel"))
-        XCTAssertEqual(Set(manifest.entries.keys), ["deel", "huts"])
+        XCTAssertEqual(manifest?.entries["deel"]?.rows, ["2026-10-16": deel.id])
+        XCTAssertEqual(Set(manifest?.entries.keys.map { $0 } ?? []), ["deel", "huts"])
     }
 
     func testAPastDayLandsOnToday() throws {
         try reconcile([task("old", day: "2026-10-10")])
         XCTAssertEqual(try row("old")?.dayKey, today)
+        XCTAssertNil(try row("old", on: "2026-10-10"))
     }
 
     func testReconcilingTwiceChangesNothing() throws {
@@ -89,27 +91,30 @@ final class VaultReconcileTests: XCTestCase {
         XCTAssertEqual(try allRows().count, 2)
     }
 
-    func testAnotherProcessAddingTheSameTaskLandsOnOneRow() throws {
+    func testAnExistingRowIsNeverInsertedAgainSoATickSurvives() throws {
         try reconcile([task("a")])
-        // The widget's manifest write was lost: the derived id still finds the row.
+        let row = try XCTUnwrap(row("a"))
+        try ListService.complete(row, at: now, context: context)
+        // The widget's manifest write was lost: the derived id still finds the row, ticked.
         defaults.removeObject(forKey: VaultManifest.storageKey)
         let result = try reconcile([task("a")])
         XCTAssertTrue(result.added.isEmpty)
         XCTAssertEqual(try allRows().count, 1)
+        XCTAssertEqual(row.state, .done)
     }
 
-    // MARK: - Update
+    // MARK: - Update (today and later only)
 
     func testAnOpenNeverBumpedRowFollowsTheFile() throws {
         try reconcile([task("a", "Old title", day: "2026-10-15")])
         let result = try reconcile([
-            task("a", "New title", list: .evening, day: "2026-10-17", deadline: "2026-10-18", limit: .untilDeadline(dayKey: "2026-10-18")),
+            task("a", "New title", list: .evening, day: "2026-10-15", deadline: "2026-10-18", limit: .untilDeadline(dayKey: "2026-10-18")),
         ])
         XCTAssertEqual(result.updated, ["a"])
-        let row = try XCTUnwrap(row("a"))
+        let row = try XCTUnwrap(row("a", on: "2026-10-15"))
         XCTAssertEqual(row.title, "New title")
         XCTAssertEqual(row.list, .evening)
-        XCTAssertEqual(row.dayKey, "2026-10-17")
+        XCTAssertEqual(row.dayKey, "2026-10-15")
         XCTAssertEqual(row.deadlineDayKey, "2026-10-18")
         XCTAssertEqual(row.bumpLimit, .untilDeadline(dayKey: "2026-10-18"))
     }
@@ -122,18 +127,15 @@ final class VaultReconcileTests: XCTestCase {
         XCTAssertEqual(row.bumpLimit, .upToDays(3))
     }
 
-    func testAMovedDateMovesTheRow() throws {
+    func testAMovedDateReplacesTheOpenFutureRow() throws {
         try reconcile([task("a", day: "2026-10-20")])
-        try reconcile([task("a", day: "2026-10-15")])
-        XCTAssertEqual(try row("a")?.dayKey, "2026-10-15")
-        XCTAssertEqual(try ListService.occurrences(on: "2026-10-20", list: .day, context: context).count, 0)
-    }
-
-    func testAnOpenRowLeftOnAPastDayMovesToToday() throws {
-        try reconcile([task("a", day: "2026-10-13")], at: TestCalendars.date("2026-10-13", 9))
-        XCTAssertEqual(try row("a")?.dayKey, "2026-10-13")
-        try reconcile([task("a", day: "2026-10-13")])
-        XCTAssertEqual(try row("a")?.dayKey, today)
+        let result = try reconcile([task("a", day: "2026-10-15")])
+        XCTAssertEqual(result.added, ["a"])
+        XCTAssertEqual(result.removed, ["a"])
+        XCTAssertNotNil(try row("a", on: "2026-10-15"))
+        XCTAssertNil(try row("a", on: "2026-10-20"))
+        XCTAssertEqual(try allRows().count, 1)
+        XCTAssertEqual(manifest?.entries["a"]?.rows.keys.sorted(), ["2026-10-15"])
     }
 
     func testAnEditMadeInTheAppLastsUntilTheFileChanges() throws {
@@ -149,6 +151,70 @@ final class VaultReconcileTests: XCTestCase {
         XCTAssertEqual(row.title, "Now.md reworded", "the file changed: it wins")
     }
 
+    // MARK: - Past days are history
+
+    func testAnOpenRowOnAPastDayStaysAsThatDaysMissAndTodayGetsANewRow() throws {
+        let yesterday = TestCalendars.date("2026-10-13", 9)
+        try reconcile([task("a", "Chase", day: "2026-10-13", limit: .cantBump)], at: yesterday)
+        let past = try XCTUnwrap(row("a", on: "2026-10-13"))
+
+        let result = try reconcile([task("a", "Chase (reworded)", day: "2026-10-13", limit: .cantBump)])
+
+        XCTAssertEqual(result.added, ["a"])
+        XCTAssertEqual(past.dayKey, "2026-10-13", "never moved")
+        XCTAssertEqual(past.title, "Chase", "never retitled")
+        XCTAssertEqual(past.firstAddedDayKey, "2026-10-13")
+        XCTAssertEqual(past.state, .open, "still yesterday's miss")
+        let fresh = try XCTUnwrap(row("a"))
+        XCTAssertEqual(fresh.title, "Chase (reworded)")
+        XCTAssertEqual(fresh.bumpLimit, .cantBump)
+        let looks = try ListService.dayLooks(
+            from: "2026-10-13", through: "2026-10-13", todayKey: today,
+            history: DayRulesHistory(), context: context, calendar: munich
+        ).looks
+        XCTAssertEqual(looks[.day]?["2026-10-13"]?.status, .missed)
+    }
+
+    func testRemovalNeverDeletesPastRows() throws {
+        try reconcile([task("a", day: "2026-10-13")], at: TestCalendars.date("2026-10-13", 9))
+        let result = try reconcile([])
+        XCTAssertTrue(result.removed.isEmpty)
+        XCTAssertNotNil(try row("a", on: "2026-10-13"), "yesterday's open row stays")
+    }
+
+    func testAPastDoneTaskIsNotAddedAgain() throws {
+        try reconcile([task("a", day: "2026-10-13")], at: TestCalendars.date("2026-10-13", 9))
+        try ListService.complete(try XCTUnwrap(row("a", on: "2026-10-13")), at: TestCalendars.date("2026-10-13", 18), context: context)
+
+        // The routine hasn't removed it yet: still dated the 13th.
+        let result = try reconcile([task("a", day: "2026-10-13")])
+        XCTAssertEqual(result.untouched, ["a"])
+        XCTAssertTrue(result.added.isEmpty)
+        XCTAssertEqual(try allRows().count, 1)
+    }
+
+    func testAReusedIDForALaterDayGetsANewRow() throws {
+        try reconcile([task("water-plants")])
+        try ListService.complete(try XCTUnwrap(row("water-plants")), at: now, context: context)
+
+        // Back in Now.md for next week.
+        let result = try reconcile([task("water-plants", day: "2026-10-21")])
+        XCTAssertEqual(result.added, ["water-plants"])
+        XCTAssertEqual(try row("water-plants")?.state, .done, "the tick stays")
+        XCTAssertEqual(try row("water-plants", on: "2026-10-21")?.state, .open)
+    }
+
+    func testAReusedIDComesBackEvenAfterThePrune() throws {
+        try reconcile([task("a", day: "2026-08-01")], at: TestCalendars.date("2026-08-01", 9))
+        try ListService.complete(try XCTUnwrap(row("a", on: "2026-08-01")), at: TestCalendars.date("2026-08-01", 10), context: context)
+        try reconcile([], at: TestCalendars.date("2026-08-02", 9))
+        try reconcile([])
+        XCTAssertNil(manifest?.entries["a"], "pruned after 62 days")
+
+        try reconcile([task("a")])
+        XCTAssertEqual(try row("a")?.state, .open)
+    }
+
     // MARK: - Ticks and bumps win
 
     func testDoneAndSkippedRowsAreNeverTouched() throws {
@@ -159,13 +225,9 @@ final class VaultReconcileTests: XCTestCase {
         skipped.state = .skipped
         try context.save()
 
-        let changed = try reconcile([
-            task("done", "Renamed", day: "2026-10-20"),
-            task("skipped", "Renamed", day: "2026-10-20"),
-        ])
+        let changed = try reconcile([task("done", "Renamed"), task("skipped", "Renamed")])
         XCTAssertEqual(Set(changed.untouched), ["done", "skipped"])
         XCTAssertEqual(done.title, "Done")
-        XCTAssertEqual(done.dayKey, today)
         XCTAssertEqual(done.state, .done)
         XCTAssertEqual(skipped.title, "Skipped")
         XCTAssertEqual(skipped.state, .skipped)
@@ -175,34 +237,25 @@ final class VaultReconcileTests: XCTestCase {
         XCTAssertEqual(try allRows().count, 2)
     }
 
-    func testABumpedRowAndItsChainAreNeverTouched() throws {
+    func testABumpedTaskOwnsItsFuture() throws {
         try reconcile([task("a", "Original")])
         let original = try XCTUnwrap(row("a"))
         let copy = try XCTUnwrap(try ListService.bump(original, newTitle: "Retyped", now: now, calendar: munich, context: context))
 
-        let result = try reconcile([task("a", "Renamed in Now.md", day: "2026-10-20")])
+        let result = try reconcile([task("a", "Renamed in Now.md")])
         XCTAssertEqual(result.untouched, ["a"])
         XCTAssertEqual(original.state, .bumped)
         XCTAssertEqual(original.title, "Original")
         XCTAssertEqual(copy.title, "Retyped")
-        XCTAssertEqual(copy.dayKey, "2026-10-15")
+
+        // Tomorrow the file still says the 14th: no new row next to the bumped copy.
+        let tomorrow = try reconcile([task("a", "Renamed in Now.md")], at: TestCalendars.date("2026-10-15", 9))
+        XCTAssertTrue(tomorrow.added.isEmpty)
+        XCTAssertEqual(try allRows().count, 2)
 
         // Gone from Now.md: the bumped row and its open copy both stay.
         let removal = try reconcile([])
         XCTAssertTrue(removal.removed.isEmpty)
-        XCTAssertEqual(try allRows().count, 2)
-    }
-
-    func testABumpedChainWhoseCopyIsDoneIsNeverTouched() throws {
-        try reconcile([task("a")])
-        let original = try XCTUnwrap(row("a"))
-        let copy = try XCTUnwrap(try ListService.bump(original, now: now, calendar: munich, context: context))
-        try ListService.complete(copy, at: TestCalendars.date("2026-10-15", 10), context: context)
-
-        try reconcile([task("a", "Renamed")])
-        try reconcile([])
-        XCTAssertEqual(original.state, .bumped)
-        XCTAssertEqual(copy.state, .done)
         XCTAssertEqual(try allRows().count, 2)
     }
 
@@ -212,19 +265,20 @@ final class VaultReconcileTests: XCTestCase {
         try reconcile([task("keep"), task("drop", day: "2026-10-16")])
         let result = try reconcile([task("keep")])
         XCTAssertEqual(result.removed, ["drop"])
-        XCTAssertNil(try row("drop"))
+        XCTAssertNil(try row("drop", on: "2026-10-16"))
         XCTAssertNotNil(try row("keep"))
-        XCTAssertNil(VaultManifest.load(from: defaults).entries["drop"])
+        XCTAssertNil(manifest?.entries["drop"])
     }
 
     func testATaskDeletedInTheAppStaysDeleted() throws {
         try reconcile([task("a")])
-        let row = try XCTUnwrap(row("a"))
-        XCTAssertTrue(try ListService.deleteOneOff(row, todayKey: today, context: context))
+        XCTAssertTrue(try ListService.deleteOneOff(try XCTUnwrap(row("a")), todayKey: today, context: context))
 
         let result = try reconcile([task("a")])
         XCTAssertEqual(result.deletedInApp, ["a"])
         XCTAssertTrue(result.added.isEmpty)
+        let tomorrow = try reconcile([task("a")], at: TestCalendars.date("2026-10-15", 9))
+        XCTAssertEqual(tomorrow.deletedInApp, ["a"], "still deleted the next day")
         XCTAssertEqual(try allRows().count, 0)
     }
 
@@ -243,6 +297,25 @@ final class VaultReconcileTests: XCTestCase {
         XCTAssertEqual(Set(order.map(\.sortOrder)).count, 3, "each gets its own place")
     }
 
+    // MARK: - An unreadable manifest
+
+    func testAnUnreadableManifestOnlyAdds() throws {
+        try reconcile([task("a"), task("b", day: "2026-10-16")])
+        try ListService.complete(try XCTUnwrap(row("a")), at: now, context: context)
+        let garbage = Data("not json".utf8)
+        defaults.set(garbage, forKey: VaultManifest.storageKey)
+
+        let result = try reconcile([task("a", "Renamed"), task("c")])
+
+        XCTAssertTrue(result.manifestUnreadable)
+        XCTAssertEqual(result.added, ["c"])
+        XCTAssertTrue(result.updated.isEmpty && result.removed.isEmpty)
+        XCTAssertEqual(try row("a")?.state, .done)
+        XCTAssertEqual(try row("a")?.title, "a")
+        XCTAssertNotNil(try row("b", on: "2026-10-16"), "gone from the file, but nothing is removed")
+        XCTAssertEqual(defaults.data(forKey: VaultManifest.storageKey), garbage, "left as it was")
+    }
+
     // MARK: - Vault rows
 
     func testVaultOccurrenceIDsFollowBumpChains() throws {
@@ -250,5 +323,21 @@ final class VaultReconcileTests: XCTestCase {
         let original = try XCTUnwrap(row("a"))
         let copy = try XCTUnwrap(try ListService.bump(original, now: now, calendar: munich, context: context))
         XCTAssertEqual(try ListService.vaultOccurrenceIDs(context: context, defaults: defaults), [original.id, copy.id])
+    }
+
+    // MARK: - The lock
+
+    func testTheLockIsExclusiveAcrossHandlesAndReleases() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("vault-lock-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let first = VaultFileLock(url: url)
+        let second = VaultFileLock(url: url)
+
+        let held = try XCTUnwrap(first.tryLock())
+        XCTAssertNil(second.tryLock(), "a second holder is refused at once")
+        let waited = await second.lock(waitingUpTo: 0.3)
+        XCTAssertNil(waited, "and after waiting, while it's still held")
+        held.release()
+        XCTAssertNotNil(second.tryLock())
     }
 }

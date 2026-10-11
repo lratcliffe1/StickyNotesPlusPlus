@@ -23,7 +23,8 @@ enum WidgetVaultRefresh {
             tokenStore: KeychainVaultTokenStore(),
             http: URLSessionVaultHTTPClient(timeout: requestTimeout),
             defaults: defaults,
-            timeout: requestTimeout
+            timeout: requestTimeout,
+            role: .widget
         )
         guard vault.hasToken else { return }
         defaults.set(now, forKey: lastAttemptKey)

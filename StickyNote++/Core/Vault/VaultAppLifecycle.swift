@@ -5,8 +5,8 @@ import UIKit
 import os
 
 /// When the app runs the vault link (`docs/VAULT-API.md`):
-/// - becoming active (launch, or back from the background): fetch tasks.json, then send the
-///   habits if yesterday went unsent;
+/// - becoming active (launch, or back from the background): send the habits if yesterday went
+///   unsent, then fetch tasks.json;
 /// - going to the background: schedule the next background refresh, and send the habits if due,
 ///   inside a `beginBackgroundTask` window;
 /// - background refresh (`BGAppRefreshTask`): fetch tasks.json, reschedule.
@@ -87,8 +87,9 @@ struct VaultLifecycle: ViewModifier {
                 case .active:
                     Task { @MainActor in
                         vault.reloadFromDefaults()
-                        await vault.refreshTasks(context: container.mainContext)
+                        // Yesterday's results go out before the import can add today's rows.
                         await vault.writeHabitsIfDue(reason: .launch, context: container.mainContext)
+                        await vault.refreshTasks(context: container.mainContext)
                     }
                 case .background:
                     if schedulesBackgroundWork {

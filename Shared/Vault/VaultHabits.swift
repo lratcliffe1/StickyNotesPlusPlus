@@ -179,6 +179,18 @@ enum VaultHabits {
         return .object(merged)
     }
 
+    /// Whether the vault's file already holds `merged`, apart from `updatedAt` (so a write whose
+    /// answer was lost isn't committed again).
+    static func sameIgnoringUpdatedAt(_ merged: JSONValue, _ existing: Data) -> Bool {
+        guard
+            var theirs = (try? JSONDecoder().decode(JSONValue.self, from: existing))?.objectValue,
+            var ours = merged.objectValue
+        else { return false }
+        theirs["updatedAt"] = nil
+        ours["updatedAt"] = nil
+        return theirs == ours
+    }
+
     /// Pretty, sorted keys, so each commit's diff is just the days that changed.
     static func encode(_ value: JSONValue) throws -> Data {
         let encoder = JSONEncoder()

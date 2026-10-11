@@ -44,7 +44,9 @@ extension UITestHarness {
             }
         }
         let tokens = InMemoryVaultTokenStore(token: state == .off ? nil : "harness-fake-token")
-        let vault = VaultSync(tokenStore: tokens, http: http, defaults: defaults, calendar: calendar, now: { now })
+        // Its own lock file: the harness never contends with a real widget.
+        let lock = VaultFileLock(url: FileManager.default.temporaryDirectory.appendingPathComponent("harness-vault.lock"))
+        let vault = VaultSync(tokenStore: tokens, http: http, defaults: defaults, calendar: calendar, lock: lock, now: { now })
 
         switch state {
         case .off:
@@ -65,6 +67,8 @@ extension UITestHarness {
             VaultTokenExpiryStore(defaults: defaults).expiry = calendar.date(byAdding: .year, value: 1, to: now)
         case .rejected:
             VaultStatus(kind: .tokenNotAccepted, date: now).save(to: defaults)
+            // No habits write at launch either (it would add a "not sent" line).
+            defaults.set(HomeModel.dayKey(for: now, calendar: calendar), forKey: VaultHabitsGate.lastCommitKey)
         }
         vault.reloadFromDefaults()
         return vault

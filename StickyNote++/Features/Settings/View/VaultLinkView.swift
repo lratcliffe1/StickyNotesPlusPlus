@@ -230,6 +230,8 @@ struct VaultLinkView: View {
             return "Update the app to read it. Your lists are unchanged."
         case .badFile:
             return "Nothing was changed. The next routine run should fix the file."
+        case .manifestUnreadable:
+            return "The app’s record of imported tasks couldn’t be read, so new tasks are still added but none are changed or removed. Nothing was lost."
         default:
             if vault.tokenLocation == .appOnly {
                 return "The widget shows what the app last imported; it doesn’t fetch on its own."

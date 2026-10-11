@@ -121,10 +121,11 @@ final class VaultTasksFileTests: XCTestCase {
 
     // MARK: - Deterministic ids
 
-    func testOccurrenceIDsAreDeterministicAndDistinct() {
-        let first = VaultTaskID.occurrenceID(for: "deel-chase-victoria")
-        XCTAssertEqual(first, VaultTaskID.occurrenceID(for: "deel-chase-victoria"))
-        XCTAssertNotEqual(first, VaultTaskID.occurrenceID(for: "tmb-huts-booking"))
+    func testOccurrenceIDsAreDeterministicAndDistinctPerDay() {
+        let first = VaultTaskID.occurrenceID(for: "deel-chase-victoria", dayKey: "2026-10-14")
+        XCTAssertEqual(first, VaultTaskID.occurrenceID(for: "deel-chase-victoria", dayKey: "2026-10-14"))
+        XCTAssertNotEqual(first, VaultTaskID.occurrenceID(for: "deel-chase-victoria", dayKey: "2026-10-15"), "one row per day")
+        XCTAssertNotEqual(first, VaultTaskID.occurrenceID(for: "tmb-huts-booking", dayKey: "2026-10-14"))
         // Version 5 layout: the version nibble is 5, the variant bits are 10.
         let text = first.uuidString
         XCTAssertEqual(Array(text)[14], "5")

@@ -35,8 +35,13 @@ final class VaultSyncTests: XCTestCase {
         defaults.removePersistentDomain(forName: suiteName)
     }
 
-    private func makeSync() -> VaultSync {
-        VaultSync(tokenStore: tokens, http: http, defaults: defaults, calendar: munich, now: { [unowned self] in self.now })
+    private lazy var lockURL = FileManager.default.temporaryDirectory.appendingPathComponent("vault-sync-test-\(UUID().uuidString).lock")
+
+    private func makeSync(role: VaultSync.Role = .app) -> VaultSync {
+        VaultSync(
+            tokenStore: tokens, http: http, defaults: defaults, calendar: munich,
+            role: role, lock: VaultFileLock(url: lockURL), now: { [unowned self] in self.now }
+        )
     }
 
     private func reply(_ status: Int, _ body: String = "{}", headers: [String: String] = [:]) -> FakeVaultHTTPClient.Reply {
@@ -70,8 +75,8 @@ final class VaultSyncTests: XCTestCase {
         XCTAssertEqual(sync.status.kind, .updated)
         XCTAssertEqual(sync.status.date, now)
         XCTAssertEqual(defaults.string(forKey: VaultSync.etagKey), "\"v1\"")
-        XCTAssertEqual(try ListService.occurrence(id: VaultTaskID.occurrenceID(for: "huts"), context: context)?.dayKey, "2026-10-14",
-                       "a past day lands on today")
+        XCTAssertEqual(try ListService.occurrence(id: VaultTaskID.occurrenceID(for: "huts", dayKey: "2026-10-14"), context: context)?.dayKey,
+                       "2026-10-14", "a past day lands on today")
     }
 
     func testNotModifiedReconcilesTheStoredCopy() async throws {
@@ -79,15 +84,17 @@ final class VaultSyncTests: XCTestCase {
         let sync = makeSync()
         await sync.refreshTasks(context: context)
 
-        // The next day, nothing changed in the vault: a 304, and yesterday's open tasks move to today.
+        // The next day, nothing changed in the vault: a 304. Yesterday's open rows stay (its misses);
+        // the still-open tasks get today's rows.
         now = TestCalendars.date("2026-10-15", 8)
         http.handler = { _ in .init(status: 304) }
         let outcome = await sync.refreshTasks(context: context)
 
         XCTAssertEqual(http.requests.last?.value(forHTTPHeaderField: "If-None-Match"), "\"v1\"")
         guard case let .reconciled(result) = outcome else { return XCTFail("\(outcome)") }
-        XCTAssertEqual(Set(result.updated), ["deel", "huts"])
-        XCTAssertEqual(try ListService.occurrence(id: VaultTaskID.occurrenceID(for: "deel"), context: context)?.dayKey, "2026-10-15")
+        XCTAssertEqual(Set(result.added), ["deel", "huts"])
+        XCTAssertEqual(try ListService.occurrence(id: VaultTaskID.occurrenceID(for: "deel", dayKey: "2026-10-15"), context: context)?.dayKey, "2026-10-15")
+        XCTAssertEqual(try ListService.occurrence(id: VaultTaskID.occurrenceID(for: "deel", dayKey: "2026-10-14"), context: context)?.dayKey, "2026-10-14")
         XCTAssertEqual(sync.status, VaultStatus(kind: .updated, date: now))
     }
 
@@ -355,17 +362,109 @@ final class VaultSyncTests: XCTestCase {
     // MARK: - The once-a-day gate
 
     func testGatePlan() {
-        func plan(_ reason: VaultHabitsGate.Reason, today: String, last: String?, morningOver: Bool = true) -> String? {
+        func plan(_ reason: VaultHabitsGate.Reason, today: String, last: String?, morningOver: Bool = true) -> [String] {
             VaultHabitsGate.plan(reason: reason, todayKey: today, lastCommitDayKey: last, morningOver: morningOver, calendar: munich)
         }
-        XCTAssertEqual(plan(.background, today: "2026-10-14", last: "2026-10-13"), "2026-10-14")
-        XCTAssertNil(plan(.background, today: "2026-10-14", last: "2026-10-14"), "one commit a day")
-        XCTAssertNil(plan(.background, today: "2026-10-14", last: "2026-10-13", morningOver: false), "not before the morning ends")
-        XCTAssertEqual(plan(.background, today: "2026-11-01", last: "2026-10-31"), "2026-10-31", "the 1st finishes last month")
-        XCTAssertNil(plan(.launch, today: "2026-10-14", last: "2026-10-13"), "yesterday was sent")
-        XCTAssertEqual(plan(.launch, today: "2026-10-14", last: "2026-10-12"), "2026-10-13")
-        XCTAssertEqual(plan(.launch, today: "2026-10-14", last: nil), "2026-10-13")
-        XCTAssertNil(plan(.launch, today: "2026-10-14", last: "2026-10-14"))
+        XCTAssertEqual(plan(.background, today: "2026-10-14", last: "2026-10-13"), ["2026-10-14"])
+        XCTAssertEqual(plan(.background, today: "2026-10-14", last: "2026-10-14"), [], "one commit a day")
+        XCTAssertEqual(plan(.background, today: "2026-10-14", last: "2026-10-13", morningOver: false), [], "not before the morning ends")
+        XCTAssertEqual(plan(.background, today: "2026-11-01", last: "2026-10-31"), ["2026-10-31", "2026-11-01"],
+                       "the 1st finishes last month, then starts this one")
+        XCTAssertEqual(plan(.background, today: "2026-11-03", last: "2026-10-29"), ["2026-10-31", "2026-11-03"],
+                       "a gap across a month end finishes the old month")
+        XCTAssertEqual(plan(.launch, today: "2026-10-14", last: "2026-10-13"), [], "yesterday was sent")
+        XCTAssertEqual(plan(.launch, today: "2026-10-14", last: "2026-10-12"), ["2026-10-13"])
+        XCTAssertEqual(plan(.launch, today: "2026-10-14", last: nil), ["2026-10-13"])
+        XCTAssertEqual(plan(.launch, today: "2026-11-02", last: "2026-10-30"), ["2026-10-31", "2026-11-01"])
+        XCTAssertEqual(plan(.launch, today: "2026-10-14", last: "2026-10-14"), [])
+    }
+
+    func testAGapAcrossAMonthEndFinalisesTheOldMonth() async throws {
+        now = TestCalendars.date("2026-11-03", 22)
+        defaults.set("2026-10-29", forKey: VaultHabitsGate.lastCommitKey)
+        context.insert(Occurrence(list: .day, dayKey: "2026-10-31", title: "Last of October", state: .done,
+                                  completedAt: TestCalendars.date("2026-10-31", 12)))
+        try context.save()
+        http.handler = { request in request.httpMethod == "PUT" ? self.reply(201) : self.habitsFile(sha: "s1") }
+        let sync = makeSync()
+
+        let outcome = await sync.writeHabitsIfDue(reason: .background, context: context)
+
+        XCTAssertEqual(outcome, .sent(dayKey: "2026-11-03"))
+        let puts = http.requests.filter { $0.httpMethod == "PUT" }
+        XCTAssertEqual(puts.map { $0.url?.lastPathComponent }, ["2026-10.json", "2026-11.json"])
+        XCTAssertEqual(try putBody(puts[0]).message, "StickyNotes: habits 2026-10-31")
+        let october = try JSONDecoder().decode(JSONValue.self, from: try XCTUnwrap(Data(base64Encoded: try putBody(puts[0]).content)))
+        XCTAssertEqual(october["days"]?["2026-10-31"]?["day"]?["status"], .string("complete"), "the month's last day is final")
+        XCTAssertEqual(defaults.string(forKey: VaultHabitsGate.lastCommitKey), "2026-11-03")
+    }
+
+    func testAWriteWhoseAnswerWasLostIsNotCommittedAgain() async throws {
+        var landed: Data?
+        http.handler = { request in
+            if request.httpMethod == "PUT" {
+                // GitHub took it, but the background window ran out before the answer came.
+                landed = (try? JSONDecoder().decode(PutBody.self, from: request.httpBody ?? Data()))
+                    .flatMap { Data(base64Encoded: $0.content) }
+                return .init(error: URLError(.networkConnectionLost))
+            }
+            if let landed {
+                return self.reply(200, #"{ "sha": "s2", "content": "\#(landed.base64EncodedString())" }"#)
+            }
+            return self.isRepo(request) ? self.reply(200) : self.reply(404, #"{"message":"Not Found"}"#)
+        }
+        let sync = makeSync()
+        let first = await sync.writeHabitsIfDue(reason: .background, context: context)
+        XCTAssertEqual(first, .failed(.offline))
+        XCTAssertNil(defaults.string(forKey: VaultHabitsGate.lastCommitKey))
+
+        now = TestCalendars.date("2026-10-14", 22, 5)
+        let second = await sync.writeHabitsIfDue(reason: .background, context: context)
+        XCTAssertEqual(second, .sent(dayKey: "2026-10-14"))
+        XCTAssertEqual(http.requests.filter { $0.httpMethod == "PUT" }.count, 1, "no second commit")
+        XCTAssertEqual(defaults.string(forKey: VaultHabitsGate.lastCommitKey), "2026-10-14")
+    }
+
+    // MARK: - The widget
+
+    func testTheWidgetKeepsTheAppsStatusWhenOfflineAndSkipsTheRepoCheck() async throws {
+        VaultStatus(kind: .updated, date: now).save(to: defaults)
+        http.handler = { _ in .init(error: URLError(.timedOut)) }
+        _ = await makeSync(role: .widget).refreshTasks(context: context)
+        XCTAssertEqual(VaultStatus.load(from: defaults)?.kind, .updated, "a widget timeout never shows as Offline")
+
+        http.handler = { _ in self.reply(404, #"{"message":"Not Found"}"#) }
+        let before = http.requests.count
+        _ = await makeSync(role: .widget).refreshTasks(context: context)
+        XCTAssertEqual(http.requests.count - before, 1, "one request, no repo check")
+        XCTAssertEqual(VaultStatus.load(from: defaults)?.kind, .updated)
+
+        http.handler = { _ in self.reply(401, #"{"message":"Bad credentials"}"#) }
+        _ = await makeSync(role: .widget).refreshTasks(context: context)
+        XCTAssertEqual(VaultStatus.load(from: defaults)?.kind, .tokenNotAccepted, "auth failures do show")
+    }
+
+    func testAReconcileWaitsForTheOtherProcessThenSkips() async throws {
+        http.handler = { _ in .init(status: 200, headers: ["ETag": "\"v1\""], body: self.goodFile) }
+        let held = try XCTUnwrap(VaultFileLock(url: lockURL).tryLock())
+        let widget = await makeSync(role: .widget).refreshTasks(context: context)
+        XCTAssertEqual(widget, .busy)
+        XCTAssertEqual(try rowCount(), 0)
+        XCTAssertNil(defaults.string(forKey: VaultSync.etagKey), "nothing recorded: the next check fetches it again")
+        held.release()
+        let app = await makeSync().refreshTasks(context: context)
+        guard case .reconciled = app else { return XCTFail("should import: \(app)") }
+        XCTAssertEqual(try rowCount(), 2)
+    }
+
+    func testAnUnreadableManifestShowsInTheStatus() async throws {
+        defaults.set(Data("garbage".utf8), forKey: VaultManifest.storageKey)
+        http.handler = { _ in .init(status: 200, headers: ["ETag": "\"v1\""], body: self.goodFile) }
+        let sync = makeSync()
+        await sync.refreshTasks(context: context)
+        XCTAssertEqual(sync.status.kind, .manifestUnreadable)
+        XCTAssertTrue(sync.status.isProblem)
+        XCTAssertEqual(try rowCount(), 2, "new tasks are still added")
     }
 
     // MARK: - Status text
