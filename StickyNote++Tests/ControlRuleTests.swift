@@ -132,6 +132,18 @@ final class ControlRuleTests: XCTestCase {
         XCTAssertEqual(RepeatRule.yearly.periodName, "year")
     }
 
+    // MARK: - Widget bump link
+
+    func testBumpDeepLinkRoundTrips() throws {
+        let id = UUID()
+        let url = BumpDeepLink.url(for: id)
+        XCTAssertEqual(url.scheme, "stickynotes")
+        XCTAssertEqual(BumpDeepLink.occurrenceID(from: url), id)
+        XCTAssertNil(BumpDeepLink.occurrenceID(from: try XCTUnwrap(URL(string: "stickynotes://add-daily-task"))))
+        XCTAssertNil(BumpDeepLink.occurrenceID(from: try XCTUnwrap(URL(string: "stickynotes://bump?id=nonsense"))))
+        XCTAssertNil(BumpDeepLink.occurrenceID(from: try XCTUnwrap(URL(string: "https://bump?id=\(id.uuidString)"))))
+    }
+
     // MARK: - Bump marks
 
     func testBumpedDaysAndBumpCount() {

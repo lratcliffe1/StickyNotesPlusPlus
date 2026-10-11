@@ -253,20 +253,22 @@ enum ListService {
         return true
     }
 
-    /// Skips an open occurrence: it drops out of the day's count.
+    /// Skips an open occurrence: it drops out of the day's count. Refused on a day before
+    /// `todayKey` (a menu left open past midnight can't rewrite yesterday).
     @discardableResult
-    static func skip(_ occurrence: Occurrence, context: ModelContext) throws -> Bool {
-        guard occurrence.state == .open else { return false }
+    static func skip(_ occurrence: Occurrence, todayKey: String, context: ModelContext) throws -> Bool {
+        guard occurrence.state == .open, occurrence.dayKey >= todayKey else { return false }
         occurrence.state = .skipped
         occurrence.completedAt = nil
         try context.save()
         return true
     }
 
-    /// Undoes a skip: the occurrence is open again and counts towards its day.
+    /// Undoes a skip: the occurrence is open again and counts towards its day. Refused on a day
+    /// before `todayKey`.
     @discardableResult
-    static func unskip(_ occurrence: Occurrence, context: ModelContext) throws -> Bool {
-        guard occurrence.state == .skipped else { return false }
+    static func unskip(_ occurrence: Occurrence, todayKey: String, context: ModelContext) throws -> Bool {
+        guard occurrence.state == .skipped, occurrence.dayKey >= todayKey else { return false }
         occurrence.state = .open
         occurrence.completedAt = nil
         try context.save()
@@ -292,6 +294,7 @@ enum ListService {
     /// open row is created the next day, linked both ways, with `bumpCount + 1`, the same item,
     /// bump limit and chain origin. The item's next scheduled occurrence is unaffected.
     /// `newTitle` (trimmed, if not empty) becomes the new row's title. Returns the new row.
+    /// Refused for a row on a day before `now`'s day (a sheet left open past midnight).
     @discardableResult
     static func bump(
         _ occurrence: Occurrence,
@@ -301,6 +304,7 @@ enum ListService {
         context: ModelContext
     ) throws -> Occurrence? {
         guard canBump(occurrence, calendar: calendar) else { return nil }
+        guard occurrence.dayKey >= dayKey(for: now, calendar: calendar) else { return nil }
 
         let trimmed = newTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let title = trimmed.isEmpty ? occurrence.title : trimmed
@@ -371,12 +375,10 @@ enum ListService {
         ListRules.bumpedDays(try bumpedOccurrences(from: startKey, through: endKey, context: context))
     }
 
-    /// "N bumps this week" (provisional): bump actions on days in the current locale week up to
-    /// and including today, across all lists.
-    static func bumpsThisWeek(todayKey: String, calendar: Calendar = .current, context: ModelContext) throws -> Int {
-        let start = DayMath(calendar: calendar).startOfWeek(todayKey)
-        let rows = try bumpedOccurrences(from: start, through: todayKey, context: context)
-        return ListRules.bumpCount(rows, from: start, through: todayKey)
+    /// "N bumps in 7 days" (provisional): bump actions on days from `startKey` through `endKey`, all
+    /// lists. Home passes the ring's own days, so the count covers exactly the ↻ marks on show.
+    static func bumpCount(from startKey: String, through endKey: String, context: ModelContext) throws -> Int {
+        ListRules.bumpCount(try bumpedOccurrences(from: startKey, through: endKey, context: context), from: startKey, through: endKey)
     }
 
     // MARK: - One-offs
@@ -404,16 +406,18 @@ enum ListService {
 
     /// Edits one one-off row (provisional: this row only, not its bump chain): its title, bump
     /// limit and deadline. An empty title keeps the old one. An "until deadline" limit sets the
-    /// deadline; otherwise `deadlineDayKey` replaces it (nil clears it).
+    /// deadline; otherwise `deadlineDayKey` replaces it (nil clears it). Refused on a day before
+    /// `todayKey`.
     @discardableResult
     static func editOneOff(
         _ occurrence: Occurrence,
         title: String,
         bumpLimit: BumpLimit,
         deadlineDayKey: String?,
+        todayKey: String,
         context: ModelContext
     ) throws -> Bool {
-        guard !occurrence.isRepeating else { return false }
+        guard !occurrence.isRepeating, occurrence.dayKey >= todayKey else { return false }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             occurrence.title = trimmed
@@ -454,10 +458,10 @@ enum ListService {
     }
 
     /// Deletes a one-off. If it was bumped in from an earlier day, that day's row goes back to open
-    /// (the work it was moved forward for is gone).
+    /// (the work it was moved forward for is gone). Refused on a day before `todayKey`.
     @discardableResult
-    static func deleteOneOff(_ occurrence: Occurrence, context: ModelContext) throws -> Bool {
-        guard !occurrence.isRepeating else { return false }
+    static func deleteOneOff(_ occurrence: Occurrence, todayKey: String, context: ModelContext) throws -> Bool {
+        guard !occurrence.isRepeating, occurrence.dayKey >= todayKey else { return false }
         if let fromID = occurrence.bumpedFromID, let source = try self.occurrence(id: fromID, context: context),
            source.bumpedToID == occurrence.id {
             source.bumpedToID = nil
@@ -543,8 +547,11 @@ enum ListService {
     /// Deletes from today: the item stops from today onwards (`endDayKey = today`), today's and later
     /// occurrences that weren't done or bumped are removed, and earlier days keep theirs. As with
     /// `deleteOneOff`, a removed copy that was bumped in sends its source day back to open.
-    /// The rest of the list closes up.
-    static func deleteItem(_ item: Item, todayKey: String, context: ModelContext) throws {
+    /// The rest of the list closes up. An item that has already ended (deleted, or replaced by a
+    /// repeat change) is refused, so its end day never moves (returns false).
+    @discardableResult
+    static func deleteItem(_ item: Item, todayKey: String, context: ModelContext) throws -> Bool {
+        guard item.endDayKey == nil else { return false }
         item.endDayKey = max(todayKey, item.startDayKey)
         for occurrence in try occurrences(ofItem: item.id, from: todayKey, context: context)
         where occurrence.state == .open || occurrence.state == .skipped {
@@ -562,8 +569,18 @@ enum ListService {
 
         let remaining = try currentItems(in: item.list, context: context).filter { $0.id != item.id }
         try reorderItems(remaining, todayKey: todayKey, context: context)
+        return true
     }
 
+    /// Of the items behind these rows, the ones that have ended (deleted, or replaced by a repeat
+    /// change). Home hides Edit… and Delete on their rows: without a link from an ended item to its
+    /// replacement, the item to edit can't be told apart from a deleted one.
+    static func endedItemIDs(among occurrences: [Occurrence], context: ModelContext) throws -> Set<UUID> {
+        let wanted = Set(occurrences.compactMap(\.itemID))
+        guard !wanted.isEmpty else { return [] }
+        let ended = try context.fetch(FetchDescriptor<Item>(predicate: #Predicate { $0.endDayKey != nil }))
+        return Set(ended.map(\.id)).intersection(wanted)
+    }
     static func item(id: UUID, context: ModelContext) throws -> Item? {
         let target = id
         var descriptor = FetchDescriptor<Item>(predicate: #Predicate { $0.id == target })
@@ -578,10 +595,12 @@ enum ListService {
     }
 
     /// A new bump limit for an item: the item, and today's open occurrence of it. Other days keep
-    /// theirs. Items carry no deadline, so "until deadline" is refused (returns false).
+    /// theirs. Items carry no deadline, so "until deadline" is refused (returns false), as is an
+    /// item that has ended.
     @discardableResult
     static func updateItemBumpLimit(_ item: Item, to limit: BumpLimit, todayKey: String, context: ModelContext) throws -> Bool {
         if case .untilDeadline = limit { return false }
+        guard item.endDayKey == nil else { return false }
         item.defaultBumpLimitRaw = limit.kind.rawValue
         item.defaultBumpLimitDays = limit.storedDays
         for occurrence in try occurrences(ofItem: item.id, from: todayKey, context: context)
@@ -600,6 +619,8 @@ enum ListService {
     ///   occurrence is already done, skipped or bumped. From the split day on, the old item's open
     ///   scheduled rows are removed (copies bumped in stay where they are), and if the new rule
     ///   falls due today, today's occurrence is created for the new item.
+    /// A new title is applied from today in a split too, so a done row today takes it as well.
+    /// An item that has ended (deleted, or already replaced) is refused: returns nil, nothing changes.
     /// Returns the item in effect afterwards: the new one after a split.
     @discardableResult
     static func updateItem(
@@ -610,7 +631,8 @@ enum ListService {
         now: Date = Date(),
         calendar: Calendar = .current,
         context: ModelContext
-    ) throws -> Item {
+    ) throws -> Item? {
+        guard item.endDayKey == nil else { return nil }
         let today = dayKey(for: now, calendar: calendar)
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let newTitle = trimmed.isEmpty ? item.title : trimmed
@@ -629,6 +651,9 @@ enum ListService {
             return item
         }
 
+        if newTitle != item.title {
+            try renameItem(item, to: newTitle, todayKey: today, context: context)
+        }
         let fromToday = try occurrences(ofItem: item.id, from: today, context: context)
         let todayProgressed = fromToday.contains { $0.dayKey == today && $0.state != .open }
         let earliest = todayProgressed ? DayMath(calendar: calendar).adding(days: 1, to: today) : today
