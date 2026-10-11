@@ -29,6 +29,9 @@ final class CalendarModel: ObservableObject {
     @Published private(set) var firstEntryDayKey: String?
     /// Today's lists still undecided (`DayMark.openListsToday`), drawn as in progress, not missed.
     @Published private(set) var todayOpenLists: Set<ListKind> = []
+    /// The next moment today's open lists can change (the morning's streak deadline, the evening's
+    /// start or midnight: `DayRules.nextBoundary`, as Home's timer). The view reloads then.
+    @Published private(set) var nextBoundary: Date = .distantFuture
     @Published private(set) var loaded: [String: MonthData] = [:]
     /// Bumped by each `reload`, so the months on screen fetch again.
     @Published private(set) var generation = 0
@@ -59,6 +62,7 @@ final class CalendarModel: ObservableObject {
         // Each day is judged by its own stored rules; today by the settings if it has none yet.
         history = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey)
         todayOpenLists = DayMark.openListsToday(now: now, rules: history.rules(for: todayKey), calendar: calendar)
+        nextBoundary = history.rules(for: todayKey).nextBoundary(after: now, calendar: calendar)
         months = CalendarRules.months(firstEntryDayKey: firstEntryDayKey, todayKey: todayKey)
         loaded = [:]
         generation += 1

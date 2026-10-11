@@ -75,6 +75,15 @@ struct CalendarView: View {
                 }
             }
         }
+        // While on screen, read again at the next boundary, so today's morning stops being drawn
+        // as open once its deadline passes (step 5). A fixed clock (the harness) never gets there.
+        .task(id: model.nextBoundary) { @MainActor in
+            let wait = model.nextBoundary.timeIntervalSince(now())
+            guard wait > 0, wait < 2 * 86_400 else { return }
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled else { return }
+            model.reload(now: now(), context: modelContext)
+        }
         // Back from the background (the widget may have written) or a new day: read again.
         // Deferred a turn so Home's own foreground sync (it refreshes the shared context) runs first.
         .onChange(of: scenePhase) { _, phase in
