@@ -1,8 +1,8 @@
 import Foundation
 import SwiftData
 
-/// Pure-ish derived UI state recalculation for `HomeViewModel`.
-/// Separating this keeps streak/progress/contextual-list rules easy to reason about and test.
+/// Derived UI state for `HomeViewModel`: which list shows, the 7-day ring, the streaks and the
+/// never-miss-twice risk. The rules themselves are in `ListRules` (tested in `Shared/`).
 extension HomeViewModel {
     func recalculateDerivedState(context: ModelContext) {
         let calendar = Calendar.current
@@ -12,7 +12,7 @@ extension HomeViewModel {
         let autoContextualList: HomeModel.ContextualList
         if HomeModel.shouldShowMorningList(
             for: selectedDay,
-            morningEntries: morningEntries,
+            morningCompletion: morningCompletionState,
             mode: morningMode,
             now: now
         ) {
@@ -24,9 +24,8 @@ extension HomeViewModel {
         contextualList = manualContextualListOverride ?? autoContextualList
 
         refreshSevenDayProgress(anchoredOn: anchorDay, context: context)
-        refreshMorningStreak(through: anchorDay, context: context)
-        refreshDailyTaskStreak(through: anchorDay, context: context)
-        refreshNeverMissTwiceState(context: context)
+        let streaks = refreshStreaks(through: anchorDay, context: context)
+        refreshNeverMissTwiceState(anchorDay: anchorDay, anchorStreaks: streaks, context: context)
     }
 
     private func refreshSevenDayProgress(
@@ -40,113 +39,59 @@ extension HomeViewModel {
         }
 
         let startDay = HomeModel.normalizedDay(startRaw, calendar: calendar)
-        let weeklyMorning = fetchMorningEntries(from: startDay, through: endDay, context: context)
-        let weeklyDaily = fetchDailyTasks(from: startDay, through: endDay, context: context)
-
-        let morningByDay = Dictionary(grouping: weeklyMorning) {
-            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
-        }
-        let dailyByDay = Dictionary(grouping: weeklyDaily) {
-            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
-        }
+        let startKey = HomeModel.dayKey(for: startDay, calendar: calendar)
+        let endKey = HomeModel.dayKey(for: endDay, calendar: calendar)
+        let morningByDay = Dictionary(
+            grouping: fetchOccurrences(from: startKey, through: endKey, list: .morning, context: context),
+            by: \.dayKey
+        )
+        let dailyByDay = Dictionary(
+            grouping: fetchOccurrences(from: startKey, through: endKey, list: .day, context: context),
+            by: \.dayKey
+        )
 
         sevenDayProgress = (0..<progressWindowDays).compactMap { offset in
             guard let dayRaw = calendar.date(byAdding: .day, value: offset, to: startDay) else { return nil }
             let day = HomeModel.normalizedDay(dayRaw, calendar: calendar)
-
-            let morningState = HomeModel.morningCompletion(entries: morningByDay[day] ?? [])
-            let dailyState = HomeModel.dailyCompletion(tasks: dailyByDay[day] ?? [])
-            return HomeModel.DayProgress(date: day, morning: morningState, daily: dailyState)
+            let key = HomeModel.dayKey(for: day, calendar: calendar)
+            return HomeModel.DayProgress(
+                date: day,
+                morning: ListRules.completion(morningByDay[key] ?? []),
+                daily: ListRules.completion(dailyByDay[key] ?? [])
+            )
         }
     }
 
-    private func refreshMorningStreak(
-        through endDay: Date,
-        context: ModelContext
-    ) {
-        let calendar = Calendar.current
-        guard let startRaw = calendar.date(byAdding: .day, value: -streakLookbackDays, to: endDay) else {
-            morningStreakCount = 0
-            isMorningStreakFrozen = false
-            return
-        }
-
-        let startDay = HomeModel.normalizedDay(startRaw, calendar: calendar)
-        let entries = fetchMorningEntries(from: startDay, through: endDay, context: context)
-        let entriesByDay = Dictionary(grouping: entries) {
-            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
-        }
-
-        let streakState = HomeModel.morningStreakState(
-            through: endDay,
-            entriesByDay: entriesByDay,
-            mode: morningMode,
-            calendar: calendar
-        )
-        morningStreakCount = streakState.count
-        isMorningStreakFrozen = streakState.isFrozen
+    private struct ListStreaks {
+        let morning: HomeModel.StreakState
+        let day: HomeModel.StreakState
+        let evening: HomeModel.StreakState
     }
 
-    private func refreshDailyTaskStreak(
-        through endDay: Date,
-        context: ModelContext
-    ) {
-        let calendar = Calendar.current
-        guard let startRaw = calendar.date(byAdding: .day, value: -streakLookbackDays, to: endDay) else {
-            dailyTaskStreakCount = 0
-            isDailyTaskStreakFrozen = false
-            return
-        }
-
-        let startDay = HomeModel.normalizedDay(startRaw, calendar: calendar)
-        let tasks = fetchDailyTasks(from: startDay, through: endDay, context: context)
-        let tasksByDay = Dictionary(grouping: tasks) {
-            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
-        }
-
-        let streakState = HomeModel.dailyStreakState(
-            through: endDay,
-            tasksByDay: tasksByDay,
-            calendar: calendar
+    private func streaks(through day: Date, context: ModelContext) -> ListStreaks {
+        ListStreaks(
+            morning: streakState(for: .morning, through: day, context: context),
+            day: streakState(for: .day, through: day, context: context),
+            evening: streakState(for: .evening, through: day, context: context)
         )
-        dailyTaskStreakCount = streakState.count
-        isDailyTaskStreakFrozen = streakState.isFrozen
     }
 
-    private func refreshNeverMissTwiceState(context: ModelContext) {
-        let calendar = Calendar.current
-        let today = HomeModel.normalizedDay(now, calendar: calendar)
+    private func refreshStreaks(through endDay: Date, context: ModelContext) -> ListStreaks {
+        let state = streaks(through: endDay, context: context)
+        morningStreakCount = state.morning.count
+        isMorningStreakFrozen = state.morning.isFrozen
+        dailyTaskStreakCount = state.day.count
+        isDailyTaskStreakFrozen = state.day.isFrozen
+        eveningStreakCount = state.evening.count
+        isEveningStreakFrozen = state.evening.isFrozen
+        return state
+    }
 
-        guard let startRaw = calendar.date(byAdding: .day, value: -streakLookbackDays, to: today) else {
-            isNeverMissTwiceMorningRisk = false
-            isNeverMissTwiceDailyRisk = false
-            return
-        }
-
-        let startDay = HomeModel.normalizedDay(startRaw, calendar: calendar)
-        let morningEntries = fetchMorningEntries(from: startDay, through: today, context: context)
-        let morningByDay = Dictionary(grouping: morningEntries) {
-            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
-        }
-
-        let dailyTasks = fetchDailyTasks(from: startDay, through: today, context: context)
-        let dailyByDay = Dictionary(grouping: dailyTasks) {
-            dayFromStored(dayKey: $0.dayKey, fallbackDate: $0.date, calendar: calendar)
-        }
-
-        let morningStreakStateToday = HomeModel.morningStreakState(
-            through: today,
-            entriesByDay: morningByDay,
-            mode: morningMode,
-            calendar: calendar
-        )
-        let dailyStreakStateToday = HomeModel.dailyStreakState(
-            through: today,
-            tasksByDay: dailyByDay,
-            calendar: calendar
-        )
-
-        isNeverMissTwiceMorningRisk = morningStreakStateToday.isFrozen
-        isNeverMissTwiceDailyRisk = dailyStreakStateToday.isFrozen
+    /// The banner is about today, whichever day is on screen.
+    private func refreshNeverMissTwiceState(anchorDay: Date, anchorStreaks: ListStreaks, context: ModelContext) {
+        let today = HomeModel.normalizedDay(now)
+        let todayStreaks = anchorDay == today ? anchorStreaks : streaks(through: today, context: context)
+        isNeverMissTwiceMorningRisk = todayStreaks.morning.isFrozen
+        isNeverMissTwiceDailyRisk = todayStreaks.day.isFrozen
     }
 }

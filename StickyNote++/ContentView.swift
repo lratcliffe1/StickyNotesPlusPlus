@@ -22,7 +22,9 @@ struct ContentView: View {
                 MorningRoutineTemplateItem.self,
                 MorningRoutineEntry.self,
                 DailyTask.self,
-                DayRecord.self
+                DayRecord.self,
+                Item.self,
+                Occurrence.self,
             ],
             inMemory: true
         )

@@ -61,7 +61,8 @@ struct DiagonalSplitCircle: View {
             brightness: 0.94
         )
 
-        if state.isImplicitlyComplete {
+        // Nothing counted that day: plain grey, neither progress nor a miss.
+        if state.isNeutral {
             return Color.gray.opacity(0.55)
         }
         return base
@@ -83,11 +84,11 @@ struct DiagonalSplitCircle: View {
     }
 
     private var isMorningCompleted: Bool {
-        morning.value >= 1.0 && !morning.isImplicitlyComplete
+        morning.isComplete
     }
 
     private var isDailyCompleted: Bool {
-        daily.value >= 1.0 && !daily.isImplicitlyComplete
+        daily.isComplete
     }
 
     private func completionTick(for side: CompletionSide, diameter: CGFloat) -> some View {

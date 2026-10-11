@@ -36,12 +36,12 @@ struct AddDailyTaskView: View {
         guard !trimmed.isEmpty else { return }
 
         do {
-            _ = try DailyTaskMutationService.createTask(
-                for: selectedDate,
+            _ = try ListService.addOneOff(
+                list: .day,
+                dayKey: HomeModel.dayKey(for: selectedDate),
                 title: trimmed,
-                mustHappenToday: mustHappenToday,
-                context: modelContext,
-                saveImmediately: true
+                bumpLimit: mustHappenToday ? .cantBump : .defaultForNewOneOffs,
+                context: modelContext
             )
         } catch {
             AppLogger.persistence.error("Create task from AddDailyTaskView failed: \(error.localizedDescription, privacy: .public)")
@@ -56,7 +56,7 @@ struct AddDailyTaskView: View {
 }
 
 #Preview {
-    let schema = Schema([DailyTask.self])
+    let schema = SharedPersistence.appSchema()
     let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
     let container = try! ModelContainer(for: schema, configurations: [config])
 

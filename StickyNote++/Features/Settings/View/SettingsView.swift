@@ -28,10 +28,7 @@ struct SettingsView: View {
 }
 
 #Preview {
-    let schema = Schema([
-        MorningRoutineTemplateItem.self,
-        DailyTask.self
-    ])
+    let schema = SharedPersistence.appSchema()
 
     let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
     let container = try! ModelContainer(for: schema, configurations: [config])

@@ -16,8 +16,10 @@ final class HomeViewModel: ObservableObject {
 
     // UI state
     @Published var selectedDay: Date = HomeModel.normalizedDay(Date())
-    @Published var morningEntries: [MorningRoutineEntry] = []
-    @Published var dailyTasks: [DailyTask] = []
+    /// Today's (or the selected day's) morning-list occurrences, in display order.
+    @Published var morningEntries: [Occurrence] = []
+    /// The day list's occurrences, in display order.
+    @Published var dailyTasks: [Occurrence] = []
     @Published var newTaskTitle: String = ""
 
     @Published var contextualList: HomeModel.ContextualList = .daily
@@ -26,6 +28,9 @@ final class HomeViewModel: ObservableObject {
     @Published var dailyTaskStreakCount: Int = 0
     @Published var isMorningStreakFrozen: Bool = false
     @Published var isDailyTaskStreakFrozen: Bool = false
+    /// The evening list is modelled and has its own streak, but isn't shown anywhere yet.
+    @Published var eveningStreakCount: Int = 0
+    @Published var isEveningStreakFrozen: Bool = false
     @Published var sevenDayProgress: [HomeModel.DayProgress] = []
     @Published var isNeverMissTwiceMorningRisk: Bool = false
     @Published var isNeverMissTwiceDailyRisk: Bool = false
@@ -42,11 +47,11 @@ final class HomeViewModel: ObservableObject {
     let repository: HomeRepository
     let loadSettings: (UserDefaults) -> MorningModeSettings
     let reloadWidget: () -> Void
-    let createDailyTask: (Date, String, Bool, ModelContext) throws -> DailyTask
+    /// Adds a one-off to the day list: (day, title, must happen that day, context).
+    let createDailyTask: (Date, String, Bool, ModelContext) throws -> Occurrence?
     var manualContextualListOverride: HomeModel.ContextualList?
     /// True while the user is on "today", so Home moves with the clock; false once they pick another day.
     var isFollowingToday = true
-    let streakLookbackDays = 365
     let progressWindowDays = 7
 
     var now: Date {
@@ -58,19 +63,19 @@ final class HomeViewModel: ObservableObject {
         repository: HomeRepository? = nil,
         loadSettings: ((UserDefaults) -> MorningModeSettings)? = nil,
         reloadWidget: (() -> Void)? = nil,
-        createDailyTask: ((Date, String, Bool, ModelContext) throws -> DailyTask)? = nil
+        createDailyTask: ((Date, String, Bool, ModelContext) throws -> Occurrence?)? = nil
     ) {
         self.defaults = defaults ?? SharedPersistence.sharedDefaults
         self.repository = repository ?? SwiftDataHomeRepository()
         self.loadSettings = loadSettings ?? MorningModeProvider.load
         self.reloadWidget = reloadWidget ?? TaskWidgetReloader.reloadTopTasksWidget
         self.createDailyTask = createDailyTask ?? { day, title, mustHappenToday, context in
-            try DailyTaskMutationService.createTask(
-                for: day,
+            try ListService.addOneOff(
+                list: .day,
+                dayKey: HomeModel.dayKey(for: day),
                 title: title,
-                mustHappenToday: mustHappenToday,
-                context: context,
-                saveImmediately: false
+                bumpLimit: mustHappenToday ? .cantBump : .defaultForNewOneOffs,
+                context: context
             )
         }
         loadMorningSettings()
@@ -80,19 +85,16 @@ final class HomeViewModel: ObservableObject {
 
     func refresh(context: ModelContext) {
         loadMorningSettings()
-        migrateLegacyDayKeysIfNeeded(context: context)
+        // One-time V1 copy, then today's occurrences (whichever day is on screen).
+        prepareStore(context: context)
 
         let calendar = Calendar.current
         let day = HomeModel.normalizedDay(selectedDay, calendar: calendar)
         selectedDay = day
 
-        if HomeModel.isToday(day, now: now, calendar: calendar) {
-            reconcileMorningEntries(for: day, context: context)
-        }
-
-        morningEntries = fetchMorningEntries(for: day, context: context)
-        dailyTasks = fetchDailyTasks(for: day, context: context)
-        upsertDayRecord(for: day, context: context)
+        let dayKey = HomeModel.dayKey(for: day, calendar: calendar)
+        morningEntries = fetchOccurrences(on: dayKey, list: .morning, context: context)
+        dailyTasks = fetchOccurrences(on: dayKey, list: .day, context: context)
 
         recalculateDerivedState(context: context)
         nextClockBoundary = HomeModel.nextClockBoundary(after: now, mode: morningMode, calendar: calendar)
@@ -171,16 +173,16 @@ final class HomeViewModel: ObservableObject {
         morningCompletionState.value
     }
 
-    var isMorningProgressImplicit: Bool {
-        morningCompletionState.isImplicitlyComplete
+    var isMorningProgressNeutral: Bool {
+        morningCompletionState.isNeutral
     }
 
     var dailyProgress: Double {
         dailyCompletionState.value
     }
 
-    var isDailyProgressImplicit: Bool {
-        dailyCompletionState.isImplicitlyComplete
+    var isDailyProgressNeutral: Bool {
+        dailyCompletionState.isNeutral
     }
 
     var activeListProgressPercent: Int {
@@ -191,16 +193,27 @@ final class HomeViewModel: ObservableObject {
         isMorningMode ? morningProgress : dailyProgress
     }
 
-    var activeListProgressIsImplicit: Bool {
-        isMorningMode ? isMorningProgressImplicit : isDailyProgressImplicit
+    /// Nothing counted on the list (empty, or all skipped): no fill and "—", never 100%.
+    var activeListProgressIsNeutral: Bool {
+        isMorningMode ? isMorningProgressNeutral : isDailyProgressNeutral
+    }
+
+    /// "40%", or "—" when there's nothing to count.
+    var activeListProgressText: String {
+        activeListProgressIsNeutral ? "—" : "\(activeListProgressPercent)%"
     }
 
     var activeListTitle: String {
         isMorningMode ? "Morning Routine" : "Daily Tasks"
     }
 
-    var sortedDailyTasks: [DailyTask] {
+    var sortedDailyTasks: [Occurrence] {
         dailyTasks
+    }
+
+    /// Whether this occurrence may move to tomorrow (its bump limit, or its repeat's period end).
+    func canBump(_ occurrence: Occurrence) -> Bool {
+        ListService.canBump(occurrence)
     }
 
     func updateNewTaskTitle(_ value: String) {
@@ -264,11 +277,11 @@ final class HomeViewModel: ObservableObject {
     }
 
     var morningCompletionState: HomeModel.CompletionState {
-        HomeModel.morningCompletion(entries: morningEntries)
+        ListRules.completion(morningEntries)
     }
 
     var dailyCompletionState: HomeModel.CompletionState {
-        HomeModel.dailyCompletion(tasks: dailyTasks)
+        ListRules.completion(dailyTasks)
     }
 
 #if DEBUG

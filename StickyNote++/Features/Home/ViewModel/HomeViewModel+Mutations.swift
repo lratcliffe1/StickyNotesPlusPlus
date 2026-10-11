@@ -3,63 +3,61 @@ import SwiftData
 import os
 import SwiftUI
 
-/// User-driven write operations for `HomeViewModel`.
+/// User-driven write operations for `HomeViewModel`, all through `ListService`.
 /// Includes completion, bumping, add/reorder, and post-mutation refresh/reload coordination.
 extension HomeViewModel {
-    func toggleMorningEntry(_ entry: MorningRoutineEntry, context: ModelContext) {
+    func toggleMorningEntry(_ entry: Occurrence, context: ModelContext) {
         guard canComplete(day: selectedDay) else { return }
 
-        entry.isCompleted.toggle()
-        entry.completedAt = entry.isCompleted ? now : nil
+        write("Toggle morning item", context: context) {
+            if entry.isCompleted {
+                _ = try ListService.uncomplete(entry, context: context)
+            } else {
+                _ = try ListService.complete(entry, at: now, context: context)
+            }
+        }
         finishMutation(context: context)
 
-        if HomeModel.isToday(selectedDay, now: now),
-           HomeModel.morningCompletion(entries: morningEntries).value >= 1.0 {
+        if HomeModel.isToday(selectedDay, now: now), morningCompletionState.isComplete {
             manualContextualListOverride = nil
             contextualList = .daily
         }
     }
 
-    func toggleDailyTask(_ task: DailyTask, context: ModelContext) {
+    /// Ticks or unticks a task. Unticking a bumped task un-bumps it (removes tomorrow's copy).
+    func toggleDailyTask(_ task: Occurrence, context: ModelContext) {
         guard canComplete(day: selectedDay) else { return }
 
-        if task.isCompleted, let bumpedTaskID = task.bumpedTaskID {
-            task.isCompleted = false
-            task.completedAt = nil
-            task.bumpedTaskID = nil
-
-            if let bumpedTask = fetchDailyTask(id: bumpedTaskID, context: context) {
-                context.delete(bumpedTask)
+        write("Toggle daily task", context: context) {
+            if task.isCompleted {
+                _ = try ListService.uncomplete(task, context: context)
+            } else {
+                _ = try ListService.complete(task, at: now, context: context)
             }
-
-            finishMutation(context: context)
-            return
         }
-
-        task.isCompleted.toggle()
-        task.completedAt = task.isCompleted ? now : nil
         finishMutation(context: context)
     }
 
     @discardableResult
     func completePastDailyTask(
-        _ task: DailyTask,
+        _ task: Occurrence,
         typedConfirmation: String,
         context: ModelContext
     ) -> Bool {
         guard HomeModel.isPastDay(selectedDay, now: now) else { return false }
-        guard !task.isCompleted else { return false }
+        guard task.state == .open else { return false }
         guard typedConfirmation == task.title else { return false }
 
         let calendar = Calendar.current
         let taskDay = HomeModel.date(fromDayKey: task.dayKey, calendar: calendar)
-            ?? HomeModel.normalizedDay(task.date, calendar: calendar)
+            ?? HomeModel.normalizedDay(selectedDay, calendar: calendar)
         let endOfTaskDay = endOfDay(for: taskDay, calendar: calendar)
 
-        task.isCompleted = true
-        task.completedAt = endOfTaskDay
+        let didComplete = write("Complete past task", context: context) {
+            try ListService.complete(task, at: endOfTaskDay, context: context)
+        } ?? false
         finishMutation(context: context)
-        return true
+        return didComplete
     }
 
     @discardableResult
@@ -68,12 +66,10 @@ extension HomeViewModel {
 
         let title = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return false }
-        do {
-            _ = try createDailyTask(selectedDay, title, mustHappenToday, context)
-        } catch {
-            AppLogger.persistence.error("Create daily task failed: \(error.localizedDescription, privacy: .public)")
-            return false
-        }
+        let added: Occurrence? = write("Create daily task", context: context) {
+            try createDailyTask(selectedDay, title, mustHappenToday, context)
+        } ?? nil
+        guard added != nil else { return false }
 
         newTaskTitle = ""
         finishMutation(context: context)
@@ -81,36 +77,19 @@ extension HomeViewModel {
     }
 
     func bumpTaskToTomorrow(
-        _ task: DailyTask,
+        _ task: Occurrence,
         bumpedTitle: String,
         context: ModelContext
     ) {
         guard canManage(day: selectedDay) else { return }
-        guard task.isBumpable, !task.isCompleted else { return }
-        guard task.bumpedTaskID == nil else { return }
+        guard canBump(task) else { return }
 
         let trimmedTitle = bumpedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedTitle.isEmpty else { return }
 
-        let calendar = Calendar.current
-        let taskDay = HomeModel.date(fromDayKey: task.dayKey, calendar: calendar)
-            ?? HomeModel.normalizedDay(task.date, calendar: calendar)
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: taskDay) ?? taskDay
-
-        let bumpedTask = DailyTask(
-            date: HomeModel.normalizedDay(tomorrow, calendar: calendar),
-            title: trimmedTitle,
-            isCompleted: false,
-            completedAt: nil,
-            sortOrder: nextSortOrder(for: tomorrow, insertAtTop: false, context: context),
-            bumpCount: task.bumpCount + 1,
-            isBumpable: task.isBumpable
-        )
-
-        context.insert(bumpedTask)
-        task.isCompleted = true
-        task.completedAt = now
-        task.bumpedTaskID = bumpedTask.id
+        write("Bump task", context: context) {
+            _ = try ListService.bump(task, newTitle: trimmedTitle, now: now, context: context)
+        }
         finishMutation(context: context)
     }
 
@@ -127,29 +106,13 @@ extension HomeViewModel {
         var updated = dailyTasks
         let destination = toIndex > fromIndex ? toIndex + 1 : toIndex
         updated.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: destination)
-        applyDailyTaskOrder(updated, context: context)
-    }
-
-    private func applyDailyTaskOrder(_ orderedTasks: [DailyTask], context: ModelContext) {
-        for (index, task) in orderedTasks.enumerated() where task.sortOrder != index {
-            task.sortOrder = index
+        write("Reorder daily tasks", context: context) {
+            try ListService.reorderOneOffs(updated, context: context)
         }
-
-        dailyTasks = orderedTasks
         finishMutation(context: context)
     }
 
-    private func nextSortOrder(for day: Date, insertAtTop: Bool, context: ModelContext) -> Int {
-        do {
-            return try repository.nextSortOrder(for: day, insertAtTop: insertAtTop, context: context)
-        } catch {
-            AppLogger.persistence.error("Compute next sort order failed: \(error.localizedDescription, privacy: .public)")
-            return insertAtTop ? -1 : 0
-        }
-    }
-
     private func finishMutation(context: ModelContext) {
-        save(context: context)
         refresh(context: context)
         reloadWidget()
     }

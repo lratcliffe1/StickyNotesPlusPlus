@@ -2,35 +2,39 @@ import SwiftData
 import SwiftUI
 import os
 
-/// Settings screen for editing morning routine template items and order.
+/// Settings screen for editing the morning list's items (repeat daily) and their order.
+/// Every change goes through `ListService`: renames apply from today, deletes stop the item
+/// from today on, and earlier days keep what they had.
 struct EditMorningRoutineView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \MorningRoutineTemplateItem.sortOrder) private var templates: [MorningRoutineTemplateItem]
+    @Query(
+        filter: #Predicate<Item> { $0.listRaw == "morning" && $0.endDayKey == nil },
+        sort: \Item.sortOrder
+    ) private var items: [Item]
 
     @State private var newItemTitle: String = ""
 
     var body: some View {
         List {
             Section("Routine Items") {
-                if templates.isEmpty {
+                if items.isEmpty {
                     Text("No routine items yet.")
                         .foregroundStyle(.secondary)
                 }
 
-                ForEach(templates) { template in
+                ForEach(items) { item in
                     TextField(
                         "Routine item",
                         text: Binding(
-                            get: { template.title },
-                            set: { newValue in template.title = newValue }
+                            get: { item.title },
+                            set: { newValue in rename(item, to: newValue) }
                         )
                     )
                     .textInputAutocapitalization(.sentences)
                     .submitLabel(.done)
-                    .onSubmit(saveContext)
                 }
-                .onDelete(perform: deleteTemplates)
-                .onMove(perform: moveTemplates)
+                .onDelete(perform: deleteItems)
+                .onMove(perform: moveItems)
             }
 
             Section("Add Item") {
@@ -49,67 +53,56 @@ struct EditMorningRoutineView: View {
         .toolbar {
             EditButton()
         }
-        .onDisappear {
-            if modelContext.hasChanges {
-                saveContext()
+    }
+
+    private var todayKey: String {
+        HomeModel.dayKey(for: Date())
+    }
+
+    private func addItem() {
+        let title = newItemTitle
+        perform("Add routine item") {
+            _ = try ListService.addItem(list: .morning, title: title, rule: .daily, context: modelContext)
+        }
+        newItemTitle = ""
+    }
+
+    private func rename(_ item: Item, to title: String) {
+        perform("Rename routine item") {
+            try ListService.renameItem(item, to: title, todayKey: todayKey, context: modelContext)
+        }
+    }
+
+    private func deleteItems(at offsets: IndexSet) {
+        let doomed = offsets.map { items[$0] }
+        perform("Delete routine item") {
+            for item in doomed {
+                try ListService.deleteItem(item, todayKey: todayKey, context: modelContext)
             }
         }
     }
 
-    private func addItem() {
-        let trimmed = newItemTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        let newItem = MorningRoutineTemplateItem(
-            title: trimmed,
-            sortOrder: templates.count,
-            targetTime: nil
-        )
-
-        modelContext.insert(newItem)
-        saveContext()
-
-        newItemTitle = ""
-    }
-
-    private func deleteTemplates(at offsets: IndexSet) {
-        var remaining = templates
-        remaining.remove(atOffsets: offsets)
-
-        for index in offsets {
-            modelContext.delete(templates[index])
-        }
-
-        for (index, item) in remaining.enumerated() {
-            item.sortOrder = index
-        }
-
-        saveContext()
-    }
-
-    private func moveTemplates(from source: IndexSet, to destination: Int) {
-        var reordered = templates
+    private func moveItems(from source: IndexSet, to destination: Int) {
+        var reordered = items
         reordered.move(fromOffsets: source, toOffset: destination)
-
-        for (index, item) in reordered.enumerated() {
-            item.sortOrder = index
+        perform("Reorder routine items") {
+            try ListService.reorderItems(reordered, todayKey: todayKey, context: modelContext)
         }
-
-        saveContext()
     }
 
-    private func saveContext() {
+    private func perform(_ label: String, _ body: () throws -> Void) {
         do {
-            try modelContext.save()
+            try body()
             TaskWidgetReloader.reloadTopTasksWidget()
         } catch {
-            AppLogger.persistence.error("Save from EditMorningRoutineView failed: \(error.localizedDescription, privacy: .public)")
+            AppLogger.persistence.error("\(label, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            modelContext.rollback()
         }
     }
 }
 
 #Preview {
-    let schema = Schema([MorningRoutineTemplateItem.self])
+    let schema = SharedPersistence.appSchema()
     let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
     let container = try! ModelContainer(for: schema, configurations: [config])
 

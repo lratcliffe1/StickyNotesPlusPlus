@@ -2,8 +2,8 @@ import Foundation
 import SwiftData
 import os
 
-/// Widget-facing task store that reuses shared repository logic.
-/// This keeps app/widget day-key, migration, and selection behavior in sync.
+/// Widget-facing task store. Every read and write goes through `ListService`, the same path the
+/// app uses, so the widget and the app follow the same rules.
 enum WidgetContextualList: String, Codable {
     case morning
     case daily
@@ -35,7 +35,6 @@ struct WidgetTaskSnapshot {
 enum WidgetTaskStore {
     static let widgetKind = "TopTasksWidget"
     private static let container: ModelContainer? = try? SharedPersistence.makeContainer()
-    private static var repository: HomeRepository = SwiftDataHomeRepository()
     static var makeContext: () throws -> ModelContext = {
         if let container = Self.container {
             return ModelContext(container)
@@ -46,57 +45,47 @@ enum WidgetTaskStore {
         MorningModeProvider.load(from: SharedPersistence.sharedDefaults).mode
     }
 
+    /// The top 3 open items of the list Home would show now. Repeating items can be completed
+    /// but not bumped here; one-offs can be bumped when their limit allows. Skipping stays in the app.
     static func snapshot(now: Date = Date()) -> WidgetTaskSnapshot {
         let calendar = Calendar.current
         let today = HomeModel.normalizedDay(now, calendar: calendar)
+        let todayKey = HomeModel.dayKey(for: today, calendar: calendar)
         let mode = currentMorningMode()
         let fallbackDate = nextRefreshDate(now: now, mode: mode, calendar: calendar)
 
         do {
             let context = try makeContext()
-            try repository.migrateLegacyDayKeysIfNeeded(context: context)
-            try repository.reconcileMorningEntries(for: today, context: context)
+            try ListService.prepare(context: context, now: now, calendar: calendar)
 
-            let morningEntries = try repository.fetchMorningEntries(for: today, context: context)
-            let dailyTasks = try repository.fetchDailyTasks(for: today, context: context)
-
+            let morning = try ListService.occurrences(on: todayKey, list: .morning, context: context)
             let shouldShowMorning = HomeModel.shouldShowMorningList(
                 for: today,
-                morningEntries: morningEntries,
+                morningCompletion: ListRules.completion(morning),
                 mode: mode,
                 now: now,
                 calendar: calendar
             )
+            let list: WidgetContextualList = shouldShowMorning ? .morning : .daily
+            let rows = try shouldShowMorning
+                ? morning
+                : ListService.occurrences(on: todayKey, list: .day, context: context)
 
-            if shouldShowMorning {
-                let items = morningEntries
-                    .filter { !$0.isCompleted }
-                    .prefix(3)
-                    .map { WidgetTaskItem(id: $0.id, title: $0.titleSnapshot, list: .morning, canBump: false) }
-
-                return WidgetTaskSnapshot(
-                    date: now,
-                    list: .morning,
-                    items: Array(items),
-                    nextRefreshDate: fallbackDate
-                )
-            }
-
-            let items = dailyTasks
-                .filter { !$0.isCompleted }
+            let items = rows
+                .filter { $0.state == .open }
                 .prefix(3)
                 .map {
                     WidgetTaskItem(
                         id: $0.id,
                         title: $0.title,
-                        list: .daily,
-                        canBump: $0.isBumpable && $0.bumpedTaskID == nil
+                        list: list,
+                        canBump: !$0.isRepeating && ListService.canBump($0, calendar: calendar)
                     )
                 }
 
             return WidgetTaskSnapshot(
                 date: now,
-                list: .daily,
+                list: list,
                 items: Array(items),
                 nextRefreshDate: fallbackDate
             )
@@ -111,100 +100,28 @@ enum WidgetTaskStore {
         }
     }
 
+    /// Completes one of today's open occurrences. `list` is kept for the intent's signature.
     static func completeTask(id: UUID, list: WidgetContextualList, now: Date = Date()) throws -> Bool {
+        let calendar = Calendar.current
         let context = try makeContext()
-        try repository.migrateLegacyDayKeysIfNeeded(context: context)
-        let day = HomeModel.normalizedDay(now)
-        let currentDayKey = HomeDataStore.dayKey(for: day)
+        try ListService.prepare(context: context, now: now, calendar: calendar)
 
-        let didUpdate: Bool
-
-        switch list {
-        case .morning:
-            let descriptor = FetchDescriptor<MorningRoutineEntry>(
-                predicate: #Predicate { $0.id == id }
-            )
-
-            guard let entry = try context.fetch(descriptor).first else { return false }
-            guard entry.dayKey == currentDayKey else { return false }
-            guard !entry.isCompleted else { return false }
-
-            entry.isCompleted = true
-            entry.completedAt = now
-            didUpdate = true
-
-        case .daily:
-            let descriptor = FetchDescriptor<DailyTask>(
-                predicate: #Predicate { $0.id == id }
-            )
-
-            guard let task = try context.fetch(descriptor).first else { return false }
-            guard task.dayKey == currentDayKey else { return false }
-            guard !task.isCompleted else { return false }
-
-            task.isCompleted = true
-            task.completedAt = now
-            didUpdate = true
-        }
-
-        guard didUpdate else { return false }
-
-        _ = try repository.upsertDayRecord(
-            for: day,
-            morningCompletion: HomeModel.morningCompletion(entries: try repository.fetchMorningEntries(for: day, context: context)).value,
-            dailyCompletion: HomeModel.dailyCompletion(tasks: try repository.fetchDailyTasks(for: day, context: context)).value,
-            context: context
-        )
-        try context.save()
-        return true
+        guard let occurrence = try ListService.occurrence(id: id, context: context) else { return false }
+        guard occurrence.dayKey == HomeModel.dayKey(for: now, calendar: calendar) else { return false }
+        guard occurrence.state == .open else { return false }
+        return try ListService.complete(occurrence, at: now, context: context)
     }
 
+    /// Bumps one of today's one-offs to tomorrow, if its bump limit allows.
     static func bumpTask(id: UUID, list: WidgetContextualList, now: Date = Date()) throws -> Bool {
-        guard list == .daily else { return false }
-
-        let context = try makeContext()
-        try repository.migrateLegacyDayKeysIfNeeded(context: context)
-        let day = HomeModel.normalizedDay(now)
-        let currentDayKey = HomeDataStore.dayKey(for: day)
-
-        let descriptor = FetchDescriptor<DailyTask>(
-            predicate: #Predicate { $0.id == id }
-        )
-
-        guard let task = try context.fetch(descriptor).first else { return false }
-        guard task.dayKey == currentDayKey else { return false }
-        guard task.isBumpable, !task.isCompleted else { return false }
-        guard task.bumpedTaskID == nil else { return false }
-
         let calendar = Calendar.current
-        let taskDay = HomeModel.date(fromDayKey: task.dayKey, calendar: calendar)
-            ?? HomeModel.normalizedDay(task.date, calendar: calendar)
-        let tomorrow = calendar.date(byAdding: .day, value: 1, to: taskDay) ?? taskDay
-        let tomorrowNormalized = HomeModel.normalizedDay(tomorrow, calendar: calendar)
+        let context = try makeContext()
+        try ListService.prepare(context: context, now: now, calendar: calendar)
 
-        let bumpedTask = DailyTask(
-            date: tomorrowNormalized,
-            title: task.title,
-            isCompleted: false,
-            completedAt: nil,
-            sortOrder: try repository.nextSortOrder(for: tomorrowNormalized, insertAtTop: false, context: context),
-            bumpCount: task.bumpCount + 1,
-            isBumpable: task.isBumpable
-        )
-
-        context.insert(bumpedTask)
-        task.isCompleted = true
-        task.completedAt = now
-        task.bumpedTaskID = bumpedTask.id
-
-        _ = try repository.upsertDayRecord(
-            for: day,
-            morningCompletion: HomeModel.morningCompletion(entries: try repository.fetchMorningEntries(for: day, context: context)).value,
-            dailyCompletion: HomeModel.dailyCompletion(tasks: try repository.fetchDailyTasks(for: day, context: context)).value,
-            context: context
-        )
-        try context.save()
-        return true
+        guard let occurrence = try ListService.occurrence(id: id, context: context) else { return false }
+        guard occurrence.dayKey == HomeModel.dayKey(for: now, calendar: calendar) else { return false }
+        guard !occurrence.isRepeating else { return false }
+        return try ListService.bump(occurrence, now: now, calendar: calendar, context: context) != nil
     }
 
     private static func currentMorningMode() -> HomeModel.MorningMode {
@@ -225,6 +142,4 @@ enum WidgetTaskStore {
 
         return tomorrow
     }
-
-    // Shared storage/migration logic is intentionally delegated to HomeDataStore.
 }
