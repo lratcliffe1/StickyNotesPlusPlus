@@ -14,7 +14,14 @@ enum HomeModel {
 
     struct CompletionState: Equatable {
         let value: Double
-        let isImplicitlyComplete: Bool
+        /// Nothing counted on the list that day (empty, or all skipped): shown as no fill and "—",
+        /// never as 100%, and neither extends nor breaks a streak.
+        let isNeutral: Bool
+
+        static let neutral = CompletionState(value: 0, isNeutral: true)
+
+        /// Every counted occurrence is done or bumped.
+        var isComplete: Bool { !isNeutral && value >= 1.0 }
     }
 
     struct StreakState: Equatable {
@@ -150,184 +157,16 @@ enum HomeModel {
         return .saveable
     }
 
+    /// Today's morning list shows until it's complete (or neutral) or the morning deadline passes.
     static func shouldShowMorningList(
         for selectedDay: Date,
-        morningEntries: [MorningRoutineEntry],
+        morningCompletion: CompletionState,
         mode: MorningMode,
         now: Date = Date(),
         calendar: Calendar = .current
     ) -> Bool {
         guard isToday(selectedDay, now: now, calendar: calendar) else { return false }
-        guard morningCompletion(entries: morningEntries).value < 1.0 else { return false }
+        guard !morningCompletion.isNeutral, morningCompletion.value < 1.0 else { return false }
         return now < morningDeadline(for: selectedDay, mode: mode, calendar: calendar)
-    }
-
-    static func morningCompletion(entries: [MorningRoutineEntry]) -> CompletionState {
-        guard !entries.isEmpty else {
-            return CompletionState(value: 1.0, isImplicitlyComplete: true)
-        }
-
-        let done = entries.filter { $0.isCompleted }.count
-        return CompletionState(
-            value: Double(done) / Double(entries.count),
-            isImplicitlyComplete: false
-        )
-    }
-
-    static func dailyCompletion(tasks: [DailyTask]) -> CompletionState {
-        guard !tasks.isEmpty else {
-            return CompletionState(value: 1.0, isImplicitlyComplete: true)
-        }
-
-        let done = tasks.filter { $0.isCompleted }.count
-        return CompletionState(
-            value: Double(done) / Double(tasks.count),
-            isImplicitlyComplete: false
-        )
-    }
-
-    static func qualifiesForMorningStreak(
-        day: Date,
-        entries: [MorningRoutineEntry],
-        mode: MorningMode,
-        calendar: Calendar = .current
-    ) -> Bool {
-        guard !entries.isEmpty else { return false }
-        guard morningCompletion(entries: entries).value >= 1.0 else { return false }
-
-        let deadline = morningDeadline(for: day, mode: mode, calendar: calendar)
-        if let latestKnownCompletion = entries.compactMap(\.completedAt).max() {
-            return latestKnownCompletion <= deadline
-        }
-
-        // Legacy rows can be completed without timestamps; avoid forcing streak to zero.
-        return true
-    }
-
-    static func morningStreak(
-        through anchorDay: Date,
-        entriesByDay: [Date: [MorningRoutineEntry]],
-        mode: MorningMode,
-        calendar: Calendar = .current
-    ) -> Int {
-        morningStreakState(
-            through: anchorDay,
-            entriesByDay: entriesByDay,
-            mode: mode,
-            calendar: calendar
-        ).count
-    }
-
-    static func morningStreakState(
-        through anchorDay: Date,
-        entriesByDay: [Date: [MorningRoutineEntry]],
-        mode: MorningMode,
-        calendar: Calendar = .current
-    ) -> StreakState {
-        let anchor = normalizedDay(anchorDay, calendar: calendar)
-        let earliestTrackedDay = entriesByDay.keys.min().map {
-            normalizedDay($0, calendar: calendar)
-        } ?? anchor
-
-        return streakState(
-            through: anchor,
-            earliestTrackedDay: earliestTrackedDay,
-            calendar: calendar
-        ) { day in
-            qualifiesForMorningStreak(
-                day: day,
-                entries: entriesByDay[day] ?? [],
-                mode: mode,
-                calendar: calendar
-            )
-        }
-    }
-
-    static func qualifiesForDailyStreak(tasks: [DailyTask]) -> Bool {
-        guard !tasks.isEmpty else { return false }
-        return dailyCompletion(tasks: tasks).value >= 1.0
-    }
-
-    static func dailyStreak(
-        through anchorDay: Date,
-        tasksByDay: [Date: [DailyTask]],
-        calendar: Calendar = .current
-    ) -> Int {
-        dailyStreakState(
-            through: anchorDay,
-            tasksByDay: tasksByDay,
-            calendar: calendar
-        ).count
-    }
-
-    static func dailyStreakState(
-        through anchorDay: Date,
-        tasksByDay: [Date: [DailyTask]],
-        calendar: Calendar = .current
-    ) -> StreakState {
-        let anchor = normalizedDay(anchorDay, calendar: calendar)
-        let earliestTrackedDay = tasksByDay.keys.min().map {
-            normalizedDay($0, calendar: calendar)
-        } ?? anchor
-
-        return streakState(
-            through: anchor,
-            earliestTrackedDay: earliestTrackedDay,
-            calendar: calendar
-        ) { day in
-            qualifiesForDailyStreak(tasks: tasksByDay[day] ?? [])
-        }
-    }
-
-    private static func streakState(
-        through anchorDay: Date,
-        earliestTrackedDay: Date,
-        calendar: Calendar = .current,
-        isComplete: (Date) -> Bool
-    ) -> StreakState {
-        let anchor = normalizedDay(anchorDay, calendar: calendar)
-        let start = min(normalizedDay(earliestTrackedDay, calendar: calendar), anchor)
-        var streakCount = 0
-        var isFrozenToday = false
-        var cursor = start
-
-        while cursor < anchor {
-            let completed = isComplete(cursor)
-
-            if completed {
-                streakCount = max(1, streakCount + 1)
-                isFrozenToday = false
-            } else if isFrozenToday {
-                streakCount = 0
-                isFrozenToday = false
-            } else if streakCount > 0 {
-                isFrozenToday = true
-            } else {
-                isFrozenToday = false
-            }
-
-            guard let next = calendar.date(byAdding: .day, value: 1, to: cursor) else {
-                break
-            }
-            cursor = normalizedDay(next, calendar: calendar)
-        }
-
-        let completedAnchorDay = isComplete(anchor)
-        if completedAnchorDay {
-            return StreakState(
-                count: max(1, streakCount + 1),
-                isFrozen: false
-            )
-        }
-
-        if isFrozenToday {
-            return StreakState(count: streakCount, isFrozen: streakCount > 0)
-        }
-
-        if streakCount > 0 {
-            return StreakState(count: streakCount, isFrozen: false)
-        }
-
-        return StreakState(count: 0, isFrozen: false)
     }
 }
