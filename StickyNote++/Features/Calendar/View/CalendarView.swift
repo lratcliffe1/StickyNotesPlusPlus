@@ -146,7 +146,7 @@ struct CalendarView: View {
     private var dayProgressLookup: [Date: HomeModel.DayProgress] {
         let todayKey = HomeModel.dayKey(for: Date())
         // Each day is judged by its own stored rules (its morning deadline).
-        let history = DayRulesStore.history(in: defaults)
+        let history = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey)
         func looks(_ list: ListKind) -> [String: ListRules.DayLook] {
             ListRules.dayLooks(
                 occurrences: occurrences.filter { $0.list == list },

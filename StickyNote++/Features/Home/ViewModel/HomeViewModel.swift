@@ -29,9 +29,11 @@ final class HomeViewModel: ObservableObject {
     @Published var dailyTaskStreakCount: Int = 0
     @Published var isMorningStreakFrozen: Bool = false
     @Published var isDailyTaskStreakFrozen: Bool = false
-    /// The evening list has its own streak; the header doesn't show it yet.
+    /// The evening list's own streak (the header's moon, while the evening list is in use).
     @Published var eveningStreakCount: Int = 0
     @Published var isEveningStreakFrozen: Bool = false
+    /// The evening list has any item or occurrence: the header then shows its streak.
+    @Published var isEveningInUse: Bool = false
     @Published var sevenDayProgress: [HomeModel.DayProgress] = []
     /// Bump actions on the ring's seven days, all lists ("N bumps in 7 days"; hidden at 0).
     @Published var bumpsInSevenDays: Int = 0
@@ -57,7 +59,8 @@ final class HomeViewModel: ObservableObject {
     let reloadWidget: () -> Void
     /// Adds a one-off to the day list: (day, title, the add menu's options, context).
     let createDailyTask: (Date, String, OneOffOptions, ModelContext) throws -> Occurrence?
-    var manualContextualListOverride: HomeModel.ContextualList?
+    /// A list picked with the flip button, until it expires (`HomeModel.ManualListFlip`).
+    var manualListFlip: HomeModel.ManualListFlip?
     /// True while the user is on "today", so Home moves with the clock; false once they pick another day.
     var isFollowingToday = true
     let progressWindowDays = 7
@@ -104,6 +107,7 @@ final class HomeViewModel: ObservableObject {
         eveningEntries = fetchOccurrences(on: dayKey, list: .evening, context: context)
         endedItemIDs = (try? ListService.endedItemIDs(among: morningEntries + dailyTasks + eveningEntries, context: context)) ?? []
 
+        isEveningInUse = (try? repository.isInUse(.evening, context: context)) ?? false
         recalculateDerivedState(context: context)
         // A fixed clock (the screenshot harness) never reaches a boundary.
         nextClockBoundary = nowOverride == nil ? todaysRules.nextBoundary(after: now, calendar: calendar) : .distantFuture
@@ -117,18 +121,9 @@ final class HomeViewModel: ObservableObject {
         selectedDay = follow.day
         isFollowingToday = follow.followingToday
         if follow.clearsManualList {
-            manualContextualListOverride = nil
+            manualListFlip = nil
         }
         refresh(context: context)
-    }
-
-    /// The scheduled boundary has come (the morning's end, the evening's start or midnight): on
-    /// today, the automatic list takes over again, so a flip made earlier doesn't hide the evening.
-    func handleClockBoundary(context: ModelContext) {
-        if isFollowingToday {
-            manualContextualListOverride = nil
-        }
-        handleClockChange(context: context)
     }
 
     func setSelectedDay(
@@ -138,22 +133,30 @@ final class HomeViewModel: ObservableObject {
     ) {
         selectedDay = HomeModel.normalizedDay(day)
         isFollowingToday = HomeModel.isToday(selectedDay, now: now)
-        manualContextualListOverride = preferredList
+        manualListFlip = preferredList.map { flip($0) }
         refresh(context: context)
     }
 
     func goToToday(context: ModelContext) {
         selectedDay = HomeModel.normalizedDay(now)
         isFollowingToday = true
-        manualContextualListOverride = nil
+        manualListFlip = nil
         refresh(context: context)
     }
 
-    /// Cycles morning → day → evening → morning. The automatic choice (by time) is unchanged.
+    /// Cycles morning → day → evening → morning. The automatic choice (by time) is unchanged;
+    /// on today the flip lasts until the next moment the list would change on its own.
     func flipStickyNoteList() {
         let nextList = contextualList.next
-        manualContextualListOverride = nextList
+        manualListFlip = flip(nextList)
         contextualList = nextList
+    }
+
+    /// A flip to `list` on the day on screen: on today it expires at the next list boundary.
+    func flip(_ list: HomeModel.ContextualList) -> HomeModel.ManualListFlip {
+        HomeModel.isToday(selectedDay, now: now)
+            ? .today(list, at: now, rules: todaysRules)
+            : .untilLeft(list)
     }
 
     // MARK: - Computed for UI
@@ -338,15 +341,10 @@ final class HomeViewModel: ObservableObject {
         HomeDataStore.dayFromStored(dayKey: dayKey, fallbackDate: fallbackDate, calendar: calendar)
     }
 
-    /// Re-reads every day's stored rules. Today's are normally stored by `prepareStore`; if that
-    /// failed, today goes by the settings as they are.
+    /// Re-reads every day's stored rules. Today's are normally stored by `prepareStore`; if not,
+    /// today goes by the settings as they are (the same helper as the widget).
     func loadDayRules() {
-        var history = DayRulesStore.history(in: defaults)
-        let todayKey = HomeModel.dayKey(for: now)
-        if history.stored[todayKey] == nil {
-            history.stored[todayKey] = AppSettings.currentRules(in: defaults)
-        }
-        dayRulesHistory = history
+        dayRulesHistory = DayRulesStore.resolvedHistory(in: defaults, todayKey: HomeModel.dayKey(for: now))
     }
 
     /// Today's flip-time rules (the real today, whichever day is on screen).

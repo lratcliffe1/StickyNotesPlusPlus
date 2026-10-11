@@ -39,6 +39,7 @@ struct StickyNotePlusPlusApp: App {
                     editListsLaunch: harness.editListsLaunch,
                     initialSheet: harness.initialSheet
                 )
+                .preferredColorScheme(harness.colorScheme)
             } else {
                 ContentView()
             }

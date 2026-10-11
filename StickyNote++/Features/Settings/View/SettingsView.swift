@@ -1,10 +1,17 @@
 import SwiftData
 import SwiftUI
+import os
 
 /// Settings (DECISIONS.md, "3: flip times and settings"): a native grouped form with Lists ·
 /// Morning (how it ends, the time) · Evening (start time or Off) · Bumping (Retype to bump).
-/// A change to the morning or evening applies to today too; past days keep their own rules.
+/// An evening change applies today; a morning change applies today only while this morning is
+/// still undecided, otherwise from tomorrow (`DayRules.todayAfterChange`). Past days keep theirs.
 struct SettingsView: View {
+    @Environment(\.modelContext) private var modelContext
+    /// Today's stored rules, when their morning differs from the settings (the change waits for
+    /// tomorrow): shown as a line in the Morning footer.
+    @State private var todayKeeps: DayRules?
+
     let now: () -> Date
     let defaults: UserDefaults
     var onListsChanged: () -> Void = {}
@@ -54,6 +61,7 @@ struct SettingsView: View {
         .onChange(of: morningEndMinutes) { applyToToday() }
         .onChange(of: eveningEnabled) { applyToToday() }
         .onChange(of: eveningStartMinutes) { applyToToday() }
+        .onAppear { readTodaysRules() }
     }
 
     // MARK: - Sections
@@ -94,7 +102,13 @@ struct SettingsView: View {
         } header: {
             Text("Morning")
         } footer: {
-            Text(morningFooter)
+            VStack(alignment: .leading, spacing: 4) {
+                if let todayKeeps {
+                    Text(todayKeepsLine(todayKeeps))
+                        .fontWeight(.semibold)
+                }
+                Text(morningFooter)
+            }
         }
     }
 
@@ -102,8 +116,13 @@ struct SettingsView: View {
         Section {
             Toggle("Switch to Evening List", isOn: $eveningEnabled)
             if eveningEnabled {
-                DatePicker("Starts At", selection: timeBinding($eveningStartMinutes), displayedComponents: .hourAndMinute)
-                    .accessibilityLabel("Evening starts at")
+                DatePicker(
+                    "Starts At",
+                    selection: timeBinding($eveningStartMinutes, clamp: AppSettings.clampedEveningStart),
+                    in: eveningRange,
+                    displayedComponents: .hourAndMinute
+                )
+                .accessibilityLabel("Evening starts at")
             }
         } header: {
             Text("Evening")
@@ -133,29 +152,58 @@ struct SettingsView: View {
     }
 
     private var morningFooter: String {
-        let change = "Changes count from today; earlier days keep the times they had."
+        let change = "A change counts from today only while this morning is still open; otherwise from tomorrow."
         switch morningEnd {
         case .setTime:
             return "Home shows the morning list until it’s done or this time comes. Finish by then to keep the morning streak. \(change)"
         case .doneOrSkipped:
-            return "Home shows the morning list until everything on it is done or skipped, or until 12:00. Finish by 12:00 to keep the morning streak. \(change)"
+            return "Home shows the morning list until everything on it is done or skipped. Finish by 12:00 to keep the morning streak. \(change)"
         }
+    }
+
+    /// "Today keeps 9:00; this applies from tomorrow."
+    private func todayKeepsLine(_ rules: DayRules) -> String {
+        let kept: String
+        switch rules.morningEnd {
+        case .setTime:
+            kept = AppSettings.date(fromMinutes: rules.morningEndMinutes, on: now()).formatted(date: .omitted, time: .shortened)
+        case .doneOrSkipped:
+            kept = "“done or skipped” (12:00)"
+        }
+        return "Today keeps \(kept); this applies from tomorrow."
+    }
+
+    private var eveningRange: ClosedRange<Date> {
+        let day = now()
+        return AppSettings.date(fromMinutes: AppSettings.eveningStartRange.lowerBound, on: day)
+            ... AppSettings.date(fromMinutes: AppSettings.eveningStartRange.upperBound, on: day)
     }
 
     // MARK: - Helpers
 
-    /// Minutes after midnight, edited as a time of day.
-    private func timeBinding(_ minutes: Binding<Int>) -> Binding<Date> {
+    /// Minutes after midnight, edited as a time of day (kept within `clamp`'s range).
+    private func timeBinding(_ minutes: Binding<Int>, clamp: @escaping (Int) -> Int = { $0 }) -> Binding<Date> {
         Binding(
-            get: { AppSettings.date(fromMinutes: minutes.wrappedValue, on: now()) },
-            set: { minutes.wrappedValue = AppSettings.minutesFromMidnight(from: $0) }
+            get: { AppSettings.date(fromMinutes: clamp(minutes.wrappedValue), on: now()) },
+            set: { minutes.wrappedValue = clamp(AppSettings.minutesFromMidnight(from: $0)) }
         )
     }
 
-    /// Today takes the new rules as well (it isn't over); past days keep theirs.
+    /// Rewrites today's rules: the evening always, the morning only while it's undecided.
     private func applyToToday() {
-        ListService.applySettingsToToday(now: now(), defaults: defaults)
+        do {
+            try ListService.applySettingsToToday(now: now(), defaults: defaults, context: modelContext)
+        } catch {
+            AppLogger.persistence.error("Applying settings to today failed: \(error.localizedDescription, privacy: .public)")
+        }
+        readTodaysRules()
         onRulesChanged()
+    }
+
+    private func readTodaysRules() {
+        let todayKey = HomeModel.dayKey(for: now())
+        let today = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey).rules(for: todayKey)
+        todayKeeps = today.hasSameMorning(as: AppSettings.currentRules(in: defaults)) ? nil : today
     }
 }
 

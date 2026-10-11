@@ -20,7 +20,7 @@ extension HomeViewModel {
 
         // A finished morning moves on to whichever list the time picks (day, or evening).
         if HomeModel.isToday(selectedDay, now: now), morningCompletionState.isComplete {
-            manualContextualListOverride = nil
+            manualListFlip = nil
             contextualList = automaticContextualList
         }
     }

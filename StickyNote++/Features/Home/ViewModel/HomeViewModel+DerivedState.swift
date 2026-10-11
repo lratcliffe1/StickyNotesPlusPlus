@@ -17,7 +17,12 @@ extension HomeViewModel {
             eveningIsEmpty: eveningEntries.isEmpty,
             calendar: calendar
         )
-        contextualList = manualContextualListOverride ?? automaticContextualList
+        // A flip that has expired (its boundary passed, even while the app was in the background)
+        // is dropped here, on every refresh.
+        if let flip = manualListFlip, !flip.isActive(at: now) {
+            manualListFlip = nil
+        }
+        contextualList = HomeModel.shownList(automatic: automaticContextualList, flip: manualListFlip, now: now)
 
         refreshSevenDayProgress(anchoredOn: anchorDay, context: context)
         let streaks = refreshStreaks(through: anchorDay, context: context)

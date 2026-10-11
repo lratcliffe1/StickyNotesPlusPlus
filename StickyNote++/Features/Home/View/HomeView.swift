@@ -137,7 +137,7 @@ struct HomeView: View {
                     try? await Task.sleep(for: .seconds(min(max(remaining, 0.5), 60)), clock: .continuous)
                 }
                 guard !Task.isCancelled else { return }
-                vm.handleClockBoundary(context: modelContext)
+                vm.handleClockChange(context: modelContext)
             }
             .onOpenURL { url in
                 handleDeepLink(url)
@@ -254,6 +254,9 @@ struct HomeView: View {
                 dailyTaskStreakCount: vm.dailyTaskStreakCount,
                 isMorningStreakFrozen: vm.isMorningStreakFrozen,
                 isDailyTaskStreakFrozen: vm.isDailyTaskStreakFrozen,
+                eveningStreakCount: vm.eveningStreakCount,
+                isEveningStreakFrozen: vm.isEveningStreakFrozen,
+                showsEveningStreak: vm.isEveningInUse,
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
                 bumpsInSevenDays: vm.bumpsInSevenDays,
@@ -267,6 +270,9 @@ struct HomeView: View {
                 dailyTaskStreakCount: vm.dailyTaskStreakCount,
                 isMorningStreakFrozen: vm.isMorningStreakFrozen,
                 isDailyTaskStreakFrozen: vm.isDailyTaskStreakFrozen,
+                eveningStreakCount: vm.eveningStreakCount,
+                isEveningStreakFrozen: vm.isEveningStreakFrozen,
+                showsEveningStreak: vm.isEveningInUse,
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
                 bumpsInSevenDays: vm.bumpsInSevenDays,

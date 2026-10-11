@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import SwiftData
+import SwiftUI
 import os
 
 /// Test-only launch mode used by the screenshot workflow (`scripts/screenshots.sh`).
@@ -9,7 +10,8 @@ import os
 /// optionally `-uiScreen <home|calendar|settings|editLists|itemEditor|repeatPicker|bump|addOptions|deadline>`,
 /// `-uiList <morning|day|evening>` (the list Home shows, or Edit Lists' segment),
 /// `-uiMorningEnds <setTime|doneOrSkipped>` (default setTime, 09:00) and `-uiEvening <on|off>`
-/// (default on, 21:00): the settings, which today's rules are stored from.
+/// (default on, 21:00): the settings, which today's rules are stored from; `-uiTodayKeeps HH:MM`
+/// (today already stored at that set time) and `-uiAppearance <light|dark>`.
 /// The app then runs on an in-memory store seeded with fixed sample data (V2 items and occurrences;
 /// the V1 tables stay empty, so the one-time backfill finds nothing), at a fixed time of day,
 /// with its own settings suite, and the app skips opening the shared on-disk store entirely,
@@ -79,6 +81,9 @@ enum UITestHarness {
         let initialDestination: HomeInitialDestination
         let editListsLaunch: EditListsLaunch?
         let initialSheet: HomeSheet?
+        /// `-uiAppearance dark|light`: forced in the app, so a shot never races the simulator's
+        /// own appearance switch.
+        let colorScheme: ColorScheme?
     }
 
     static let routineTitles = ["Cold shower", "Hang", "Teeth", "Floss", "Water", "Outside"]
@@ -111,6 +116,23 @@ enum UITestHarness {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let now = at(hour: scenario.time.hour, minute: scenario.time.minute, on: today, calendar: calendar)
+        // `-uiTodayKeeps HH:MM`: today already stored "at a set time" then (first read wins), so a
+        // different morning setting shows Settings' "applies from tomorrow" line.
+        if let kept = value(after: "-uiTodayKeeps", in: arguments) {
+            let parts = kept.split(separator: ":").compactMap { Int($0) }
+            if parts.count == 2 {
+                let rules = DayRules(
+                    morningEnd: .setTime, morningEndMinutes: parts[0] * 60 + parts[1],
+                    eveningStartMinutes: AppSettings.currentRules(in: defaults).eveningStartMinutes
+                )
+                DayRulesStore.record(rules, for: key(today), in: defaults)
+            }
+        }
+        let colorScheme: ColorScheme? = switch value(after: "-uiAppearance", in: arguments) {
+        case "dark": .dark
+        case "light": .light
+        default: nil
+        }
 
         do {
             let config = ModelConfiguration(schema: SharedPersistence.appSchema(), isStoredInMemoryOnly: true)
@@ -140,7 +162,7 @@ enum UITestHarness {
             switch screen {
             case .home:
                 if let list {
-                    viewModel.manualContextualListOverride = contextualList(for: list)
+                    viewModel.manualListFlip = .untilLeft(contextualList(for: list))
                 }
             case .calendar:
                 destination = .calendar
@@ -153,7 +175,7 @@ enum UITestHarness {
             case .bump:
                 initialSheet = alarmClock.map { HomeSheet.bump($0.id) }
             case .addOptions, .deadline:
-                viewModel.manualContextualListOverride = .daily
+                viewModel.manualListFlip = .untilLeft(.daily)
                 viewModel.newTaskTitle = "Renew passport photos"
                 viewModel.newTaskOptions = OneOffOptions(
                     deadlineDayKey: key(calendar.date(byAdding: .day, value: 4, to: today) ?? today),
@@ -168,7 +190,8 @@ enum UITestHarness {
                 viewModel: viewModel,
                 initialDestination: destination,
                 editListsLaunch: editListsLaunch,
-                initialSheet: initialSheet
+                initialSheet: initialSheet,
+                colorScheme: colorScheme
             )
         } catch {
             AppLogger.persistence.error("UITestHarness setup failed: \(error.localizedDescription, privacy: .public)")

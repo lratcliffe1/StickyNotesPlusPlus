@@ -6,6 +6,10 @@ struct HomeHeaderCard: View {
     let dailyTaskStreakCount: Int
     let isMorningStreakFrozen: Bool
     let isDailyTaskStreakFrozen: Bool
+    /// The evening streak, shown only while the evening list is in use.
+    var eveningStreakCount: Int = 0
+    var isEveningStreakFrozen: Bool = false
+    var showsEveningStreak: Bool = false
     let sevenDayProgress: [HomeModel.DayProgress]
     let selectedDay: Date
     /// "N bumps in 7 days" under the streaks (the ring's days); hidden at 0.
@@ -23,19 +27,30 @@ struct HomeHeaderCard: View {
                     let metrics = headerMetrics(for: proxy.size.width)
 
                     HStack(alignment: .center, spacing: metrics.horizontalSpacing) {
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: showsEveningStreak ? 1 : 6) {
                             StreakValue(
                                 icon: "sun.max.fill",
                                 value: morningStreakCount,
                                 isFrozen: isMorningStreakFrozen,
-                                tint: .yellow
+                                tint: .yellow,
+                                name: "Morning"
                             )
                             StreakValue(
                                 icon: "flame.fill",
                                 value: dailyTaskStreakCount,
                                 isFrozen: isDailyTaskStreakFrozen,
-                                tint: .orange
+                                tint: .orange,
+                                name: "Daily"
                             )
+                            if showsEveningStreak {
+                                StreakValue(
+                                    icon: "moon.fill",
+                                    value: eveningStreakCount,
+                                    isFrozen: isEveningStreakFrozen,
+                                    tint: .indigo,
+                                    name: "Evening"
+                                )
+                            }
                         }
                         .frame(width: metrics.streakWidth, alignment: .leading)
 
@@ -61,7 +76,7 @@ struct HomeHeaderCard: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 }
-                .frame(height: 60)
+                .frame(height: showsEveningStreak ? 64 : 60)
 
                 if bumpsInSevenDays > 0 {
                     Label(bumpsText, systemImage: "arrow.clockwise")
@@ -77,7 +92,22 @@ struct HomeHeaderCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open calendar")
-        .accessibilityValue(bumpsInSevenDays > 0 ? bumpsText : "")
+        .accessibilityValue(accessibilitySummary)
+    }
+
+    /// The streaks (and bumps) VoiceOver reads on the header button.
+    private var accessibilitySummary: String {
+        var parts = [
+            StreakValue.spoken("Morning", morningStreakCount, isMorningStreakFrozen),
+            StreakValue.spoken("Daily", dailyTaskStreakCount, isDailyTaskStreakFrozen),
+        ]
+        if showsEveningStreak {
+            parts.append(StreakValue.spoken("Evening", eveningStreakCount, isEveningStreakFrozen))
+        }
+        if bumpsInSevenDays > 0 {
+            parts.append(bumpsText)
+        }
+        return parts.joined(separator: ", ")
     }
 
     private var bumpsText: String {
@@ -112,6 +142,12 @@ private struct StreakValue: View {
     let value: Int
     let isFrozen: Bool
     let tint: Color
+    /// "Morning", "Daily" or "Evening", for VoiceOver.
+    let name: String
+
+    static func spoken(_ name: String, _ value: Int, _ isFrozen: Bool) -> String {
+        "\(name) streak \(value)\(isFrozen ? ", frozen" : "")"
+    }
 
     var body: some View {
         HStack(spacing: 5) {
@@ -140,6 +176,8 @@ private struct StreakValue: View {
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Self.spoken(name, value, isFrozen))
     }
 }
 

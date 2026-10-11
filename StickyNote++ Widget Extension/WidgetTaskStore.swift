@@ -66,7 +66,7 @@ enum WidgetTaskStore {
         let store = defaults
         // Stores today's rules if the app hasn't yet (first read of the day wins).
         ListService.recordTodaysRules(now: now, calendar: calendar, defaults: store)
-        let rules = DayRulesStore.history(in: store).rules(for: todayKey)
+        let rules = DayRulesStore.resolvedHistory(in: store, todayKey: todayKey).rules(for: todayKey)
         let fallbackDate = rules.nextBoundary(after: now, calendar: calendar)
 
         do {
