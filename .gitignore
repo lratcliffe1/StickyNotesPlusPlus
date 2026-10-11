@@ -14,3 +14,6 @@ DerivedData/
 Secrets.xcconfig
 .env
 .env.*
+
+# Screenshot and simulator build output (scripts/screenshots.sh)
+build/

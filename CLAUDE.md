@@ -14,6 +14,12 @@ A SwiftUI iOS app (iOS 17+) with a home-screen widget. It tracks a **morning-rou
 
 The Xcode project uses **folder-synchronised groups**: a new `.swift` file dropped into one of these folders is compiled automatically, so there's no need to edit `project.pbxproj`.
 
+## Where things are decided
+
+- `docs/ROADMAP.md`: the agreed order of work and each step's status.
+- `docs/DECISIONS.md`: product rules Liam has decided (streaks, bumping, skipping). Code and tests follow these.
+- Harness: `/verify` (CI, screenshots, blind review, PR notes), `/ship` (install build for the phone), and the `checker` agent (blind adversarial review).
+
 ## Working method
 
 1. **Plan, then wait for a yes.** Anything beyond a one-line fix gets a written plan with its design decisions and acceptance checks. Liam signs it off before any code. A detailed request is input to the plan, never its approval.
