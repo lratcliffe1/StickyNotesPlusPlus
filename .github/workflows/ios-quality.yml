@@ -21,3 +21,6 @@ jobs:
       - name: Build Widget
         run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++ Widget Extension" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 16" build
 
+
+      - name: Unit Tests
+        run: xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++" -configuration Debug -destination "platform=iOS Simulator,name=iPhone 16" test

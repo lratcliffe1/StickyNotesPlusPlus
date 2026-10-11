@@ -14,7 +14,16 @@ struct StickyNotePlusPlusApp: App {
 
     var body: some Scene {
         WindowGroup {
+#if DEBUG
+            if let harness = UITestHarness.current {
+                HomeView(viewModel: harness.viewModel, initialDestination: harness.initialDestination)
+                    .modelContainer(harness.container)
+            } else {
+                ContentView()
+            }
+#else
             ContentView()
+#endif
         }
         .modelContainer(sharedModelContainer)
     }

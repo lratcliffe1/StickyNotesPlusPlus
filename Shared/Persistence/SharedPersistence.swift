@@ -28,12 +28,7 @@ enum SharedPersistence {
     }
 
     static func appSchema() -> Schema {
-        Schema([
-            MorningRoutineTemplateItem.self,
-            MorningRoutineEntry.self,
-            DailyTask.self,
-            DayRecord.self,
-        ])
+        Schema(versionedSchema: StickyNotesSchemaV1.self)
     }
 
     static func makeContainer(schema: Schema = appSchema()) throws -> ModelContainer {
@@ -46,7 +41,7 @@ enum SharedPersistence {
             groupContainer: .identifier(appGroupIdentifier),
             cloudKitDatabase: .none
         )
-        return try ModelContainer(for: schema, configurations: [config])
+        return try ModelContainer(for: schema, migrationPlan: StickyNotesMigrationPlan.self, configurations: [config])
     }
 
     private static func migrateLegacyStoreIfNeeded(schema: Schema) {

@@ -1,0 +1,25 @@
+name: Screenshots
+
+# Opens each UITestHarness state in the simulator and uploads colour + greyscale PNGs,
+# so a change can be checked by eye (the owner's phone runs in greyscale).
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  screenshots:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Capture screenshots
+        run: ./scripts/screenshots.sh
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: build/screenshots
+          if-no-files-found: warn

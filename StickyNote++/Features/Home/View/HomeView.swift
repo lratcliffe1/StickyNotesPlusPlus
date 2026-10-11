@@ -16,16 +16,19 @@ struct HomeView: View {
 
     private let onOpenCalendar: () -> Void
     private let refreshOnAppear: Bool
+    private let initialDestination: HomeInitialDestination
     private let calendarTransitionSourceID = "home-calendar-header"
 
     @MainActor
     init(
         viewModel: HomeViewModel? = nil,
         refreshOnAppear: Bool = true,
+        initialDestination: HomeInitialDestination = .home,
         onOpenCalendar: @escaping () -> Void = {}
     ) {
         _vm = StateObject(wrappedValue: viewModel ?? HomeViewModel())
         self.refreshOnAppear = refreshOnAppear
+        self.initialDestination = initialDestination
         self.onOpenCalendar = onOpenCalendar
     }
 
@@ -63,6 +66,14 @@ struct HomeView: View {
             .task {
                 if refreshOnAppear {
                     vm.refresh(context: modelContext)
+                }
+                switch initialDestination {
+                case .home:
+                    break
+                case .calendar:
+                    isShowingCalendar = true
+                case .settings:
+                    isShowingSettings = true
                 }
             }
             .onChange(of: scenePhase) { _, phase in
@@ -305,6 +316,13 @@ struct HomeView: View {
         let normalizedPath = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).lowercased()
         return normalizedPath == "add-daily-task"
     }
+}
+
+/// Screen pushed when Home first appears. Only the screenshot harness uses anything but `.home`.
+enum HomeInitialDestination: String {
+    case home
+    case calendar
+    case settings
 }
 
 private enum DayTransitionDirection {
