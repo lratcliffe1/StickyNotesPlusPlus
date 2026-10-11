@@ -37,7 +37,7 @@ struct SegmentedDayRing: View {
         .overlay {
             if showsGlyph, let glyph = DayMark.glyph(for: marks) {
                 GeometryReader { proxy in
-                    DayGlyphView(glyph: glyph, size: max(5, proxy.size.width * 0.34))
+                    DayGlyphView(glyph: glyph, size: max(5, proxy.size.width * 0.3))
                         .frame(width: proxy.size.width, height: proxy.size.height)
                 }
             }

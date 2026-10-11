@@ -198,10 +198,11 @@ private struct DayProgressCell: View {
         VStack(spacing: max(2, diameter * 0.14)) {
             circle
                 .frame(width: diameter, height: diameter)
-                .overlay(alignment: .topTrailing) {
+                .overlay(alignment: .top) {
+                    // Above the circle, not on it, so it never hides a segment's shape (step 5).
                     if day.hasBump {
-                        BumpBadge(diameter: diameter)
-                            .offset(x: diameter * 0.22, y: -diameter * 0.22)
+                        BumpBadge(diameter: diameter * 0.9)
+                            .alignmentGuide(.top) { $0[.bottom] + 1 }
                     }
                 }
                 .background {
@@ -234,7 +235,7 @@ private struct DayProgressCell: View {
             // The day's ✓ (every list done, by the streak's verdict) or × (a miss) in the middle.
             SegmentedDayRing(
                 segments: day.segments, openLists: isToday ? todayOpenLists : [],
-                lineWidth: max(3, diameter * 0.27), showsGlyph: true
+                lineWidth: max(3, diameter * 0.22), showsGlyph: true
             )
         }
     }
