@@ -32,6 +32,7 @@ The Xcode project uses **folder-synchronised groups**: a new `.swift` file dropp
 
 ## Rules that bind
 
+- **Apple's Human Interface Guidelines govern every UI and UX decision:** native controls, standard gestures, system fonts and spacing, Dynamic Type and accessibility labels.
 - **Greyscale first.** Every state must read without colour: carry meaning in shape, icon, text, weight, contrast or pattern, never hue alone. Check the `-grey.png` screenshots.
 - **Never edit a shipped schema.** The store is versioned (`Shared/Persistence/SchemaVersions.swift`); `SchemaVersionTests.testVersionOneShapeIsPinned` and `testVersionTwoShapeIsPinned` fail if a model changes. V2 (step 2a) only *added* `Item` and `Occurrence`, so V1 and V2 share the four V1 classes. To change any model, add the next version and a stage; to change one of the shared V1 classes, first snapshot it as a nested type inside `StickyNotesSchemaV1`. Don't just update the tests. Writes go through `ListService`; nothing writes the V1 tables after the backfill. A store that can't migrate hits the `fatalError` in `StickyNotePlusPlusApp` at launch, on Liam's real data. The widget's `try?` (`WidgetTaskStore`) fails silently instead, and shows an empty widget.
 - **No downgrades.** Once a V2 build has opened the store, a pre-V2 build can't open it (it would hit the launch `fatalError`). Never ship a build older than the store's schema. The app retries opening the store once after 0.5 s, in case the widget is migrating it at that moment.
