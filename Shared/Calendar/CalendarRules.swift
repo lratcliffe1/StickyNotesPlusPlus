@@ -208,20 +208,9 @@ enum CalendarRules {
         }
     }
 
-    /// One list's state in words: done, missed, nothing due, or today's progress so far.
+    /// One list's state in words, matching its drawn shape (`DayMark`).
     static func stateWords(_ look: ListRules.DayLook?, isToday: Bool) -> String {
-        guard let look else { return "nothing due" }
-        switch look.status {
-        case .complete:
-            return "done"
-        case .neutral:
-            return "nothing due"
-        case .missed:
-            if isToday && !look.completion.isComplete {
-                return "\(Int((look.completion.value * 100).rounded())) percent done so far"
-            }
-            return "missed"
-        }
+        DayMark.words(for: look, isToday: isToday)
     }
 }
 

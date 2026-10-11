@@ -1,16 +1,29 @@
 import SwiftUI
 
-/// A day's circle, shared by the 7-day ring and the calendar so the two always agree (step 4).
+/// A day's circle, shared by the 7-day ring and the calendar so the two always agree (step 4), and
+/// the one place a day or list state is drawn. Use it (with `DayMark`) for any day state; never
+/// colour alone.
 ///
 /// One ring split into equal arcs, one per list in use that day, clockwise from 12 o'clock in
-/// morning → day → evening order; a single list is a full ring (provisional). Each arc fills along
-/// its length as far as that list's completion (`ListRules.dayLooks`), so progress reads as length,
-/// not only hue: done is a full arc, missed with nothing done an empty outlined arc, and nothing
-/// counted a dashed outline. Step 5 adds the full greyscale shape vocabulary.
+/// morning → day → evening order; a single list is a full ring (provisional). Each arc takes its
+/// list's `DayMark` shape (step 5, greyscale): filled, half-filled with a solid edge, an empty
+/// outline, or a dashed outline. Colours stay, darker than a plain hue so they keep their contrast
+/// in greyscale. With `showsGlyph` the day's ✓ or × sits in the middle (the 7-day ring); the
+/// calendar puts its date there and adds a `DayGlyphBadge` on one-list days instead.
 struct SegmentedDayRing: View {
     let segments: [DaySegment]
+    /// Today isn't decided yet: half-filled or a plain outline, never ×.
+    let isToday: Bool
     /// The ring's thickness.
     let lineWidth: CGFloat
+    let showsGlyph: Bool
+
+    init(segments: [DaySegment], isToday: Bool = false, lineWidth: CGFloat, showsGlyph: Bool = false) {
+        self.segments = segments
+        self.isToday = isToday
+        self.lineWidth = lineWidth
+        self.showsGlyph = showsGlyph
+    }
 
     var body: some View {
         ZStack {
@@ -20,32 +33,60 @@ struct SegmentedDayRing: View {
             }
         }
         .aspectRatio(1, contentMode: .fit)
+        .overlay {
+            if showsGlyph, let glyph = DayMark.glyph(for: marks) {
+                GeometryReader { proxy in
+                    DayGlyphView(glyph: glyph, size: max(5, proxy.size.width * 0.34))
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                }
+            }
+        }
         .accessibilityHidden(true)
+    }
+
+    private var marks: [DayMark] {
+        segments.map { DayMark.mark(for: $0.look, isToday: isToday) }
     }
 
     @ViewBuilder
     private func arc(_ segment: DaySegment, from start: Double, to end: Double) -> some View {
+        let mark = DayMark.mark(for: segment.look, isToday: isToday)
         let whole = RingArc(start: start, end: end, thickness: lineWidth)
-        if let look = segment.look {
-            let value = min(max(look.completion.value, 0), 1)
+        let ink = Self.fillColor(segment.look?.completion.value ?? 0)
+        // Exactly half, whatever the share done, with a solid edge where the fill stops.
+        let half = RingArc(start: start, end: start + (end - start) / 2, thickness: lineWidth)
+        switch mark.fill {
+        case .full:
             ZStack {
-                whole.fill(Color.primary.opacity(0.08))
-                if value > 0 {
-                    RingArc(start: start, end: start + (end - start) * value, thickness: lineWidth)
-                        .fill(Self.fillColor(value))
-                }
-                whole.stroke(Color.primary.opacity(0.55), lineWidth: 0.75)
+                whole.fill(ink)
+                whole.stroke(Self.outline, lineWidth: 0.75)
             }
-        } else {
+        case .half:
+            ZStack {
+                whole.fill(Self.track)
+                half.fill(ink)
+                half.stroke(Self.outline, lineWidth: 1)
+                whole.stroke(Self.outline, lineWidth: 1)
+            }
+        case .empty:
+            ZStack {
+                whole.fill(Self.track)
+                whole.stroke(Self.outline, lineWidth: 1)
+            }
+        case .dashed:
             // Nothing counted that day for this list: neither progress nor a miss.
-            whole.stroke(Color.secondary.opacity(0.8), style: StrokeStyle(lineWidth: 0.9, dash: [1.6, 1.6]))
+            whole.stroke(Color.primary.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [1.8, 1.8]))
         }
     }
+
+    private static let track = Color.primary.opacity(0.06)
+    private static let outline = Color.primary.opacity(0.7)
 
     /// Red through to green as the list gets done; darker than a plain hue so it keeps its
     /// contrast against the track in greyscale.
     static func fillColor(_ value: Double) -> Color {
-        Color(hue: 0.02 + 0.30 * value, saturation: 0.85, brightness: 0.70)
+        let clamped = min(max(value, 0), 1)
+        return Color(hue: 0.02 + 0.30 * clamped, saturation: 0.85, brightness: 0.62)
     }
 
     /// Degrees, 0 at 3 o'clock, increasing clockwise on screen. Segment `index` of `count`, starting
@@ -55,6 +96,33 @@ struct SegmentedDayRing: View {
         let gap = count > 1 ? 14.0 : 0
         let start = -90 + share * Double(index) + gap / 2
         return (start, start + share - gap)
+    }
+}
+
+/// A day's ✓ (every list done) or × (a miss): a bold symbol, so it reads in greyscale.
+struct DayGlyphView: View {
+    let glyph: DayMark.Glyph
+    let size: CGFloat
+
+    var body: some View {
+        Image(systemName: glyph == .check ? "checkmark" : "xmark")
+            .font(.system(size: size, weight: .black))
+            .foregroundStyle(.primary)
+            .accessibilityHidden(true)
+    }
+}
+
+/// The ✓ or × as a small badge on a calendar day, whose middle holds the date. Shaped like the
+/// ↻ `BumpBadge`, at the opposite corner.
+struct DayGlyphBadge: View {
+    let glyph: DayMark.Glyph
+    let diameter: CGFloat
+
+    var body: some View {
+        DayGlyphView(glyph: glyph, size: max(6, diameter * 0.30))
+            .frame(width: max(10, diameter * 0.52), height: max(10, diameter * 0.52))
+            .background(Circle().fill(Color(uiColor: .systemBackground)))
+            .overlay(Circle().stroke(Color.primary.opacity(0.7), lineWidth: 0.75))
     }
 }
 

@@ -192,7 +192,7 @@ private struct CalendarMonthSection: View {
 }
 
 /// One day. Past days and today: the date inside its segmented circle (no circle before any list
-/// was in use). Later days: the plain date, with a dot under it when something is planned. Today's
+/// was in use), each segment in the `DayMark` shapes, with a ✓ or × badge on one-list days. Later days: the plain date, with a dot under it when something is planned. Today's
 /// date sits on a filled disc; the day open on Home is tinted.
 private struct CalendarDayCell: View {
     let dayNumber: Int
@@ -211,7 +211,7 @@ private struct CalendarDayCell: View {
             VStack(spacing: 3) {
                 ZStack {
                     if !segments.isEmpty {
-                        SegmentedDayRing(segments: segments, lineWidth: max(3, diameter * 0.15))
+                        SegmentedDayRing(segments: segments, isToday: isToday, lineWidth: max(3, diameter * 0.15))
                     }
                     if isToday {
                         Circle()
@@ -233,6 +233,13 @@ private struct CalendarDayCell: View {
                             .offset(x: diameter * 0.14, y: -diameter * 0.14)
                     }
                 }
+                .overlay(alignment: .bottomTrailing) {
+                    // ✓ or × only where there's room: a one-list day (provisional, step 5).
+                    if segments.count == 1, let glyph = dayGlyph {
+                        DayGlyphBadge(glyph: glyph, diameter: diameter * 0.75)
+                            .offset(x: diameter * 0.14, y: diameter * 0.14)
+                    }
+                }
 
                 Circle()
                     .fill(Color.primary.opacity(0.6))
@@ -252,6 +259,10 @@ private struct CalendarDayCell: View {
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var dayGlyph: DayMark.Glyph? {
+        DayMark.glyph(for: segments.map { DayMark.mark(for: $0.look, isToday: isToday) })
     }
 
     private var numberStyle: AnyShapeStyle {

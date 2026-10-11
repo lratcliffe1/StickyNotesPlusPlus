@@ -332,7 +332,7 @@ final class CalendarRulesTests: XCTestCase {
         XCTAssertEqual(
             CalendarRules.accessibilityLabel(dayKey: "2026-10-12", todayKey: "2026-10-14", segments: segments,
                                              hasBump: true, isPlanned: false, calendar: british),
-            "Monday 12 October: morning done, day missed, bumped"
+            "Monday 12 October: morning done, day 50 percent done, missed, bumped"
         )
         XCTAssertEqual(
             CalendarRules.accessibilityLabel(dayKey: "2026-10-14", todayKey: "2026-10-14",
