@@ -159,8 +159,8 @@ enum CalendarRules {
 
     // MARK: - Accessibility
 
-    /// "Monday 12 October: morning done, day missed, bumped". Past days and today say each list's
-    /// state, in the words of its drawn shape (`DayMark`); future days say whether anything is
+    /// "Monday 12 October: morning done; day missed, 50 percent done; bumped". Past days and today
+    /// say each list's state, in the words of its drawn shape (`DayMark`); future days say whether anything is
     /// planned. `todayOpenLists`: the lists still undecided today (`DayMark.openListsToday`); nil
     /// treats every list as still open today.
     static func accessibilityLabel(
@@ -183,7 +183,7 @@ enum CalendarRules {
             if hasBump { parts.append("bumped") }
         }
         guard !parts.isEmpty else { return prefix }
-        return "\(prefix): \(parts.joined(separator: ", "))"
+        return "\(prefix): \(parts.joined(separator: "; "))"
     }
 
     /// "Monday 12 October" in the calendar's locale.

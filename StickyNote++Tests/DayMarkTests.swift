@@ -122,8 +122,8 @@ final class DayMarkTests: XCTestCase {
 
     func testWordsSayEachState() {
         XCTAssertEqual(DayMark.words(for: look(.complete, 1), isOpen: false), "done")
-        XCTAssertEqual(DayMark.words(for: look(.missed, 1), isOpen: false), "all done after the cutoff, missed")
-        XCTAssertEqual(DayMark.words(for: look(.missed, 0.5), isOpen: false), "50 percent done, missed")
+        XCTAssertEqual(DayMark.words(for: look(.missed, 1), isOpen: false), "missed, all done after the cutoff")
+        XCTAssertEqual(DayMark.words(for: look(.missed, 0.5), isOpen: false), "missed, 50 percent done")
         XCTAssertEqual(DayMark.words(for: look(.missed, 0.5), isOpen: true), "50 percent done so far")
         XCTAssertEqual(DayMark.words(for: look(.missed, 0), isOpen: false), "missed")
         XCTAssertEqual(DayMark.words(for: look(.missed, 0), isOpen: true), "nothing done yet")
@@ -139,7 +139,7 @@ final class DayMarkTests: XCTestCase {
             CalendarRules.accessibilityLabel(dayKey: "2026-10-14", todayKey: "2026-10-14", segments: segments,
                                              hasBump: false, isPlanned: false, todayOpenLists: [.day, .evening],
                                              calendar: british),
-            "Today, Wednesday 14 October: morning 50 percent done, missed, day 50 percent done so far"
+            "Today, Wednesday 14 October: morning missed, 50 percent done; day 50 percent done so far"
         )
     }
 }

@@ -103,13 +103,14 @@ enum DayMark: Equatable, CaseIterable {
         return nil
     }
 
-    /// One list's state in words, for VoiceOver.
+    /// One list's state in words, for VoiceOver: the verdict first ("missed, 50 percent done"). A
+    /// day's lists are joined with "; " (`CalendarRules.accessibilityLabel`), so each reads as one item.
     static func words(for look: ListRules.DayLook?, isOpen: Bool) -> String {
         let value = look?.completion.value ?? 0
         let percent = Int((value * 100).rounded())
         switch mark(for: look, isOpen: isOpen) {
         case .done: return "done"
-        case .partlyDone: return value >= 1 ? "all done after the cutoff, missed" : "\(percent) percent done, missed"
+        case .partlyDone: return value >= 1 ? "missed, all done after the cutoff" : "missed, \(percent) percent done"
         case .missed: return "missed"
         case .inProgress: return "\(percent) percent done so far"
         case .notYet: return "nothing done yet"
