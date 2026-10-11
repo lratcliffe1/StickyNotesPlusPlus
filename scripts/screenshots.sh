@@ -24,7 +24,6 @@ GREYSCALE="$DERIVED/greyscale"
 swiftc -O "$HERE/greyscale.swift" -o "$GREYSCALE"
 
 echo "== booting the simulator"
-
 xcrun simctl bootstatus "$UDID" -b >/dev/null
 echo "== installing and capturing"
 xcrun simctl install "$UDID" "$APP"
