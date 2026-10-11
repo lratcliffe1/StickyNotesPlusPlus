@@ -35,11 +35,15 @@ mkdir -p "$OUT"
 # launch arguments, so 16-add-options shows the add menu's result and 17-add-deadline the sheet its
 # "Deadline…" opens. 05-settings is "At a set time" (the default) with the evening on. The app
 # also forces the appearance (-uiAppearance), since simctl's switch can land after launch.
+# 04-calendar opens on the current month, 24 on the next one (-uiCalendarMonth +1); 25 is Home three
+# days ahead (-uiDay +3), with a planned one-off and the recurring items due that day. The calendar
+# shots use a British locale (-AppleLocale en_GB), so weeks start on Monday as on Liam's phone.
+# 27 and 28 keep only the morning list, then morning and day (-uiOnlyLists): one and two segments.
 SHOTS=(
   "01-home-morning|morning|home|light|"
   "02-home-daily|daily|home|light|"
   "03-home-empty|empty|home|light|"
-  "04-calendar|daily|calendar|light|"
+  "04-calendar|daily|calendar|light||-AppleLocale en_GB"
   "05-settings|daily|settings|light|"
   "06-home-morning-dark|morning|home|dark|"
   "07-banner-missed-yesterday|missedYesterday|home|light|"
@@ -59,6 +63,11 @@ SHOTS=(
   "21-home-1030-done-or-skipped|lateMorning|home|light||-uiMorningEnds doneOrSkipped"
   "22-home-1230-done-or-skipped-still-morning|noon|home|light||-uiMorningEnds doneOrSkipped"
   "23-settings-applies-from-tomorrow|daily|settings|light||-uiMorningEnds doneOrSkipped -uiTodayKeeps 09:00"
+  "24-calendar-next-month|daily|calendar|light||-uiCalendarMonth +1 -AppleLocale en_GB"
+  "25-home-future-day|daily|home|light||-uiDay +3"
+  "26-calendar-dark|daily|calendar|dark||-AppleLocale en_GB"
+  "27-calendar-one-list|daily|calendar|light||-uiOnlyLists morning -AppleLocale en_GB"
+  "28-calendar-two-lists|daily|calendar|light||-uiOnlyLists morning,day -AppleLocale en_GB"
 )
 
 for shot in "${SHOTS[@]}"; do

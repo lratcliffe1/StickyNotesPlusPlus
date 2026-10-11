@@ -26,21 +26,9 @@ enum AppTheme {
         light: UIColor.systemBlue.withAlphaComponent(0.18),
         dark: UIColor.systemBlue.withAlphaComponent(0.35)
     )
-    static let todayStroke = Color(
-        light: UIColor.systemBlue.withAlphaComponent(0.82),
-        dark: UIColor.systemBlue.withAlphaComponent(0.72)
-    )
     static let progressCircleBase = Color(
         light: UIColor.white.withAlphaComponent(0.45),
         dark: UIColor.white.withAlphaComponent(0.16)
-    )
-    static let progressCircleDivider = Color(
-        light: UIColor.white.withAlphaComponent(0.80),
-        dark: UIColor.white.withAlphaComponent(0.32)
-    )
-    static let progressCircleStroke = Color(
-        light: UIColor.white.withAlphaComponent(0.85),
-        dark: UIColor.white.withAlphaComponent(0.36)
     )
 }
 

@@ -388,9 +388,9 @@ final class ListServiceTests: XCTestCase {
 
         try ListService.deleteItem(gym, todayKey: "2026-10-14", context: context)
         XCTAssertEqual(try dayStreak(through: "2026-10-19"), HomeModel.StreakState(count: 1, isFrozen: false))
-        let looks = try ListService.dayLooks(for: .day, through: "2026-10-19", todayKey: "2026-10-19",
-                                             history: DayRulesHistory(), context: context, calendar: munich)
-        XCTAssertNil(looks["2026-10-18"])
+        let looks = try ListService.dayLooks(from: "2026-10-01", through: "2026-10-19", todayKey: "2026-10-19",
+                                             history: DayRulesHistory(), context: context, calendar: munich).looks[.day]
+        XCTAssertNil(looks?["2026-10-18"])
     }
 
     /// Same, when deleteItem reopens Monday's row by removing its bumped-in copy.

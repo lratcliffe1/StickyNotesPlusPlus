@@ -44,14 +44,19 @@ enum HomeModel {
         let isFrozen: Bool
     }
 
+    /// One day of the 7-day ring, drawn like a calendar day (step 4).
     struct DayProgress: Identifiable, Equatable {
         let date: Date
-        let morning: CompletionState
-        let daily: CompletionState
+        let dayKey: String
+        /// One per list in use that day, morning → day → evening (`CalendarRules.segments`).
+        let segments: [DaySegment]
         /// Something on any list was bumped from this day (the ↻ mark).
         var hasBump: Bool = false
+        /// After today: drawn as a plain day, with a dot when something is planned.
+        var isFuture: Bool = false
+        var isPlanned: Bool = false
 
-        var id: Date { date }
+        var id: String { dayKey }
     }
 
     static func normalizedDay(_ date: Date, calendar: Calendar = .current) -> Date {

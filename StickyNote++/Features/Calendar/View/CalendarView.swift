@@ -1,612 +1,277 @@
+import Combine
 import SwiftData
 import SwiftUI
-import UIKit
 
-/// Read-only calendar surface that visualizes daily morning/daily completion history.
-private enum CalendarMonthLayoutMetrics {
-    static let titleRowHeight: CGFloat = 22
-    static let contentSpacingAfterTitle: CGFloat = 10
-    static let weekdayHeaderHeight: CGFloat = 16
-    static let dayCellContentHeight: CGFloat = 52
-    static let dayCellVerticalPadding: CGFloat = 2
-    static let gridRowSpacing: CGFloat = 8
-    static let cardVerticalPadding: CGFloat = 24
-    static let safetyBuffer: CGFloat = 12
-}
-
+/// The calendar (DECISIONS.md, 2026-10-11 evening, "4: calendar"): months in a vertical scroll, from
+/// the first entry's month through the next 12 months, opening on the current month. Weeks start on
+/// the locale's first weekday. Past days and today show the segmented day circle (the 7-day ring's
+/// own component and rule); later days are plain dates with a dot when something is planned.
+/// Tapping a day opens it on Home. Each month is fetched only once it scrolls into view.
 struct CalendarView: View {
-    @Query(sort: \Occurrence.dayKey) private var occurrences: [Occurrence]
-    @Query(sort: \Item.sortOrder) private var items: [Item]
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
+    @StateObject private var model: CalendarModel
+    @ScaledMetric(relativeTo: .footnote) private var scaledDiameter: CGFloat = 36
 
     let selectedDay: Date
+    /// Home's clock (the screenshot harness fixes it).
+    let now: () -> Date
     let onSelectDay: (Date) -> Void
-    /// Where each day's stored rules are read from (the screenshot harness passes its own suite).
-    var defaults: UserDefaults = SharedPersistence.sharedDefaults
-    @State private var scrollRequestVersion = 0
-    @State private var requestedMonthID: String?
+    /// The month shown first, as months after the current one (the screenshot harness's
+    /// `-uiCalendarMonth`); 0 in the app.
+    private let initialMonthOffset: Int
+
+    @MainActor
+    init(
+        selectedDay: Date,
+        now: @escaping () -> Date,
+        defaults: UserDefaults,
+        context: ModelContext,
+        initialMonthOffset: Int = 0,
+        onSelectDay: @escaping (Date) -> Void
+    ) {
+        _model = StateObject(wrappedValue: CalendarModel(now: now(), defaults: defaults, context: context))
+        self.selectedDay = selectedDay
+        self.now = now
+        self.initialMonthOffset = initialMonthOffset
+        self.onSelectDay = onSelectDay
+    }
+
     var body: some View {
-        let months = displayMonthDescriptors
-        let progressLookup = dayProgressLookup
-        let monthProgressByMonthID = monthProgressLookupByMonthID(
-            from: progressLookup,
-            monthCount: months.count
-        )
-        let selectedMonthID = monthID(
-            year: calendar.component(.year, from: selectedDayNormalized),
-            month: calendar.component(.month, from: selectedDayNormalized)
-        )
-        let todayMonthID = monthID(
-            year: calendar.component(.year, from: todayNormalized),
-            month: calendar.component(.month, from: todayNormalized)
-        )
-
-        ZStack(alignment: .bottomLeading) {
-            CalendarCollectionView(
-                months: months,
-                weekdaySymbols: weekdaySymbols,
-                monthProgressByMonthID: monthProgressByMonthID,
-                selectedDay: selectedDayNormalized,
-                today: todayNormalized,
-                initialMonthID: initialMonthID,
-                focusedMonthID: requestedMonthID ?? selectedMonthID,
-                scrollRequestVersion: scrollRequestVersion,
-                onSelectDay: onSelectDay
-            )
-
-            Button("Today") {
-                requestedMonthID = todayMonthID
-                scrollRequestVersion += 1
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 16) {
+                    ForEach(model.months) { month in
+                        CalendarMonthSection(
+                            month: month,
+                            data: model.loaded[month.id],
+                            lists: model.lists,
+                            firstEntryDayKey: model.firstEntryDayKey,
+                            todayKey: model.todayKey,
+                            selectedKey: HomeModel.dayKey(for: selectedDay, calendar: model.calendar),
+                            calendar: model.calendar,
+                            diameter: min(scaledDiameter, 48),
+                            onSelect: select
+                        )
+                        .id(month.id)
+                        // On appearing, and again after each reload while on screen.
+                        .task(id: model.generation) { @MainActor in
+                            model.load(month, context: modelContext)
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
             }
-            .font(.subheadline.weight(.bold))
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(Color(uiColor: .systemBackground))
-            .clipShape(Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(AppTheme.cardBorder, lineWidth: 1.2)
+            .onAppear {
+                scroll(proxy, toMonthsAfterCurrent: initialMonthOffset, animated: false)
             }
-            .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-            .padding(.leading, 18)
-            .padding(.bottom, 16)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Today") {
+                        scroll(proxy, toMonthsAfterCurrent: 0, animated: true)
+                    }
+                }
+            }
         }
-        .onChange(of: selectedDayNormalized) { _, _ in
-            requestedMonthID = nil
+        // Back from the background (the widget may have written) or a new day: read again.
+        // Deferred a turn so Home's own foreground sync (it refreshes the shared context) runs first.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            DispatchQueue.main.async { model.reload(now: now(), context: modelContext) }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
+                .merge(with: NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification))
+                .receive(on: DispatchQueue.main)
+        ) { _ in
+            model.reload(now: now(), context: modelContext)
         }
         .background(AppTheme.pageBackground.ignoresSafeArea())
-        .ignoresSafeArea(edges: .vertical)
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("Calendar")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.visible, for: .navigationBar)
     }
 
-    private var calendar: Calendar {
-        var value = Calendar.current
-        value.firstWeekday = 1
-        return value
-    }
-
-    private var selectedDayNormalized: Date {
-        HomeModel.normalizedDay(selectedDay, calendar: calendar)
-    }
-
-    private var todayNormalized: Date {
-        HomeModel.normalizedDay(Date(), calendar: calendar)
-    }
-
-    private var initialScrollDay: Date {
-        selectedDayNormalized
-    }
-
-    private var yearBounds: ClosedRange<Int> {
-        let currentYear = calendar.component(.year, from: todayNormalized)
-        let lowerBound = currentYear - 50
-        let upperBound = currentYear + 10
-        let initialYear = calendar.component(.year, from: selectedDayNormalized)
-
-        // Keep default range tight for smoother scrolling, then expand only as needed for real data.
-        var minYear = min(currentYear - 1, initialYear)
-        var maxYear = max(currentYear + 1, initialYear)
-
-        // Sorted by day key, so the first and last rows bound the data.
-        for occurrence in [occurrences.first, occurrences.last].compactMap({ $0 }) {
-            guard let year = DayMath.parse(occurrence.dayKey)?.year else { continue }
-            guard year >= lowerBound && year <= upperBound else { continue }
-            minYear = min(minYear, year)
-            maxYear = max(maxYear, year)
-        }
-
-        let paddedStart = max(1, minYear - 1)
-        let paddedEnd = min(9999, maxYear + 1)
-        return paddedStart...paddedEnd
-    }
-
-    private var weekdaySymbols: [String] {
-        let symbols = calendar.shortStandaloneWeekdaySymbols
-        return (0..<7).map { offset in
-            let index = (calendar.firstWeekday - 1 + offset) % 7
-            return symbols[index]
-        }
-    }
-
-    private var displayMonthDescriptors: [CalendarMonthDescriptor] {
-        Array(yearBounds).flatMap { year in
-            (1...12).map { month in
-                CalendarMonthDescriptor(
-                    id: monthID(year: year, month: month),
-                    year: year,
-                    month: month
-                )
-            }
-        }
-    }
-
-    /// The same day looks the streak uses (`ListRules.dayLooks`), for the morning and day lists
-    /// (evening isn't shown yet). A day absent from both is neutral. A day with a bump on any list
-    /// gets the ↻ mark.
-    private var dayProgressLookup: [Date: HomeModel.DayProgress] {
-        let todayKey = HomeModel.dayKey(for: Date())
-        // Each day is judged by its own stored rules (its morning deadline).
-        let history = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey)
-        func looks(_ list: ListKind) -> [String: ListRules.DayLook] {
-            ListRules.dayLooks(
-                occurrences: occurrences.filter { $0.list == list },
-                schedules: items.filter { $0.list == list }.map(\.schedule),
-                missesBefore: todayKey,
-                deadline: ListService.deadline(for: list, history: history, calendar: .current)
-            )
-        }
-        let morningLooks = looks(.morning)
-        let dailyLooks = looks(.day)
-        let bumpedDays = ListRules.bumpedDays(occurrences)
-
-        var lookup: [Date: HomeModel.DayProgress] = [:]
-        lookup.reserveCapacity(morningLooks.count + dailyLooks.count)
-
-        for dayKey in Set(morningLooks.keys).union(dailyLooks.keys).union(bumpedDays) {
-            guard let parsed = HomeModel.date(fromDayKey: dayKey, calendar: calendar) else { continue }
-            let day = HomeModel.normalizedDay(parsed, calendar: calendar)
-            lookup[day] = HomeModel.DayProgress(
-                date: day,
-                morning: morningLooks[dayKey]?.completion ?? .neutral,
-                daily: dailyLooks[dayKey]?.completion ?? .neutral,
-                hasBump: bumpedDays.contains(dayKey)
-            )
-        }
-
-        return lookup
-    }
-
-    private func monthProgressLookupByMonthID(
-        from progressLookup: [Date: HomeModel.DayProgress],
-        monthCount: Int
-    ) -> [String: [Date: HomeModel.DayProgress]] {
-        var grouped: [String: [Date: HomeModel.DayProgress]] = [:]
-        grouped.reserveCapacity(monthCount)
-
-        for (day, progress) in progressLookup {
-            let normalizedDay = HomeModel.normalizedDay(day, calendar: calendar)
-            let year = calendar.component(.year, from: normalizedDay)
-            let month = calendar.component(.month, from: normalizedDay)
-            let key = monthID(year: year, month: month)
-            grouped[key, default: [:]][normalizedDay] = progress
-        }
-
-        return grouped
-    }
-
-    private func monthID(year: Int, month: Int) -> String {
-        "month-\(year)-\(month)"
-    }
-
-    private var initialMonthID: String {
-        let components = calendar.dateComponents([.year, .month], from: initialScrollDay)
-        let year = components.year ?? calendar.component(.year, from: initialScrollDay)
-        let month = components.month ?? calendar.component(.month, from: initialScrollDay)
-        return monthID(year: year, month: month)
-    }
-
-}
-
-private struct CalendarMonthDescriptor: Hashable {
-    let id: String
-    let year: Int
-    let month: Int
-}
-
-private struct CalendarCollectionView: UIViewRepresentable {
-    let months: [CalendarMonthDescriptor]
-    let weekdaySymbols: [String]
-    let monthProgressByMonthID: [String: [Date: HomeModel.DayProgress]]
-    let selectedDay: Date
-    let today: Date
-    let initialMonthID: String
-    let focusedMonthID: String
-    let scrollRequestVersion: Int
-    let onSelectDay: (Date) -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onSelectDay: onSelectDay)
-    }
-
-    func makeUIView(context: Context) -> UICollectionView {
-        let layout = UICollectionViewFlowLayout()
-        layout.scrollDirection = .vertical
-        layout.minimumLineSpacing = 22
-        layout.sectionInset = UIEdgeInsets(top: 0, left: 16, bottom: 0, right: 16)
-        layout.estimatedItemSize = .zero
-
-        let collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-        collectionView.backgroundColor = .clear
-        collectionView.alwaysBounceVertical = true
-        collectionView.showsVerticalScrollIndicator = false
-        collectionView.register(UICollectionViewCell.self, forCellWithReuseIdentifier: Coordinator.cellReuseID)
-        collectionView.dataSource = context.coordinator
-        collectionView.delegate = context.coordinator
-        context.coordinator.collectionView = collectionView
-        return collectionView
-    }
-
-    func updateUIView(_ uiView: UICollectionView, context: Context) {
-        context.coordinator.update(
-            months: months,
-            weekdaySymbols: weekdaySymbols,
-            monthProgressByMonthID: monthProgressByMonthID,
-            selectedDay: selectedDay,
-            today: today,
-            initialMonthID: initialMonthID,
-            focusedMonthID: focusedMonthID,
-            scrollRequestVersion: scrollRequestVersion
-        )
-    }
-
-    final class Coordinator: NSObject, UICollectionViewDataSource, UICollectionViewDelegateFlowLayout {
-        static let cellReuseID = "CalendarMonthCell"
-
-        weak var collectionView: UICollectionView?
-        private let onSelectDay: (Date) -> Void
-
-        private var months: [CalendarMonthDescriptor] = []
-        private var weekdaySymbols: [String] = []
-        private var monthProgressByMonthID: [String: [Date: HomeModel.DayProgress]] = [:]
-        private var selectedDay: Date = Date()
-        private var today: Date = Date()
-        private var initialMonthID: String = ""
-        private var focusedMonthID: String = ""
-        private var scrollRequestVersion: Int = 0
-        private var hasAnchoredInitialMonth = false
-        private var lastFocusedMonthID: String?
-
-        init(onSelectDay: @escaping (Date) -> Void) {
-            self.onSelectDay = onSelectDay
-        }
-
-        func update(
-            months: [CalendarMonthDescriptor],
-            weekdaySymbols: [String],
-            monthProgressByMonthID: [String: [Date: HomeModel.DayProgress]],
-            selectedDay: Date,
-            today: Date,
-            initialMonthID: String,
-            focusedMonthID: String,
-            scrollRequestVersion: Int
-        ) {
-            let didStructureChange =
-                self.months != months ||
-                self.weekdaySymbols != weekdaySymbols
-            let didVisualChange =
-                self.monthProgressByMonthID != monthProgressByMonthID ||
-                self.selectedDay != selectedDay ||
-                self.today != today
-            let shouldReload = didStructureChange || didVisualChange
-            let previousFocusedMonthID = self.focusedMonthID
-            let previousScrollRequestVersion = self.scrollRequestVersion
-
-            self.months = months
-            self.weekdaySymbols = weekdaySymbols
-            self.monthProgressByMonthID = monthProgressByMonthID
-            self.selectedDay = selectedDay
-            self.today = today
-            self.initialMonthID = initialMonthID
-            self.focusedMonthID = focusedMonthID
-            self.scrollRequestVersion = scrollRequestVersion
-
-            guard let collectionView else { return }
-            if shouldReload {
-                collectionView.reloadData()
-            }
-            if didStructureChange {
-                collectionView.collectionViewLayout.invalidateLayout()
-            }
-
-            if !hasAnchoredInitialMonth {
-                hasAnchoredInitialMonth = true
-                scrollToMonth(initialMonthID, in: collectionView, animated: false)
-                lastFocusedMonthID = focusedMonthID
-                return
-            }
-
-            if scrollRequestVersion != previousScrollRequestVersion {
-                lastFocusedMonthID = focusedMonthID
-                scrollToMonth(focusedMonthID, in: collectionView, animated: true)
-                return
-            }
-
-            if focusedMonthID != previousFocusedMonthID || focusedMonthID != lastFocusedMonthID {
-                lastFocusedMonthID = focusedMonthID
-                scrollToMonth(focusedMonthID, in: collectionView, animated: true)
-                return
-            }
-        }
-
-        func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
-            months.count
-        }
-
-        func collectionView(
-            _ collectionView: UICollectionView,
-            cellForItemAt indexPath: IndexPath
-        ) -> UICollectionViewCell {
-            let cell = collectionView.dequeueReusableCell(withReuseIdentifier: Self.cellReuseID, for: indexPath)
-            let month = months[indexPath.item]
-            let monthProgress = monthProgressByMonthID[month.id] ?? [:]
-
-            cell.backgroundColor = .clear
-            cell.clipsToBounds = true
-            cell.contentView.clipsToBounds = true
-            cell.contentConfiguration = UIHostingConfiguration {
-                CalendarMonthCardView(
-                    year: month.year,
-                    month: month.month,
-                    weekdaySymbols: weekdaySymbols,
-                    monthProgressLookup: monthProgress,
-                    selectedDay: selectedDay,
-                    today: today,
-                    onSelectDay: onSelectDay
-                )
-                .equatable()
-            }
-            .margins(.all, 0)
-            return cell
-        }
-
-        func collectionView(
-            _ collectionView: UICollectionView,
-            layout collectionViewLayout: UICollectionViewLayout,
-            sizeForItemAt indexPath: IndexPath
-        ) -> CGSize {
-            guard let flowLayout = collectionViewLayout as? UICollectionViewFlowLayout else {
-                return CGSize(width: collectionView.bounds.width, height: 380)
-            }
-
-            let month = months[indexPath.item]
-            let availableWidth = max(
-                collectionView.bounds.width - flowLayout.sectionInset.left - flowLayout.sectionInset.right,
-                0
-            )
-            let monthHeight = deterministicMonthHeight(for: month)
-            return CGSize(width: availableWidth, height: monthHeight)
-        }
-
-        private func scrollToMonth(_ monthID: String, in collectionView: UICollectionView, animated: Bool) {
-            guard let index = months.firstIndex(where: { $0.id == monthID }) else { return }
-            let indexPath = IndexPath(item: index, section: 0)
-
+    private func scroll(_ proxy: ScrollViewProxy, toMonthsAfterCurrent offset: Int, animated: Bool) {
+        guard let target = model.currentMonth?.shifted(by: offset), model.months.contains(target) else { return }
+        if animated {
+            withAnimation { proxy.scrollTo(target.id, anchor: .top) }
+        } else {
+            proxy.scrollTo(target.id, anchor: .top)
+            // Months above the target are laid out lazily, at estimated heights: settle once more.
             DispatchQueue.main.async {
-                guard collectionView.numberOfItems(inSection: 0) > indexPath.item else { return }
-                collectionView.scrollToItem(at: indexPath, at: .top, animated: animated)
+                proxy.scrollTo(target.id, anchor: .top)
             }
         }
+    }
 
-        private func deterministicMonthHeight(for month: CalendarMonthDescriptor) -> CGFloat {
-            let weekRows = weekRowCount(year: month.year, month: month.month)
-
-            let dayCellTotalHeight =
-                CalendarMonthLayoutMetrics.dayCellContentHeight +
-                (CalendarMonthLayoutMetrics.dayCellVerticalPadding * 2)
-            let dayRowsHeight = CGFloat(weekRows) * dayCellTotalHeight
-            let spacingBetweenRows = CGFloat(weekRows) * CalendarMonthLayoutMetrics.gridRowSpacing
-
-            return
-                CalendarMonthLayoutMetrics.cardVerticalPadding +
-                CalendarMonthLayoutMetrics.titleRowHeight +
-                CalendarMonthLayoutMetrics.contentSpacingAfterTitle +
-                CalendarMonthLayoutMetrics.weekdayHeaderHeight +
-                dayRowsHeight +
-                spacingBetweenRows +
-                CalendarMonthLayoutMetrics.safetyBuffer
-        }
-
-        private func weekRowCount(year: Int, month: Int) -> Int {
-            var calendar = Calendar.current
-            calendar.firstWeekday = 1
-
-            guard
-                let monthStart = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
-                let dayRange = calendar.range(of: .day, in: .month, for: monthStart)
-            else {
-                return 6
-            }
-
-            let weekday = calendar.component(.weekday, from: monthStart)
-            let leadingEmpty = (weekday - calendar.firstWeekday + 7) % 7
-            let slotCount = leadingEmpty + dayRange.count
-            return Int(ceil(Double(slotCount) / 7.0))
-        }
+    private func select(_ dayKey: String) {
+        guard let day = HomeModel.date(fromDayKey: dayKey, calendar: model.calendar) else { return }
+        onSelectDay(HomeModel.normalizedDay(day, calendar: model.calendar))
     }
 }
 
-private struct CalendarMonthCardView: View, Equatable {
-    let year: Int
-    let month: Int
-    let weekdaySymbols: [String]
-    let monthProgressLookup: [Date: HomeModel.DayProgress]
-    let selectedDay: Date
-    let today: Date
-    let onSelectDay: (Date) -> Void
-
-    static func == (lhs: CalendarMonthCardView, rhs: CalendarMonthCardView) -> Bool {
-        lhs.year == rhs.year &&
-        lhs.month == rhs.month &&
-        lhs.weekdaySymbols == rhs.weekdaySymbols &&
-        lhs.monthProgressLookup == rhs.monthProgressLookup &&
-        lhs.selectedDay == rhs.selectedDay &&
-        lhs.today == rhs.today
-    }
+/// One month: its title, the weekday row and the weeks.
+private struct CalendarMonthSection: View {
+    let month: CalendarRules.Month
+    let data: CalendarModel.MonthData?
+    let lists: [ListKind]
+    let firstEntryDayKey: String?
+    let todayKey: String
+    let selectedKey: String
+    let calendar: Calendar
+    let diameter: CGFloat
+    let onSelect: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(monthTitle)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
-                .frame(height: CalendarMonthLayoutMetrics.titleRowHeight, alignment: .center)
+            Text(title)
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
 
-            LazyVGrid(columns: gridColumns, spacing: 8) {
-                ForEach(weekdaySymbols, id: \.self) { symbol in
-                    Text(symbol)
-                        .font(.system(size: 10, weight: .medium))
+            HStack(spacing: 0) {
+                let symbols = CalendarRules.weekdaySymbols(calendar: calendar)
+                ForEach(symbols.indices, id: \.self) { index in
+                    Text(symbols[index])
+                        .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .frame(height: CalendarMonthLayoutMetrics.weekdayHeaderHeight)
                         .frame(maxWidth: .infinity)
                 }
-
-                ForEach(monthSlots) { slot in
-                    if let day = slot.date {
-                        dayCell(for: day)
-                    } else {
-                        Color.clear
-                            .frame(maxWidth: .infinity, minHeight: 52)
-                    }
-                }
             }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(AppTheme.cardSurface)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(AppTheme.cardBorder, lineWidth: 1)
-        }
-    }
+            .accessibilityHidden(true)
 
-    private var calendar: Calendar {
-        var value = Calendar.current
-        value.firstWeekday = 1
-        return value
-    }
-
-    private var monthTitle: String {
-        guard let date = calendar.date(from: DateComponents(year: year, month: month, day: 1)) else {
-            return "\(month)/\(year)"
-        }
-        return date.formatted(.dateTime.month(.wide).year())
-    }
-
-    private var monthSlots: [CalendarSlot] {
-        guard
-            let monthStart = calendar.date(from: DateComponents(year: year, month: month, day: 1)),
-            let dayRange = calendar.range(of: .day, in: .month, for: monthStart)
-        else {
-            return []
-        }
-
-        let weekday = calendar.component(.weekday, from: monthStart)
-        let leadingEmpty = (weekday - calendar.firstWeekday + 7) % 7
-
-        var slots: [CalendarSlot] = []
-        slots.reserveCapacity(leadingEmpty + dayRange.count + 7)
-
-        for index in 0..<leadingEmpty {
-            slots.append(CalendarSlot(id: "empty-\(year)-\(month)-\(index)", date: nil))
-        }
-
-        for day in dayRange {
-            let date = calendar.date(from: DateComponents(year: year, month: month, day: day))
-            slots.append(CalendarSlot(id: "day-\(year)-\(month)-\(day)", date: date))
-        }
-
-        while slots.count % 7 != 0 {
-            slots.append(CalendarSlot(id: "tail-\(year)-\(month)-\(slots.count)", date: nil))
-        }
-
-        return slots
-    }
-
-    private func dayCell(for date: Date) -> some View {
-        let normalized = HomeModel.normalizedDay(date, calendar: calendar)
-        let progress = monthProgressLookup[normalized] ?? emptyProgress(for: normalized)
-        let isSelected = normalized == selectedDay
-        let isToday = normalized == today
-        let circleDiameter: CGFloat = 25
-
-        return Button {
-            onSelectDay(normalized)
-        } label: {
             VStack(spacing: 4) {
-                DiagonalSplitCircle(
-                    morning: progress.morning,
-                    daily: progress.daily,
-                    completionTickDiameter: circleDiameter
-                )
-                .frame(width: circleDiameter, height: circleDiameter)
-                .overlay(alignment: .topTrailing) {
-                    if progress.hasBump {
-                        BumpBadge(diameter: circleDiameter)
-                            .offset(x: circleDiameter * 0.22, y: -circleDiameter * 0.22)
+                let weeks = CalendarRules.weeks(for: month, calendar: calendar)
+                ForEach(weeks.indices, id: \.self) { week in
+                    HStack(spacing: 0) {
+                        ForEach(0..<7, id: \.self) { slot in
+                            if let dayKey = weeks[week][slot] {
+                                dayCell(dayKey)
+                            } else {
+                                Color.clear
+                                    .frame(maxWidth: .infinity)
+                                    .accessibilityHidden(true)
+                            }
+                        }
                     }
-                }
-
-                Text("\(calendar.component(.day, from: normalized))")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
-            .frame(maxWidth: .infinity, minHeight: CalendarMonthLayoutMetrics.dayCellContentHeight)
-            .padding(.vertical, CalendarMonthLayoutMetrics.dayCellVerticalPadding)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isSelected ? AppTheme.selectedDayTint : .clear)
-            )
-            .overlay {
-                if isToday {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(AppTheme.todayStroke, lineWidth: 1.5)
                 }
             }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(
-            "\(normalized.formatted(date: .abbreviated, time: .omitted)), morning \(Int((progress.morning.value * 100).rounded())) percent, daily \(Int((progress.daily.value * 100).rounded())) percent\(progress.hasBump ? ", bumped" : "")"
-        )
+        .padding(14)
+        .glassCard(cornerRadius: 16, fill: AnyShapeStyle(AppTheme.cardSurface), shadowOpacity: 0.04)
     }
 
-    private func emptyProgress(for day: Date) -> HomeModel.DayProgress {
-        HomeModel.DayProgress(
-            date: day,
-            morning: .neutral,
-            daily: .neutral
-        )
+    private var title: String {
+        CalendarRules.monthTitle(month, calendar: calendar)
     }
 
-    private var gridColumns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 6), count: 7)
+    private func dayCell(_ dayKey: String) -> some View {
+        let isFuture = dayKey > todayKey
+        let segments = isFuture ? [] : CalendarRules.segments(
+            on: dayKey, lists: lists, firstEntryDayKey: firstEntryDayKey, looks: data?.looks ?? [:]
+        )
+        let hasBump = !isFuture && (data?.bumpedDays.contains(dayKey) ?? false)
+        let isPlanned = isFuture && (data?.plannedDays.contains(dayKey) ?? false)
+        return CalendarDayCell(
+            dayNumber: DayMath.parse(dayKey)?.day ?? 0,
+            isToday: dayKey == todayKey,
+            isSelected: dayKey == selectedKey,
+            isFuture: isFuture,
+            segments: segments,
+            hasBump: hasBump,
+            isPlanned: isPlanned,
+            diameter: diameter,
+            accessibilityLabel: CalendarRules.accessibilityLabel(
+                dayKey: dayKey, todayKey: todayKey, segments: segments,
+                hasBump: hasBump, isPlanned: isPlanned, calendar: calendar
+            ),
+            onTap: { onSelect(dayKey) }
+        )
     }
 }
 
-private struct CalendarSlot: Identifiable {
-    let id: String
-    let date: Date?
+/// One day. Past days and today: the date inside its segmented circle (no circle before any list
+/// was in use). Later days: the plain date, with a dot under it when something is planned. Today's
+/// date sits on a filled disc; the day open on Home is tinted.
+private struct CalendarDayCell: View {
+    let dayNumber: Int
+    let isToday: Bool
+    let isSelected: Bool
+    let isFuture: Bool
+    let segments: [DaySegment]
+    let hasBump: Bool
+    let isPlanned: Bool
+    let diameter: CGFloat
+    let accessibilityLabel: String
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 3) {
+                ZStack {
+                    if !segments.isEmpty {
+                        SegmentedDayRing(segments: segments, lineWidth: max(3, diameter * 0.15))
+                    }
+                    if isToday {
+                        Circle()
+                            .fill(Color.primary)
+                            .padding(diameter * 0.2)
+                    }
+                    Text("\(dayNumber)")
+                        .font(.footnote.weight(isToday ? .bold : .medium))
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .foregroundStyle(numberStyle)
+                        .padding(.horizontal, diameter * 0.18)
+                }
+                .frame(width: diameter, height: diameter)
+                .overlay(alignment: .topTrailing) {
+                    if hasBump {
+                        BumpBadge(diameter: diameter * 0.75)
+                            .offset(x: diameter * 0.14, y: -diameter * 0.14)
+                    }
+                }
+
+                Circle()
+                    .fill(Color.primary.opacity(0.6))
+                    .frame(width: 5, height: 5)
+                    .opacity(isPlanned ? 1 : 0)
+            }
+            .padding(.vertical, 3)
+            .frame(maxWidth: .infinity)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(AppTheme.selectedDayTint)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var numberStyle: AnyShapeStyle {
+        if isToday { return AnyShapeStyle(Color(uiColor: .systemBackground)) }
+        if !isFuture && segments.isEmpty { return AnyShapeStyle(.secondary) }
+        return AnyShapeStyle(.primary)
+    }
 }
 
 #Preview {
     let schema = SharedPersistence.appSchema()
-
     let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
     let container = try! ModelContainer(for: schema, configurations: [config])
 
     return NavigationStack {
         CalendarView(
             selectedDay: Date(),
+            now: { Date() },
+            defaults: .standard,
+            context: container.mainContext,
             onSelectDay: { _ in }
         )
     }

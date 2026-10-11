@@ -141,11 +141,12 @@ struct HomeStickyNoteCard: View {
     /// The morning or evening list: recurring items (and any one-offs bumped onto it).
     private func routineList(_ entries: [Occurrence], emptyText: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            if entries.isEmpty {
-                Text(emptyText)
+            if entries.isEmpty && vm.activePlannedItems.isEmpty {
+                Text(vm.isFutureDay ? "Nothing planned for this day." : emptyText)
                     .foregroundStyle(.secondary)
                     .font(.footnote)
             } else {
+                plannedRows
                 ForEach(entries) { entry in
                     row(for: entry, canEdit: vm.canCompleteSelectedDay, strikeColor: listTint(vm.contextualList)) {
                         if entry.list == .morning {
@@ -165,11 +166,12 @@ struct HomeStickyNoteCard: View {
                 addTaskComposer
             }
 
-            if vm.sortedDailyTasks.isEmpty {
+            if vm.sortedDailyTasks.isEmpty && vm.activePlannedItems.isEmpty {
                 Text("No tasks for this day.")
                     .foregroundStyle(.secondary)
                     .font(.footnote)
             } else {
+                plannedRows
                 ForEach(vm.sortedDailyTasks) { task in
                     row(
                         for: task,
@@ -213,6 +215,36 @@ struct HomeStickyNoteCard: View {
         }
     }
 
+    /// A future day's recurring items, before they have rows: read-only until the day comes
+    /// (provisional, step 4). Recurring items come first, as on the day itself.
+    @ViewBuilder
+    private var plannedRows: some View {
+        ForEach(vm.activePlannedItems) { item in
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(item.title)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                    Text("Repeats · can be done on the day")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "repeat")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 10)
+            .padding(.horizontal, 12)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(AppTheme.cardBorder, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(item.title), repeats, planned for this day")
+        }
+    }
+
     private func row(
         for occurrence: Occurrence,
         canEdit: Bool,
@@ -231,7 +263,7 @@ struct HomeStickyNoteCard: View {
         ) {
             trailing(for: occurrence)
         }
-        .contextMenu(isEnabled: !vm.isReadOnly) {
+        .contextMenu(isEnabled: vm.hasRowMenu(occurrence)) {
             rowMenu(for: occurrence)
         }
     }
@@ -345,7 +377,7 @@ struct HomeStickyNoteCard: View {
                 Text("Due \(BumpCost.format(deadline))")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
-            } else if !vm.isReadOnly, !vm.canBump(occurrence) {
+            } else if !vm.isReadOnly, !vm.isFutureDay, !vm.canBump(occurrence) {
                 // Its bump limit is used up (bumps, deadline or end of week).
                 Text("No bumps left")
                     .font(.caption2.weight(.semibold))

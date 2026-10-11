@@ -120,10 +120,13 @@ extension HomeViewModel {
             let offset = index - 6
             guard let dayRaw = calendar.date(byAdding: .day, value: offset, to: endDay) else { return nil }
             let day = HomeModel.normalizedDay(dayRaw, calendar: calendar)
+            func look(_ value: Double) -> ListRules.DayLook {
+                ListRules.DayLook(status: value >= 1 ? .complete : .missed, completion: .init(value: value, isNeutral: false))
+            }
             return HomeModel.DayProgress(
                 date: day,
-                morning: .init(value: pair.0, isNeutral: false),
-                daily: .init(value: pair.1, isNeutral: false)
+                dayKey: HomeModel.dayKey(for: day, calendar: calendar),
+                segments: [DaySegment(list: .morning, look: look(pair.0)), DaySegment(list: .day, look: look(pair.1))]
             )
         }
     }

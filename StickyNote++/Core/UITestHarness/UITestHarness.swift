@@ -11,7 +11,10 @@ import os
 /// `-uiList <morning|day|evening>` (the list Home shows, or Edit Lists' segment),
 /// `-uiMorningEnds <setTime|doneOrSkipped>` (default setTime, 09:00) and `-uiEvening <on|off>`
 /// (default on, 21:00): the settings, which today's rules are stored from; `-uiTodayKeeps HH:MM`
-/// (today already stored at that set time) and `-uiAppearance <light|dark>`.
+/// (today already stored at that set time) and `-uiAppearance <light|dark>`. `-uiDay <±N>` opens
+/// Home on the day N days from today (e.g. `+3`, a future day with a planned task), and
+/// `-uiCalendarMonth <±N>` opens the calendar N months from the current one. `-uiOnlyLists
+/// <morning,day,evening>` keeps only those lists' seed data (the calendar with one or two segments).
 /// The app then runs on an in-memory store seeded with fixed sample data (V2 items and occurrences;
 /// the V1 tables stay empty, so the one-time backfill finds nothing), at a fixed time of day,
 /// with its own settings suite, and the app skips opening the shared on-disk store entirely,
@@ -84,11 +87,17 @@ enum UITestHarness {
         /// `-uiAppearance dark|light`: forced in the app, so a shot never races the simulator's
         /// own appearance switch.
         let colorScheme: ColorScheme?
+        /// The calendar's first month, as months after the current one.
+        let calendarMonthOffset: Int
     }
 
     static let routineTitles = ["Cold shower", "Hang", "Teeth", "Floss", "Water", "Outside"]
     /// The history day nobody opened (no rows; the routine was due).
     static let unopenedDaysAgo = 3
+    /// The evening list has been in use since this many days ago (three segments from then on).
+    static let eveningDaysAgo = 2
+    /// The one-off planned ahead ("Book the hut"), this many days from today.
+    static let plannedDaysAhead = 3
 
     /// Built once per launch: `nil` unless the app was started with `-uiScenario`.
     @MainActor static let current: Configuration? = configuration()
@@ -147,6 +156,15 @@ enum UITestHarness {
                 let items = seedHistory(today: today, missYesterday: scenario.missesYesterday, context: context, calendar: calendar)
                 alarmClock = seedToday(scenario: scenario, items: items, today: today, now: now, context: context, calendar: calendar)
             }
+            if let only = value(after: "-uiOnlyLists", in: arguments) {
+                let kept = Set(only.split(separator: ",").map(String.init))
+                for item in try context.fetch(FetchDescriptor<Item>()) where !kept.contains(item.listRaw) {
+                    context.delete(item)
+                }
+                for row in try context.fetch(FetchDescriptor<Occurrence>()) where !kept.contains(row.listRaw) {
+                    context.delete(row)
+                }
+            }
             try context.save()
 
             let viewModel = HomeViewModel(
@@ -155,6 +173,12 @@ enum UITestHarness {
                 reloadWidget: {}
             )
             viewModel.nowOverride = now
+            if let offset = value(after: "-uiDay", in: arguments).flatMap({ Int($0) }), offset != 0,
+               let day = calendar.date(byAdding: .day, value: offset, to: today) {
+                viewModel.selectedDay = day
+                viewModel.isFollowingToday = false
+            }
+            let calendarMonthOffset = value(after: "-uiCalendarMonth", in: arguments).flatMap { Int($0) } ?? 0
 
             var destination = HomeInitialDestination.home
             var editListsLaunch: EditListsLaunch?
@@ -191,7 +215,8 @@ enum UITestHarness {
                 initialDestination: destination,
                 editListsLaunch: editListsLaunch,
                 initialSheet: initialSheet,
-                colorScheme: colorScheme
+                colorScheme: colorScheme,
+                calendarMonthOffset: calendarMonthOffset
             )
         } catch {
             AppLogger.persistence.error("UITestHarness setup failed: \(error.localizedDescription, privacy: .public)")
@@ -401,6 +426,19 @@ enum UITestHarness {
         context.insert(dentist)
         context.insert(dentistTomorrow)
 
+        // A one-off planned ahead, for Home on a future day and the calendar's dot.
+        if let ahead = calendar.date(byAdding: .day, value: plannedDaysAhead, to: today) {
+            context.insert(
+                Occurrence(
+                    list: .day,
+                    dayKey: key(ahead),
+                    title: "Book the hut",
+                    sortOrder: 0,
+                    createdAt: at(hour: 7, minute: 10, on: today, calendar: calendar)
+                )
+            )
+        }
+
         // Added today, so they have no history to judge.
         let dayItems = [
             Item(list: .day, title: "Check Now.md", sortOrder: 0, repeatRule: .daily, startDayKey: todayKey, createdAt: now),
@@ -416,13 +454,24 @@ enum UITestHarness {
                 createdAt: now
             ),
         ]
+        // The evening routine started two days ago and was done both evenings.
+        let eveningStart = calendar.date(byAdding: .day, value: -eveningDaysAgo, to: today) ?? today
         let eveningItems = [
-            Item(list: .evening, title: "Tidy the kitchen", sortOrder: 0, repeatRule: .daily, startDayKey: todayKey, createdAt: now),
-            Item(list: .evening, title: "Lay out tomorrow's clothes", sortOrder: 1, repeatRule: .daily, startDayKey: todayKey, createdAt: now),
-            Item(list: .evening, title: "Read in bed", sortOrder: 2, repeatRule: .daily, startDayKey: todayKey, createdAt: now),
+            Item(list: .evening, title: "Tidy the kitchen", sortOrder: 0, repeatRule: .daily, startDayKey: key(eveningStart), createdAt: eveningStart),
+            Item(list: .evening, title: "Lay out tomorrow's clothes", sortOrder: 1, repeatRule: .daily, startDayKey: key(eveningStart), createdAt: eveningStart),
+            Item(list: .evening, title: "Read in bed", sortOrder: 2, repeatRule: .daily, startDayKey: key(eveningStart), createdAt: eveningStart),
         ]
         for item in dayItems + eveningItems {
             context.insert(item)
+        }
+        for daysAgo in 1...eveningDaysAgo {
+            guard let day = calendar.date(byAdding: .day, value: -daysAgo, to: today) else { continue }
+            for item in eveningItems {
+                let row = ListService.makeOccurrence(for: item, scheduledOn: key(day), on: key(day), now: day, calendar: calendar)
+                row.state = .done
+                row.completedAt = at(hour: 21, minute: 40, on: day, calendar: calendar)
+                context.insert(row)
+            }
         }
         // The evening rows exist whatever today's weekday: tidy done, clothes skipped, reading open.
         let eveningStates: [OccurrenceState] = [.done, .skipped, .open]

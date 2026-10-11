@@ -13,16 +13,23 @@ protocol HomeRepository {
         history: DayRulesHistory,
         context: ModelContext
     ) throws -> HomeModel.StreakState
-    /// How each day through `endKey` looks for a list (same rules as the streak).
+    /// How each day from `startKey` through `endKey` looks, per list (same rules as the streak),
+    /// and the days with a bump, fetching only the rows those days need.
     func dayLooks(
-        for list: ListKind,
+        from startKey: String,
         through endKey: String,
         todayKey: String,
         history: DayRulesHistory,
         context: ModelContext
-    ) throws -> [String: ListRules.DayLook]
-    /// Days from `startKey` through `endKey` with a bump on any list (the ↻ mark).
-    func bumpedDayKeys(from startKey: String, through endKey: String, context: ModelContext) throws -> Set<String>
+    ) throws -> (looks: [ListKind: [String: ListRules.DayLook]], bumpedDays: Set<String>)
+    /// The lists in use, in order (a day's circle has a segment for each).
+    func listsInUse(context: ModelContext) throws -> [ListKind]
+    /// The first day with an entry on any list (days before it are plain in the ring).
+    func firstEntryDayKey(context: ModelContext) throws -> String?
+    /// Days from `startKey` through `endKey` with something planned (the future days' dot).
+    func plannedDayKeys(from startKey: String, through endKey: String, context: ModelContext) throws -> Set<String>
+    /// A list's recurring items due on `dayKey` with no row there yet (planned, on a future day).
+    func dueItemsWithoutRows(on dayKey: String, list: ListKind, context: ModelContext) throws -> [Item]
     /// Bump actions on days from `startKey` through `endKey`, all lists.
     func bumpCount(from startKey: String, through endKey: String, context: ModelContext) throws -> Int
     /// Whether a list has any item or occurrence (the header shows the evening streak only then).
@@ -55,17 +62,29 @@ struct SwiftDataHomeRepository: HomeRepository {
     }
 
     func dayLooks(
-        for list: ListKind,
+        from startKey: String,
         through endKey: String,
         todayKey: String,
         history: DayRulesHistory,
         context: ModelContext
-    ) throws -> [String: ListRules.DayLook] {
-        try ListService.dayLooks(for: list, through: endKey, todayKey: todayKey, history: history, context: context, calendar: .current)
+    ) throws -> (looks: [ListKind: [String: ListRules.DayLook]], bumpedDays: Set<String>) {
+        try ListService.dayLooks(from: startKey, through: endKey, todayKey: todayKey, history: history, context: context, calendar: .current)
     }
 
-    func bumpedDayKeys(from startKey: String, through endKey: String, context: ModelContext) throws -> Set<String> {
-        try ListService.bumpedDayKeys(from: startKey, through: endKey, context: context)
+    func listsInUse(context: ModelContext) throws -> [ListKind] {
+        try ListService.listsInUse(context: context)
+    }
+
+    func firstEntryDayKey(context: ModelContext) throws -> String? {
+        try ListService.firstEntryDayKey(context: context)
+    }
+
+    func plannedDayKeys(from startKey: String, through endKey: String, context: ModelContext) throws -> Set<String> {
+        try ListService.plannedDayKeys(from: startKey, through: endKey, context: context, calendar: .current)
+    }
+
+    func dueItemsWithoutRows(on dayKey: String, list: ListKind, context: ModelContext) throws -> [Item] {
+        try ListService.dueItemsWithoutRows(on: dayKey, list: list, context: context, calendar: .current)
     }
 
     func bumpCount(from startKey: String, through endKey: String, context: ModelContext) throws -> Int {
