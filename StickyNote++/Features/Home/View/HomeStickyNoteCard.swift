@@ -176,7 +176,7 @@ struct HomeStickyNoteCard: View {
                     row(
                         for: task,
                         canEdit: vm.canCompleteSelectedDay || (vm.isReadOnly && !task.isCompleted),
-                        strikeColor: urgencyColor(for: task.bumpCount)
+                        strikeColor: listTint(vm.contextualList)
                     ) {
                         handleDailyTaskToggle(task)
                     }
@@ -352,9 +352,6 @@ struct HomeStickyNoteCard: View {
         if occurrence.state == .bumped {
             return "Bumped to tomorrow"
         }
-        if occurrence.bumpCount > 0 {
-            return "Bumped \(occurrence.bumpCount)×"
-        }
         if occurrence.bumpLimit == .cantBump, !occurrence.isRepeating {
             return "Must happen today"
         }
@@ -363,6 +360,16 @@ struct HomeStickyNoteCard: View {
 
     @ViewBuilder
     private func trailing(for occurrence: Occurrence) -> some View {
+        HStack(spacing: 8) {
+            trailingNote(for: occurrence)
+            if occurrence.bumpCount > 0 {
+                BumpCountMark(count: occurrence.bumpCount)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func trailingNote(for occurrence: Occurrence) -> some View {
         if occurrence.state == .skipped {
             Image(systemName: "forward.end")
                 .font(.caption.weight(.semibold))
@@ -384,15 +391,6 @@ struct HomeStickyNoteCard: View {
                     .foregroundStyle(.secondary)
             }
         }
-    }
-
-    private func urgencyColor(for bumpCount: Int) -> Color {
-        let clamped = min(max(Double(bumpCount), 0), 5) / 5
-        return Color(
-            hue: 0.08 - (0.08 * clamped),
-            saturation: 0.82,
-            brightness: 0.95
-        )
     }
 
     // MARK: - Adding a one-off
@@ -572,5 +570,23 @@ struct HomeStickyNoteCard: View {
         .onAppear {
             focusedField = .pastComplete
         }
+    }
+}
+
+/// "↻2": how many times a task has been bumped, in bold, in place of a colour scale
+/// (DECISIONS.md, 2026-10-11 evening, "5: greyscale").
+private struct BumpCountMark: View {
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 1) {
+            Image(systemName: "arrow.clockwise")
+            Text("\(count)")
+                .monospacedDigit()
+        }
+        .font(.caption.weight(.heavy))
+        .foregroundStyle(.primary)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Bumped \(count) \(count == 1 ? "time" : "times")")
     }
 }
