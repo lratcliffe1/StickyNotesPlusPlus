@@ -267,7 +267,8 @@ final class VaultReconcileTests: XCTestCase {
         XCTAssertEqual(result.removed, ["drop"])
         XCTAssertNil(try row("drop", on: "2026-10-16"))
         XCTAssertNotNil(try row("keep"))
-        XCTAssertNil(manifest?.entries["drop"])
+        XCTAssertEqual(manifest?.entries["drop"]?.rows, [:])
+        XCTAssertEqual(manifest?.entries["drop"]?.absentSince, today, "forgotten only 62 days after it left")
     }
 
     func testATaskDeletedInTheAppStaysDeleted() throws {
