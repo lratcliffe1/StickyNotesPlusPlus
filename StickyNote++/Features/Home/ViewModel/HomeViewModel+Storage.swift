@@ -2,113 +2,80 @@ import Foundation
 import SwiftData
 import os
 
-/// Storage-facing helpers for `HomeViewModel`.
-/// Kept separate to keep persistence concerns isolated from mutation and derived-state logic.
+/// Storage-facing helpers for `HomeViewModel`: reads go through the repository, and every
+/// write goes through `ListService`. Errors are logged, never thrown at the UI.
 extension HomeViewModel {
-    // MARK: - Fetching
+    // MARK: - Preparing and fetching
 
-    func fetchMorningEntries(for day: Date, context: ModelContext) -> [MorningRoutineEntry] {
+    func prepareStore(context: ModelContext) {
         do {
-            return try repository.fetchMorningEntries(for: day, context: context)
+            try repository.prepare(now: now, context: context)
         } catch {
-            AppLogger.persistence.error("Fetch morning entries failed: \(error.localizedDescription, privacy: .public)")
+            AppLogger.persistence.error("Prepare store failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    func fetchOccurrences(on dayKey: String, list: ListKind, context: ModelContext) -> [Occurrence] {
+        do {
+            return try repository.occurrences(on: dayKey, list: list, context: context)
+        } catch {
+            AppLogger.persistence.error("Fetch occurrences failed: \(error.localizedDescription, privacy: .public)")
             return []
         }
     }
 
-    func fetchDailyTasks(for day: Date, context: ModelContext) -> [DailyTask] {
-        do {
-            return try repository.fetchDailyTasks(for: day, context: context)
-        } catch {
-            AppLogger.persistence.error("Fetch daily tasks failed: \(error.localizedDescription, privacy: .public)")
-            return []
-        }
-    }
-
-    func fetchDailyTask(id: UUID, context: ModelContext) -> DailyTask? {
-        do {
-            return try repository.fetchDailyTask(id: id, context: context)
-        } catch {
-            AppLogger.persistence.error("Fetch daily task by id failed: \(error.localizedDescription, privacy: .public)")
-            return nil
-        }
-    }
-
-    func fetchDayRecord(for day: Date, context: ModelContext) -> DayRecord? {
-        do {
-            return try repository.fetchDayRecord(for: day, context: context)
-        } catch {
-            AppLogger.persistence.error("Fetch day record failed: \(error.localizedDescription, privacy: .public)")
-            return nil
-        }
-    }
-
-    func fetchTemplates(context: ModelContext) -> [MorningRoutineTemplateItem] {
-        do {
-            return try repository.fetchTemplates(context: context)
-        } catch {
-            AppLogger.persistence.error("Fetch templates failed: \(error.localizedDescription, privacy: .public)")
-            return []
-        }
-    }
-
-    func fetchMorningEntries(
-        from startDay: Date,
-        through endDay: Date,
+    func fetchOccurrences(
+        from startKey: String,
+        through endKey: String,
+        list: ListKind,
         context: ModelContext
-    ) -> [MorningRoutineEntry] {
+    ) -> [Occurrence] {
         do {
-            return try repository.fetchMorningEntries(from: startDay, through: endDay, context: context)
+            return try repository.occurrences(from: startKey, through: endKey, list: list, context: context)
         } catch {
-            AppLogger.persistence.error("Fetch morning entries range failed: \(error.localizedDescription, privacy: .public)")
+            AppLogger.persistence.error("Fetch occurrence range failed: \(error.localizedDescription, privacy: .public)")
             return []
         }
     }
 
-    func fetchDailyTasks(
-        from startDay: Date,
-        through endDay: Date,
-        context: ModelContext
-    ) -> [DailyTask] {
+    func streakState(for list: ListKind, through day: Date, context: ModelContext) -> HomeModel.StreakState {
         do {
-            return try repository.fetchDailyTasks(from: startDay, through: endDay, context: context)
-        } catch {
-            AppLogger.persistence.error("Fetch daily tasks range failed: \(error.localizedDescription, privacy: .public)")
-            return []
-        }
-    }
-
-    func migrateLegacyDayKeysIfNeeded(context: ModelContext) {
-        do {
-            try repository.migrateLegacyDayKeysIfNeeded(context: context)
-        } catch {
-            AppLogger.persistence.error("Day-key migration failed: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    // MARK: - Ensure / Upsert logic
-
-    func reconcileMorningEntries(for day: Date, context: ModelContext) {
-        do {
-            _ = try repository.reconcileMorningEntries(for: day, context: context)
-        } catch {
-            AppLogger.persistence.error("Reconcile morning entries failed: \(error.localizedDescription, privacy: .public)")
-        }
-    }
-
-    func upsertDayRecord(for day: Date, context: ModelContext) {
-        let morning = HomeModel.morningCompletion(entries: morningEntries).value
-        let daily = HomeModel.dailyCompletion(tasks: dailyTasks).value
-
-        do {
-            _ = try repository.upsertDayRecord(
-                for: day,
-                morningCompletion: morning,
-                dailyCompletion: daily,
+            return try repository.streakState(
+                for: list,
+                through: HomeModel.dayKey(for: day),
+                morningMode: morningMode,
                 context: context
             )
         } catch {
-            AppLogger.persistence.error("Upsert day record failed: \(error.localizedDescription, privacy: .public)")
+            AppLogger.persistence.error("Streak for \(list.rawValue, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            return HomeModel.StreakState(count: 0, isFrozen: false)
+        }
+    }
+
+    /// How each day through `endKey` looks for a list: the same rules as the streak.
+    func dayLooks(for list: ListKind, through endKey: String, context: ModelContext) -> [String: ListRules.DayLook] {
+        do {
+            return try repository.dayLooks(
+                for: list, through: endKey, todayKey: HomeModel.dayKey(for: now),
+                morningMode: morningMode, context: context
+            )
+        } catch {
+            AppLogger.persistence.error("Day looks for \(list.rawValue, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            return [:]
+        }
+    }
+
+    // MARK: - Writing
+
+    /// Runs one `ListService` write, logging (and rolling back) on failure.
+    @discardableResult
+    func write<T>(_ label: String, context: ModelContext, _ body: () throws -> T) -> T? {
+        do {
+            return try body()
+        } catch {
+            AppLogger.persistence.error("\(label, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            context.rollback()
+            return nil
         }
     }
 

@@ -8,7 +8,7 @@ A SwiftUI iOS app (iOS 17+) with a home-screen widget. It tracks a **morning-rou
 |---|---|
 | `StickyNote++/` | The app: `Features/Home` (screen, view model split into `+Storage`, `+Mutations`, `+DerivedState`), `Features/Calendar`, `Features/Settings`, `Core/` (theme, components, `UITestHarness`) |
 | `StickyNote++ Widget Extension/` | The widget and its App Intents (complete and bump the top task) |
-| `Shared/` | Compiled into the app, the widget **and** the tests: models, `HomeModel` (pure date and streak rules), `HomeDataStore`, persistence |
+| `Shared/` | Compiled into the app, the widget **and** the tests: models, `Lists/` (`ListService`, the one write path for app and widget; the pure repeat, bump and streak rules), `HomeModel` (dates), persistence and the one-time V1 → V2 backfill |
 | `StickyNote++Tests/` | XCTest unit tests. No host app, so they test `Shared/` code only |
 | `scripts/` | `screenshots.sh` (simulator screenshots) and `greyscale.swift` |
 
@@ -33,7 +33,8 @@ The Xcode project uses **folder-synchronised groups**: a new `.swift` file dropp
 ## Rules that bind
 
 - **Greyscale first.** Every state must read without colour: carry meaning in shape, icon, text, weight, contrast or pattern, never hue alone. Check the `-grey.png` screenshots.
-- **Never edit a shipped schema.** The store is versioned (`Shared/Persistence/SchemaVersions.swift`), and `SchemaVersionTests.testVersionOneShapeIsPinned` fails if a model changes. To change one, add `StickyNotesSchemaV2`, snapshot V1's models as nested types inside `StickyNotesSchemaV1`, and add a migration stage. Don't just update the test. A store that can't migrate hits the `fatalError` in `StickyNotePlusPlusApp` at launch, on Liam's real data. The widget's `try?` (`WidgetTaskStore`) fails silently instead, and shows an empty widget.
+- **Never edit a shipped schema.** The store is versioned (`Shared/Persistence/SchemaVersions.swift`); `SchemaVersionTests.testVersionOneShapeIsPinned` and `testVersionTwoShapeIsPinned` fail if a model changes. V2 (step 2a) only *added* `Item` and `Occurrence`, so V1 and V2 share the four V1 classes. To change any model, add the next version and a stage; to change one of the shared V1 classes, first snapshot it as a nested type inside `StickyNotesSchemaV1`. Don't just update the tests. Writes go through `ListService`; nothing writes the V1 tables after the backfill. A store that can't migrate hits the `fatalError` in `StickyNotePlusPlusApp` at launch, on Liam's real data. The widget's `try?` (`WidgetTaskStore`) fails silently instead, and shows an empty widget.
+- **No downgrades.** Once a V2 build has opened the store, a pre-V2 build can't open it (it would hit the launch `fatalError`). Never ship a build older than the store's schema. The app retries opening the store once after 0.5 s, in case the widget is migrating it at that moment.
 - **App Group via `ALTAppGroups`.** With a free account, SideStore renames the App Group and lists the real identifier in Info.plist under `ALTAppGroups`. `SharedPersistence.appGroupIdentifier` resolves it at runtime. Never hardcode the group again; it crashed the app on launch.
 - **Migration flags are written after the save**, never before (`HomeDataStore.migrateLegacyDayKeysIfNeeded`).
 - **Dates go through `HomeModel`.** Day identity is the `dayKey` string (`YYYY-MM-DD`). Prefer the view model's `now` (overridable) to `Date()`. Not everything does yet (`selectedDay`, the relative-day label, `isViewingToday`, `CalendarView`), which is why the harness fixes only the time of day, with dates relative to the real today.
@@ -51,10 +52,9 @@ In Debug builds only, launching with `-uiScenario <morning|daily|empty|missedYes
 ## Known weak spots (review, 2026-10-11)
 
 Fix these as the planned work reaches them, not in passing:
-- Leaving the app open overnight leaves it on yesterday.
-- The morning cutoff has no settings screen, so it's fixed at 09:00.
-- Routine days are matched to the routine **by title**, so a rename wipes today's tick.
-- Bumping a task marks it complete, which keeps the streak alive.
-- The app and the widget both write the store without coordinating.
+- The morning cutoff has no settings screen, so it's fixed at 09:00, and every past day is judged by today's cutoff. A per-day cutoff is step 3.
+- Only today's occurrences are created, when the app or widget first reads the day. A day nobody opens has no rows, so streaks judge it by what was due (`ListRules.unopenedMisses`): an item due that day is a miss on its period end. Any row at all for a list marks the day as opened for that list, including a one-off added ahead of time or bumped in.
+- Streaks, the ring and the calendar read each list's whole history on every refresh, and `CalendarView`'s `@Query` fetches every occurrence. Fine at today's size; not measured at years of data. Fetching only what's visible is step 4.
+- The app and the widget both write the store without coordinating. Item occurrences have ids derived from (item, scheduled day), so both creating today's rows lands on one row, and the backfill only inserts rows that are absent.
 - `CalendarView` uses a UIKit collection view with hand-computed heights. Its weeks start on Sunday, and it shows whole years (the current year ±1, widened to fit the data, plus a year's padding each side).
 - Xcode 26 will respect the targets' `SWIFT_DEFAULT_ACTOR_ISOLATION=MainActor`, which Xcode 16 ignores. Expect to mark the schema enums (and similar) `nonisolated` when CI moves up.

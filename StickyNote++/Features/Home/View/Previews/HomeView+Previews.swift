@@ -5,12 +5,7 @@ import SwiftUI
 /// Preview fixtures for Home UI states using in-memory SwiftData.
 @MainActor
 private func makeHomePreviewContainer() -> ModelContainer {
-    let schema = Schema([
-        MorningRoutineTemplateItem.self,
-        MorningRoutineEntry.self,
-        DailyTask.self,
-        DayRecord.self,
-    ])
+    let schema = SharedPersistence.appSchema()
 
     let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
     return try! ModelContainer(for: schema, configurations: [config])

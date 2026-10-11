@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import os
 
 /// App entry point that injects the shared SwiftData container.
 @main
@@ -17,7 +18,14 @@ struct StickyNotePlusPlusApp: App {
         do {
             modelContainer = try SharedPersistence.makeContainer()
         } catch {
-            fatalError("Could not create ModelContainer: \(error)")
+            // The widget may be migrating the store at this very moment: wait briefly, try once more.
+            AppLogger.persistence.error("ModelContainer failed, retrying: \(error.localizedDescription, privacy: .public)")
+            Thread.sleep(forTimeInterval: 0.5)
+            do {
+                modelContainer = try SharedPersistence.makeContainer()
+            } catch {
+                fatalError("Could not create ModelContainer: \(error)")
+            }
         }
     }
 

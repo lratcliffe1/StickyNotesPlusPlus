@@ -25,33 +25,29 @@ final class HomeModelTests: XCTestCase {
         XCTAssertEqual(resolved, HomeModel.normalizedDay(fallback))
     }
 
-    func testMorningCompletionEmptyIsImplicitlyComplete() {
-        let state = HomeModel.morningCompletion(entries: [])
-        XCTAssertEqual(state.value, 1.0)
-        XCTAssertTrue(state.isImplicitlyComplete)
+    /// Changed in step 2a (DECISIONS.md): an empty list is neutral, not 100%.
+    func testEmptyListIsNeutralNotComplete() {
+        let state = ListRules.completion([FactRow]())
+        XCTAssertEqual(state.value, 0)
+        XCTAssertTrue(state.isNeutral)
+        XCTAssertFalse(state.isComplete)
     }
 
-    func testDailyCompletionPartialTasks() {
-        let day = Date(timeIntervalSince1970: 1_700_000_000)
-        let tasks = [
-            DailyTask(date: day, title: "One", isCompleted: true),
-            DailyTask(date: day, title: "Two", isCompleted: false),
-        ]
-
-        let state = HomeModel.dailyCompletion(tasks: tasks)
+    func testCompletionPartial() {
+        let rows = [FactRow(dayKey: "2026-03-10", state: .done), FactRow(dayKey: "2026-03-10", state: .open)]
+        let state = ListRules.completion(rows)
         XCTAssertEqual(state.value, 0.5, accuracy: 0.0001)
-        XCTAssertFalse(state.isImplicitlyComplete)
+        XCTAssertFalse(state.isNeutral)
     }
 
     func testShouldShowMorningListBeforeDeadlineWhenIncomplete() {
         let calendar = utcCalendar
         let selectedDay = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10)) ?? Date()
         let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10, hour: 8, minute: 30)) ?? Date()
-        let entries = [MorningRoutineEntry(date: selectedDay, titleSnapshot: "Hydrate", isCompleted: false)]
 
         let shouldShow = HomeModel.shouldShowMorningList(
             for: selectedDay,
-            morningEntries: entries,
+            morningCompletion: ListRules.completion([FactRow(dayKey: "2026-03-10", state: .open)]),
             mode: .cutoff(time: DateComponents(hour: 9, minute: 0)),
             now: now,
             calendar: calendar
@@ -64,11 +60,10 @@ final class HomeModelTests: XCTestCase {
         let calendar = utcCalendar
         let selectedDay = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10)) ?? Date()
         let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10, hour: 9, minute: 1)) ?? Date()
-        let entries = [MorningRoutineEntry(date: selectedDay, titleSnapshot: "Hydrate", isCompleted: false)]
 
         let shouldShow = HomeModel.shouldShowMorningList(
             for: selectedDay,
-            morningEntries: entries,
+            morningCompletion: ListRules.completion([FactRow(dayKey: "2026-03-10", state: .open)]),
             mode: .cutoff(time: DateComponents(hour: 9, minute: 0)),
             now: now,
             calendar: calendar
@@ -77,23 +72,31 @@ final class HomeModelTests: XCTestCase {
         XCTAssertFalse(shouldShow)
     }
 
-    func testDailyStreakFreezeAfterSingleMiss() {
+    /// An empty or all-skipped morning list lets Home flip straight to the day list.
+    func testNeutralMorningListDoesNotShow() {
         let calendar = utcCalendar
-        let day1 = calendar.date(from: DateComponents(year: 2026, month: 3, day: 8)) ?? Date()
-        let day2 = calendar.date(from: DateComponents(year: 2026, month: 3, day: 9)) ?? Date()
-        let anchor = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10)) ?? Date()
+        let selectedDay = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10)) ?? Date()
+        let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10, hour: 8, minute: 30)) ?? Date()
 
-        let tasksByDay: [Date: [DailyTask]] = [
-            HomeModel.normalizedDay(day1, calendar: calendar): [DailyTask(date: day1, title: "A", isCompleted: true)],
-            HomeModel.normalizedDay(day2, calendar: calendar): [],
-            HomeModel.normalizedDay(anchor, calendar: calendar): [],
+        for rows in [[], [FactRow(dayKey: "2026-03-10", state: .skipped)]] {
+            XCTAssertFalse(
+                HomeModel.shouldShowMorningList(
+                    for: selectedDay,
+                    morningCompletion: ListRules.completion(rows),
+                    mode: .cutoff(time: DateComponents(hour: 9, minute: 0)),
+                    now: now,
+                    calendar: calendar
+                )
+            )
+        }
+    }
+
+    func testDailyStreakFreezeAfterSingleMiss() {
+        let rows = [
+            FactRow(dayKey: "2026-03-08", state: .done),
+            FactRow(dayKey: "2026-03-09", state: .open),
         ]
-
-        let streak = HomeModel.dailyStreakState(
-            through: anchor,
-            tasksByDay: tasksByDay,
-            calendar: calendar
-        )
+        let streak = ListRules.streakState(through: "2026-03-10", occurrences: rows) { _ in nil }
 
         XCTAssertEqual(streak.count, 1)
         XCTAssertTrue(streak.isFrozen)

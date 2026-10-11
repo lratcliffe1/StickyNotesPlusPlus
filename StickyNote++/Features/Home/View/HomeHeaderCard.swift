@@ -174,11 +174,11 @@ private struct DayProgressCell: View {
     }
 
     private var isMorningCompleted: Bool {
-        day.morning.value >= 1.0 && !day.morning.isImplicitlyComplete
+        day.morning.isComplete
     }
 
     private var isDailyCompleted: Bool {
-        day.daily.value >= 1.0 && !day.daily.isImplicitlyComplete
+        day.daily.isComplete
     }
 
     private var completionSummary: String {

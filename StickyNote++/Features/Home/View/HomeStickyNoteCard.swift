@@ -27,8 +27,12 @@ struct HomeStickyNoteCard: View {
             ProgressView(value: vm.activeListProgress)
                 .progressViewStyle(.linear)
                 .tint(vm.isMorningMode ? .blue : .orange)
-                .opacity(vm.activeListProgressIsImplicit ? 0.45 : 1)
-                .accessibilityLabel("\(vm.activeListTitle) progress \(vm.activeListProgressPercent) percent")
+                .opacity(vm.activeListProgressIsNeutral ? 0.45 : 1)
+                .accessibilityLabel(
+                    vm.activeListProgressIsNeutral
+                        ? "\(vm.activeListTitle): nothing to count"
+                        : "\(vm.activeListTitle) progress \(vm.activeListProgressPercent) percent"
+                )
 
             if vm.isMorningMode {
                 morningList
@@ -56,7 +60,7 @@ struct HomeStickyNoteCard: View {
             Spacer()
 
             HStack(spacing: 8) {
-                Text("\(vm.activeListProgressPercent)%")
+                Text(vm.activeListProgressText)
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
 
@@ -87,8 +91,8 @@ struct HomeStickyNoteCard: View {
             } else {
                 ForEach(vm.morningEntries) { entry in
                     InkStrikeRow(
-                        title: entry.titleSnapshot,
-                        subtitle: timeLabel(from: entry.targetTimeSnapshot),
+                        title: entry.title,
+                        subtitle: nil,
                         isCompleted: entry.isCompleted,
                         canEdit: vm.canCompleteSelectedDay,
                         strikeColor: .blue,
@@ -125,7 +129,7 @@ struct HomeStickyNoteCard: View {
                     ) {
                         handleDailyTaskToggle(task)
                     } trailing: {
-                        if task.isBumpable, !task.isCompleted, !vm.isReadOnly {
+                        if vm.canBump(task), !vm.isReadOnly {
                             Button {
                                 presentBumpComposer(for: task)
                             } label: {
@@ -135,8 +139,13 @@ struct HomeStickyNoteCard: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Bump to tomorrow")
-                        } else if !task.isBumpable {
+                        } else if task.bumpLimit == .cantBump, !task.isRepeating {
                             Text("Must do")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        } else if !task.isRepeating, task.state == .open, !vm.isReadOnly {
+                            // Its bump limit is used up (bumps, deadline or end of week).
+                            Text("No bumps left")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
                         }
@@ -247,19 +256,14 @@ struct HomeStickyNoteCard: View {
         )
     }
 
-    private func timeLabel(from components: DateComponents?) -> String? {
-        guard let components, let hour = components.hour, let minute = components.minute else { return nil }
-        return String(format: "%02d:%02d", hour, minute)
-    }
-
-    private func dailySubtitle(for task: DailyTask) -> String? {
-        if task.bumpedTaskID != nil {
+    private func dailySubtitle(for task: Occurrence) -> String? {
+        if task.state == .bumped {
             return "Bumped to tomorrow"
         }
         if task.bumpCount > 0 {
             return "Bumped \(task.bumpCount)x"
         }
-        if !task.isBumpable {
+        if task.bumpLimit == .cantBump, !task.isRepeating {
             return "Must happen today"
         }
         return nil
@@ -274,12 +278,12 @@ struct HomeStickyNoteCard: View {
         )
     }
 
-    private var pendingBumpTask: DailyTask? {
+    private var pendingBumpTask: Occurrence? {
         guard let pendingBumpTaskID else { return nil }
         return vm.dailyTasks.first { $0.id == pendingBumpTaskID }
     }
 
-    private func presentBumpComposer(for task: DailyTask) {
+    private func presentBumpComposer(for task: Occurrence) {
         pendingBumpTaskID = task.id
         pendingBumpTitle = ""
         isShowingBumpPopup = true
@@ -293,12 +297,12 @@ struct HomeStickyNoteCard: View {
         isShowingBumpPopup = false
     }
 
-    private var pendingPastCompleteTask: DailyTask? {
+    private var pendingPastCompleteTask: Occurrence? {
         guard let pendingPastCompleteTaskID else { return nil }
         return vm.dailyTasks.first { $0.id == pendingPastCompleteTaskID }
     }
 
-    private func handleDailyTaskToggle(_ task: DailyTask) {
+    private func handleDailyTaskToggle(_ task: Occurrence) {
         if vm.canCompleteSelectedDay {
             vm.toggleDailyTask(task, context: modelContext)
             return
@@ -308,7 +312,7 @@ struct HomeStickyNoteCard: View {
         presentPastCompleteComposer(for: task)
     }
 
-    private func presentPastCompleteComposer(for task: DailyTask) {
+    private func presentPastCompleteComposer(for task: Occurrence) {
         pendingPastCompleteTaskID = task.id
         pendingPastCompleteTitle = ""
         isShowingPastCompletePopup = true

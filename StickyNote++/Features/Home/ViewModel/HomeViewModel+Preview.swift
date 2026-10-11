@@ -32,41 +32,48 @@ extension HomeViewModel {
 
         vm.selectedDay = today
         vm.nowOverride = scenarioNow
+        let todayKey = HomeModel.dayKey(for: today, calendar: calendar)
+        func task(_ title: String, bumps: Int) -> Occurrence {
+            Occurrence(list: .day, dayKey: todayKey, title: title, bumpCount: bumps)
+        }
+        func routine(_ titles: [String], doneAt: [(Int, Int)?]) -> [Occurrence] {
+            titles.enumerated().map { index, title in
+                let done = doneAt[index].flatMap { calendar.date(bySettingHour: $0.0, minute: $0.1, second: 0, of: today) }
+                return Occurrence(
+                    itemID: UUID(),
+                    list: .morning,
+                    dayKey: todayKey,
+                    title: title,
+                    sortOrder: index,
+                    state: done == nil ? .open : .done,
+                    completedAt: done,
+                    bumpLimit: .unlimited,
+                    scheduledDayKey: todayKey,
+                    periodEndDayKey: todayKey
+                )
+            }
+        }
+        let titles = ["Drink water", "Stretch for 5 minutes", "Read 10 pages"]
+
         vm.dailyTasks = [
-            DailyTask(date: today, title: "Plan top priority", isCompleted: false, completedAt: nil, bumpCount: 0, isBumpable: true),
-            DailyTask(date: today, title: "10 minute walk", isCompleted: false, completedAt: nil, bumpCount: 1, isBumpable: true)
+            task("Plan top priority", bumps: 0),
+            task("10 minute walk", bumps: 1),
         ]
 
         switch scenario {
         case .morningActive:
-            vm.morningEntries = [
-                MorningRoutineEntry(date: today, titleSnapshot: "Drink water", targetTimeSnapshot: DateComponents(hour: 7, minute: 0), isCompleted: false, completedAt: nil),
-                MorningRoutineEntry(date: today, titleSnapshot: "Stretch for 5 minutes", targetTimeSnapshot: DateComponents(hour: 7, minute: 10), isCompleted: false, completedAt: nil),
-                MorningRoutineEntry(date: today, titleSnapshot: "Read 10 pages", targetTimeSnapshot: DateComponents(hour: 7, minute: 20), isCompleted: false, completedAt: nil)
-            ]
+            vm.morningEntries = routine(titles, doneAt: [nil, nil, nil])
         case .dailyAfterMorningWindow:
-            vm.morningEntries = [
-                MorningRoutineEntry(date: today, titleSnapshot: "Drink water", targetTimeSnapshot: DateComponents(hour: 7, minute: 0), isCompleted: true, completedAt: calendar.date(bySettingHour: 7, minute: 5, second: 0, of: today)),
-                MorningRoutineEntry(date: today, titleSnapshot: "Stretch for 5 minutes", targetTimeSnapshot: DateComponents(hour: 7, minute: 10), isCompleted: false, completedAt: nil),
-                MorningRoutineEntry(date: today, titleSnapshot: "Read 10 pages", targetTimeSnapshot: DateComponents(hour: 7, minute: 20), isCompleted: false, completedAt: nil)
-            ]
+            vm.morningEntries = routine(titles, doneAt: [(7, 5), nil, nil])
         case .dailyAfterMorningCompleted:
-            vm.morningEntries = [
-                MorningRoutineEntry(date: today, titleSnapshot: "Drink water", targetTimeSnapshot: DateComponents(hour: 7, minute: 0), isCompleted: true, completedAt: calendar.date(bySettingHour: 6, minute: 55, second: 0, of: today)),
-                MorningRoutineEntry(date: today, titleSnapshot: "Stretch for 5 minutes", targetTimeSnapshot: DateComponents(hour: 7, minute: 10), isCompleted: true, completedAt: calendar.date(bySettingHour: 7, minute: 8, second: 0, of: today)),
-                MorningRoutineEntry(date: today, titleSnapshot: "Read 10 pages", targetTimeSnapshot: DateComponents(hour: 7, minute: 20), isCompleted: true, completedAt: calendar.date(bySettingHour: 7, minute: 18, second: 0, of: today))
-            ]
+            vm.morningEntries = routine(titles, doneAt: [(6, 55), (7, 8), (7, 18)])
         case .morningStreakFrozen, .dailyStreakFrozen, .streakReset:
-            vm.morningEntries = [
-                MorningRoutineEntry(date: today, titleSnapshot: "Drink water", targetTimeSnapshot: DateComponents(hour: 7, minute: 0), isCompleted: true, completedAt: calendar.date(bySettingHour: 7, minute: 4, second: 0, of: today)),
-                MorningRoutineEntry(date: today, titleSnapshot: "Stretch for 5 minutes", targetTimeSnapshot: DateComponents(hour: 7, minute: 10), isCompleted: false, completedAt: nil),
-                MorningRoutineEntry(date: today, titleSnapshot: "Read 10 pages", targetTimeSnapshot: DateComponents(hour: 7, minute: 20), isCompleted: false, completedAt: nil)
-            ]
+            vm.morningEntries = routine(titles, doneAt: [(7, 4), nil, nil])
         }
 
         let contextualList: HomeModel.ContextualList = HomeModel.shouldShowMorningList(
             for: today,
-            morningEntries: vm.morningEntries,
+            morningCompletion: ListRules.completion(vm.morningEntries),
             mode: vm.morningMode,
             now: scenarioNow,
             calendar: calendar
@@ -114,8 +121,8 @@ extension HomeViewModel {
             let day = HomeModel.normalizedDay(dayRaw, calendar: calendar)
             return HomeModel.DayProgress(
                 date: day,
-                morning: .init(value: pair.0, isImplicitlyComplete: false),
-                daily: .init(value: pair.1, isImplicitlyComplete: false)
+                morning: .init(value: pair.0, isNeutral: false),
+                daily: .init(value: pair.1, isNeutral: false)
             )
         }
     }

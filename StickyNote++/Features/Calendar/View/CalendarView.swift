@@ -15,8 +15,8 @@ private enum CalendarMonthLayoutMetrics {
 }
 
 struct CalendarView: View {
-    @Query(sort: \MorningRoutineEntry.dayKey) private var morningEntries: [MorningRoutineEntry]
-    @Query(sort: \DailyTask.dayKey) private var dailyTasks: [DailyTask]
+    @Query(sort: \Occurrence.dayKey) private var occurrences: [Occurrence]
+    @Query(sort: \Item.sortOrder) private var items: [Item]
 
     let selectedDay: Date
     let onSelectDay: (Date) -> Void
@@ -105,17 +105,9 @@ struct CalendarView: View {
         var minYear = min(currentYear - 1, initialYear)
         var maxYear = max(currentYear + 1, initialYear)
 
-        for entry in morningEntries {
-            let day = dayFromStored(dayKey: entry.dayKey, fallbackDate: entry.date)
-            let year = calendar.component(.year, from: day)
-            guard year >= lowerBound && year <= upperBound else { continue }
-            minYear = min(minYear, year)
-            maxYear = max(maxYear, year)
-        }
-
-        for task in dailyTasks {
-            let day = dayFromStored(dayKey: task.dayKey, fallbackDate: task.date)
-            let year = calendar.component(.year, from: day)
+        // Sorted by day key, so the first and last rows bound the data.
+        for occurrence in [occurrences.first, occurrences.last].compactMap({ $0 }) {
+            guard let year = DayMath.parse(occurrence.dayKey)?.year else { continue }
             guard year >= lowerBound && year <= upperBound else { continue }
             minYear = min(minYear, year)
             maxYear = max(maxYear, year)
@@ -146,23 +138,33 @@ struct CalendarView: View {
         }
     }
 
+    /// Morning and day lists only; the evening list isn't shown yet.
+    /// The same day looks the streak uses (`ListRules.dayLooks`), for the morning and day lists
+    /// (evening isn't shown yet). A day absent from both is neutral.
     private var dayProgressLookup: [Date: HomeModel.DayProgress] {
-        let morningByDay = Dictionary(grouping: morningEntries) { entry in
-            dayFromStored(dayKey: entry.dayKey, fallbackDate: entry.date)
+        let todayKey = HomeModel.dayKey(for: Date())
+        let morningMode = MorningModeProvider.load(from: SharedPersistence.sharedDefaults).mode
+        func looks(_ list: ListKind) -> [String: ListRules.DayLook] {
+            ListRules.dayLooks(
+                occurrences: occurrences.filter { $0.list == list },
+                schedules: items.filter { $0.list == list }.map(\.schedule),
+                missesBefore: todayKey,
+                deadline: ListService.deadline(for: list, morningMode: morningMode, calendar: .current)
+            )
         }
-        let dailyByDay = Dictionary(grouping: dailyTasks) { task in
-            dayFromStored(dayKey: task.dayKey, fallbackDate: task.date)
-        }
+        let morningLooks = looks(.morning)
+        let dailyLooks = looks(.day)
 
-        let allDays = Set(morningByDay.keys).union(dailyByDay.keys)
         var lookup: [Date: HomeModel.DayProgress] = [:]
-        lookup.reserveCapacity(allDays.count)
+        lookup.reserveCapacity(morningLooks.count + dailyLooks.count)
 
-        for day in allDays {
+        for dayKey in Set(morningLooks.keys).union(dailyLooks.keys) {
+            guard let parsed = HomeModel.date(fromDayKey: dayKey, calendar: calendar) else { continue }
+            let day = HomeModel.normalizedDay(parsed, calendar: calendar)
             lookup[day] = HomeModel.DayProgress(
                 date: day,
-                morning: HomeModel.morningCompletion(entries: morningByDay[day] ?? []),
-                daily: HomeModel.dailyCompletion(tasks: dailyByDay[day] ?? [])
+                morning: morningLooks[dayKey]?.completion ?? .neutral,
+                daily: dailyLooks[dayKey]?.completion ?? .neutral
             )
         }
 
@@ -196,10 +198,6 @@ struct CalendarView: View {
         let year = components.year ?? calendar.component(.year, from: initialScrollDay)
         let month = components.month ?? calendar.component(.month, from: initialScrollDay)
         return monthID(year: year, month: month)
-    }
-
-    private func dayFromStored(dayKey: String, fallbackDate: Date) -> Date {
-        HomeDataStore.dayFromStored(dayKey: dayKey, fallbackDate: fallbackDate, calendar: calendar)
     }
 
 }
@@ -574,8 +572,8 @@ private struct CalendarMonthCardView: View, Equatable {
     private func emptyProgress(for day: Date) -> HomeModel.DayProgress {
         HomeModel.DayProgress(
             date: day,
-            morning: HomeModel.CompletionState(value: 1.0, isImplicitlyComplete: true),
-            daily: HomeModel.CompletionState(value: 1.0, isImplicitlyComplete: true)
+            morning: .neutral,
+            daily: .neutral
         )
     }
 
@@ -590,10 +588,7 @@ private struct CalendarSlot: Identifiable {
 }
 
 #Preview {
-    let schema = Schema([
-        MorningRoutineEntry.self,
-        DailyTask.self,
-    ])
+    let schema = SharedPersistence.appSchema()
 
     let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
     let container = try! ModelContainer(for: schema, configurations: [config])
