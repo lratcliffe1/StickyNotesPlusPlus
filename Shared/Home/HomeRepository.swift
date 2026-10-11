@@ -25,6 +25,9 @@ protocol HomeRepository {
 }
 
 struct SwiftDataHomeRepository: HomeRepository {
+    /// Where the one-off migration flags live. The screenshot harness passes its own suite.
+    var defaults: UserDefaults = SharedPersistence.sharedDefaults
+
     func fetchMorningEntries(for day: Date, context: ModelContext) throws -> [MorningRoutineEntry] {
         try HomeDataStore.fetchMorningEntries(for: day, context: context)
     }
@@ -58,7 +61,7 @@ struct SwiftDataHomeRepository: HomeRepository {
     }
 
     func migrateLegacyDayKeysIfNeeded(context: ModelContext) throws {
-        try HomeDataStore.migrateLegacyDayKeysIfNeeded(context: context)
+        try HomeDataStore.migrateLegacyDayKeysIfNeeded(context: context, defaults: defaults)
     }
 
     @discardableResult

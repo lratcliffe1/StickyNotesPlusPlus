@@ -83,6 +83,8 @@ enum HomeDataStore {
 
     static func migrateLegacyDayKeysIfNeeded(context: ModelContext, defaults: UserDefaults = SharedPersistence.sharedDefaults) throws {
         var didChange = false
+        // Flags are recorded only after the save succeeds, so a failed save retries next launch.
+        var completedMigrationKeys: [String] = []
 
         if !defaults.bool(forKey: dayKeyMigrationCompletedDefaultsKey) {
             let morningEntries = try context.fetch(FetchDescriptor<MorningRoutineEntry>())
@@ -103,7 +105,7 @@ enum HomeDataStore {
                 didChange = true
             }
 
-            defaults.set(true, forKey: dayKeyMigrationCompletedDefaultsKey)
+            completedMigrationKeys.append(dayKeyMigrationCompletedDefaultsKey)
         }
 
         if !defaults.bool(forKey: dailyTaskSortOrderMigrationCompletedDefaultsKey) {
@@ -123,11 +125,14 @@ enum HomeDataStore {
                 nextOrderByDay[key] = next + 1
             }
 
-            defaults.set(true, forKey: dailyTaskSortOrderMigrationCompletedDefaultsKey)
+            completedMigrationKeys.append(dailyTaskSortOrderMigrationCompletedDefaultsKey)
         }
 
         if didChange {
             try context.save()
+        }
+        for key in completedMigrationKeys {
+            defaults.set(true, forKey: key)
         }
     }
 
