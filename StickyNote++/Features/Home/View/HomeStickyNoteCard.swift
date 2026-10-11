@@ -263,7 +263,7 @@ struct HomeStickyNoteCard: View {
         ) {
             trailing(for: occurrence)
         }
-        .contextMenu(isEnabled: !vm.isReadOnly) {
+        .contextMenu(isEnabled: vm.hasRowMenu(occurrence)) {
             rowMenu(for: occurrence)
         }
     }
@@ -377,7 +377,7 @@ struct HomeStickyNoteCard: View {
                 Text("Due \(BumpCost.format(deadline))")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
-            } else if !vm.isReadOnly, !vm.canBump(occurrence) {
+            } else if !vm.isReadOnly, !vm.isFutureDay, !vm.canBump(occurrence) {
                 // Its bump limit is used up (bumps, deadline or end of week).
                 Text("No bumps left")
                     .font(.caption2.weight(.semibold))

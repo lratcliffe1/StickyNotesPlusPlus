@@ -363,10 +363,13 @@ enum ListService {
 
     // MARK: - Completing, skipping
 
-    /// Marks an open (or skipped) occurrence done at `date`.
+    /// Marks an open (or skipped) occurrence done at `date`. Refused for a row on a day after
+    /// `date`'s day: a day can't be done in advance (a past day's row can still be completed, at
+    /// that day's end).
     @discardableResult
-    static func complete(_ occurrence: Occurrence, at date: Date, context: ModelContext) throws -> Bool {
+    static func complete(_ occurrence: Occurrence, at date: Date, calendar: Calendar = .current, context: ModelContext) throws -> Bool {
         guard occurrence.state == .open || occurrence.state == .skipped else { return false }
+        guard occurrence.dayKey <= dayKey(for: date, calendar: calendar) else { return false }
         occurrence.state = .done
         occurrence.completedAt = date
         try context.save()
@@ -395,22 +398,22 @@ enum ListService {
         return true
     }
 
-    /// Skips an open occurrence: it drops out of the day's count. Refused on a day before
-    /// `todayKey` (a menu left open past midnight can't rewrite yesterday).
+    /// Skips an open occurrence: it drops out of the day's count. Today only: refused on a day
+    /// before `todayKey` (a menu left open past midnight can't rewrite yesterday) or after it (a
+    /// day can't be settled in advance).
     @discardableResult
     static func skip(_ occurrence: Occurrence, todayKey: String, context: ModelContext) throws -> Bool {
-        guard occurrence.state == .open, occurrence.dayKey >= todayKey else { return false }
+        guard occurrence.state == .open, occurrence.dayKey == todayKey else { return false }
         occurrence.state = .skipped
         occurrence.completedAt = nil
         try context.save()
         return true
     }
 
-    /// Undoes a skip: the occurrence is open again and counts towards its day. Refused on a day
-    /// before `todayKey`.
+    /// Undoes a skip: the occurrence is open again and counts towards its day. Today only.
     @discardableResult
     static func unskip(_ occurrence: Occurrence, todayKey: String, context: ModelContext) throws -> Bool {
-        guard occurrence.state == .skipped, occurrence.dayKey >= todayKey else { return false }
+        guard occurrence.state == .skipped, occurrence.dayKey == todayKey else { return false }
         occurrence.state = .open
         occurrence.completedAt = nil
         try context.save()
@@ -436,7 +439,9 @@ enum ListService {
     /// open row is created the next day, linked both ways, with `bumpCount + 1`, the same item,
     /// bump limit and chain origin. The item's next scheduled occurrence is unaffected.
     /// `newTitle` (trimmed, if not empty) becomes the new row's title. Returns the new row.
-    /// Refused for a row on a day before `now`'s day (a sheet left open past midnight).
+    /// Today's rows only: refused for a row on a day before `now`'s day (a sheet left open past
+    /// midnight) or after it, since a bump counts as done and a day can't be done in advance (a
+    /// copy bumped onto tomorrow waits for tomorrow).
     @discardableResult
     static func bump(
         _ occurrence: Occurrence,
@@ -446,7 +451,7 @@ enum ListService {
         context: ModelContext
     ) throws -> Occurrence? {
         guard canBump(occurrence, calendar: calendar) else { return nil }
-        guard occurrence.dayKey >= dayKey(for: now, calendar: calendar) else { return nil }
+        guard occurrence.dayKey == dayKey(for: now, calendar: calendar) else { return nil }
 
         let trimmed = newTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let title = trimmed.isEmpty ? occurrence.title : trimmed

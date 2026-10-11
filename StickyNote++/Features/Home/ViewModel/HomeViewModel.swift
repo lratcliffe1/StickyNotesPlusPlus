@@ -311,8 +311,17 @@ final class HomeViewModel: ObservableObject {
     }
 
     /// Whether this occurrence may move to tomorrow (its bump limit, or its repeat's period end).
+    /// Today's rows only: a bump counts as done, and a day can't be done in advance.
     func canBump(_ occurrence: Occurrence) -> Bool {
-        ListService.canBump(occurrence)
+        occurrence.dayKey == HomeModel.dayKey(for: now) && ListService.canBump(occurrence)
+    }
+
+    /// Whether a row gets a long-press menu: not on a past day; on a future day only one-offs
+    /// (Edit… and Delete), since nothing can be done, skipped or bumped ahead of its day.
+    func hasRowMenu(_ occurrence: Occurrence) -> Bool {
+        guard !isReadOnly else { return false }
+        if isFutureDay { return !occurrence.isRepeating }
+        return true
     }
 
     func updateNewTaskTitle(_ value: String) {

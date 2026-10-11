@@ -301,7 +301,7 @@ struct HomeView: View {
     private var calendarView: some View {
         CalendarView(
             selectedDay: vm.selectedDay,
-            now: vm.now,
+            now: { vm.now },
             defaults: vm.defaults,
             context: modelContext,
             initialMonthOffset: initialCalendarMonthOffset,
