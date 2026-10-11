@@ -127,7 +127,10 @@ struct HomeView: View {
                 calendarDestination
             }
             .navigationDestination(isPresented: $isShowingSettings) {
-                SettingsView(defaults: vm.defaults, now: vm.now)
+                SettingsView(defaults: vm.defaults, now: vm.now) {
+                    // Re-read straight away: Edit Lists may have deleted rows Home still holds.
+                    vm.refresh(context: modelContext)
+                }
             }
             .navigationDestination(isPresented: $isShowingEditLists) {
                 EditListsView(
@@ -135,7 +138,9 @@ struct HomeView: View {
                     now: vm.now,
                     autoOpenItemTitle: editListsLaunch?.openItemTitle,
                     autoShowsRepeat: editListsLaunch?.showsRepeat ?? false
-                )
+                ) {
+                    vm.refresh(context: modelContext)
+                }
             }
             .navigationDestination(isPresented: $isShowingAddDailyTask) {
                 AddDailyTaskView()

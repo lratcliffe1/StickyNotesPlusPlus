@@ -85,6 +85,8 @@ struct EditListsView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
+                    // Plain, so the rows read as black text, not tinted links (greyscale).
+                    .buttonStyle(.plain)
                     .accessibilityHint("Edit item")
                 }
                 .onMove(perform: move)

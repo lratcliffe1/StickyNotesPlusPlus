@@ -10,11 +10,26 @@ struct HomeStickyNoteCard: View {
     @State private var isShowingPastCompletePopup = false
     @State private var pendingPastCompleteTaskID: UUID?
     @State private var pendingPastCompleteTitle: String = ""
-    @State private var pendingDeletion: Occurrence?
+    /// Plain values, so the dialog never reads a row after it's deleted.
+    @State private var pendingDeletion: DeletionRequest?
     @FocusState private var focusedField: SheetField?
 
     private enum SheetField {
         case pastComplete
+    }
+
+    private struct DeletionRequest {
+        let id: UUID
+        let title: String
+        let isRepeating: Bool
+        let wasBumpedIn: Bool
+
+        init(_ occurrence: Occurrence) {
+            id = occurrence.id
+            title = occurrence.title
+            isRepeating = occurrence.isRepeating
+            wasBumpedIn = occurrence.bumpedFromID != nil
+        }
     }
 
     var body: some View {
@@ -58,12 +73,14 @@ struct HomeStickyNoteCard: View {
             isPresented: isConfirmingDeletion,
             titleVisibility: .visible,
             presenting: pendingDeletion
-        ) { occurrence in
-            Button(occurrence.isRepeating ? "Delete from Today On" : "Delete", role: .destructive) {
-                vm.delete(occurrence, context: modelContext)
+        ) { request in
+            Button(request.isRepeating ? "Delete from Today On" : "Delete", role: .destructive) {
+                if let occurrence = vm.occurrence(id: request.id, context: modelContext) {
+                    vm.delete(occurrence, context: modelContext)
+                }
             }
-        } message: { occurrence in
-            Text(deletionMessage(for: occurrence))
+        } message: { request in
+            Text(deletionMessage(for: request))
         }
     }
 
@@ -260,7 +277,7 @@ struct HomeStickyNoteCard: View {
         Divider()
 
         Button(role: .destructive) {
-            pendingDeletion = occurrence
+            pendingDeletion = DeletionRequest(occurrence)
         } label: {
             Label("Delete", systemImage: "trash")
         }
@@ -280,11 +297,11 @@ struct HomeStickyNoteCard: View {
             : "Delete “\(pendingDeletion.title)”?"
     }
 
-    private func deletionMessage(for occurrence: Occurrence) -> String {
-        if occurrence.isRepeating {
+    private func deletionMessage(for request: DeletionRequest) -> String {
+        if request.isRepeating {
             return "It stops repeating from today. Earlier days keep it."
         }
-        if occurrence.bumpedFromID != nil {
+        if request.wasBumpedIn {
             return "The day it was bumped from goes back to not done."
         }
         return "This can't be undone."
