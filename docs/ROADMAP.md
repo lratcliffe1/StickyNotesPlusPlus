@@ -6,7 +6,7 @@ Agreed with Liam on 11.10.2026. Each step is grilled, then planned and signed of
 
 | Step | What | Status |
 |---|---|---|
-| **0** | **Verification harness**: CI unit tests, simulator screenshots in colour and greyscale, versioned schema, `CLAUDE.md` | PR #3, in review |
+| **0** | **Verification harness**: CI unit tests, simulator screenshots in colour and greyscale, versioned schema, `CLAUDE.md` | Done 11.10.2026 (PR #3); checked on the phone |
 | **1** | **Quick bug fixes**: the app stays on yesterday if left open overnight (jump to today on day change and on returning to the foreground; refresh at the cutoff); the never-miss-twice banner wording | Not started |
 | **2** | **Model change**: one item model for both screens, each with **recurring items plus one-offs** (added by hand or from the vault). Match days to items by ID, not title (fixes the rename bug). One shared mutation service for the app and widget (stops duplicate rows). Streak rules from `DECISIONS.md`. Schema V2 with a migration | Not started. Grill first |
 | **3** | **Flip time + skip + settings screen**: an optional flip time (none = flips when everything is done or skipped); "skip today" on an item; the missing settings screen for the cutoff or wake-up window; each day stores its own deadline | Not started. Grill first |
