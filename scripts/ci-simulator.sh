@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Prints the UDID of an available iPhone simulator (DEVICE_NAME, default "iPhone 16"), preferring the
-# Xcode SDK's iOS version and creating one if none is listed. Fresh CI runners sometimes list no iPhone at
-# first, which breaks `-destination "platform=iOS Simulator,name=..."`; use `-destination id=<UDID>`.
+# Xcode SDK's iOS version and creating one if none is listed. Fresh CI runners sometimes list no iPhone
+# at first, which breaks `-destination "platform=iOS Simulator,name=..."`; use `-destination id=<UDID>`.
 #
-#   UDID=$(scripts/ci-simulator.sh)          # just pick (or create) the device
-#   UDID=$(scripts/ci-simulator.sh --boot)   # ...and start booting it in the background
+#   UDID=$(scripts/ci-simulator.sh)
 #
-# Booting takes minutes on a fresh runner, so start it before the build and wait for it afterwards
-# with `xcrun simctl bootstatus "$UDID" -b`. Used by ios-quality.yml and scripts/screenshots.sh.
+# Used by ios-quality.yml and scripts/screenshots.sh. Boot the device after the build
+# (`xcrun simctl bootstatus "$UDID" -b`), not during it: on the 3-core CI runners a boot in the
+# background slowed the build several-fold and saved nothing overall.
 set -euo pipefail
 
 DEVICE_NAME="${DEVICE_NAME:-iPhone 16}"
@@ -50,12 +50,6 @@ for attempt in 1 2 3; do
 done
 [ -n "$UDID" ] || { echo "No simulator available for ${DEVICE_NAME}" >&2; exit 1; }
 
-if [ "${1:-}" = "--boot" ]; then
-  # Detach fully (stdin, stdout, stderr) so `$(...)` returns now instead of waiting for the boot.
-  LOG="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/simulator-boot-${UDID}.log"
-  nohup xcrun simctl bootstatus "$UDID" -b </dev/null >"$LOG" 2>&1 &
-  echo "Booting ${DEVICE_NAME} ${UDID} in the background (log: ${LOG})" >&2
-fi
 xcrun simctl list devices | grep -F "$UDID" | sed 's/^ */Simulator: /' >&2 || true
 
 echo "$UDID"
