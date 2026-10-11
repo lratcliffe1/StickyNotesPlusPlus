@@ -53,7 +53,7 @@ for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name scenario screen appearance <<<"$shot"
   # simctl refuses to replace an active override (it misreports this as "non-ISO date/time"),
   # so clear it first. A clock that still won't set only costs the status bar: warn and go on.
-  clock="14:00"
+  clock="2:00"  # simctl only accepts 12-hour times here; "14:00" is rejected
   case "$scenario" in morning|missedYesterday) clock="08:15" ;; esac
   xcrun simctl status_bar "$UDID" clear || true
   if ! xcrun simctl status_bar "$UDID" override --time "$clock" \
