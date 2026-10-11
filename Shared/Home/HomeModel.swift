@@ -92,6 +92,50 @@ enum HomeModel {
         }
     }
 
+    /// The next moment Home can change on its own: today's morning deadline if it is still
+    /// ahead, otherwise the next midnight (calendar arithmetic, so DST days are 23 or 25 hours).
+    static func nextClockBoundary(
+        after now: Date,
+        mode: MorningMode,
+        calendar: Calendar = .current
+    ) -> Date {
+        let today = normalizedDay(now, calendar: calendar)
+        let deadline = morningDeadline(for: today, mode: mode, calendar: calendar)
+        if deadline > now {
+            return deadline
+        }
+        return calendar.date(byAdding: .day, value: 1, to: today) ?? now.addingTimeInterval(3_600)
+    }
+
+    /// Which day Home shows once the clock has moved (midnight, foregrounding, a time-zone change):
+    /// the new today if the user was following today, otherwise the day they chose.
+    static func dayToShow(
+        selectedDay: Date,
+        followingToday: Bool,
+        now: Date,
+        calendar: Calendar = .current
+    ) -> Date {
+        followingToday ? normalizedDay(now, calendar: calendar) : normalizedDay(selectedDay, calendar: calendar)
+    }
+
+    enum StreakRisk: Equatable {
+        case none
+        /// Missed yesterday; today can still keep the streak.
+        case saveable
+        /// Missed yesterday and today's chance has passed: the streak resets tomorrow.
+        case lost
+    }
+
+    /// Never-miss-twice risk from a frozen streak. `deadline` is when today stops counting
+    /// (the morning cutoff); `nil` means today counts until midnight.
+    static func streakRisk(isFrozen: Bool, deadline: Date?, now: Date) -> StreakRisk {
+        guard isFrozen else { return .none }
+        if let deadline, now >= deadline {
+            return .lost
+        }
+        return .saveable
+    }
+
     static func shouldShowMorningList(
         for selectedDay: Date,
         morningEntries: [MorningRoutineEntry],

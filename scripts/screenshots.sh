@@ -45,12 +45,14 @@ SHOTS=(
   "04-calendar|daily|calendar|light"
   "05-settings|daily|settings|light"
   "06-home-morning-dark|morning|home|dark"
+  "07-banner-missed-yesterday|missedYesterday|home|light"
+  "08-banner-missed-twice|missedTwice|home|light"
 )
 
 for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name scenario screen appearance <<<"$shot"
   clock="14:00"
-  [ "$scenario" = "morning" ] && clock="08:15"
+  case "$scenario" in morning|missedYesterday) clock="08:15" ;; esac
   xcrun simctl status_bar "$UDID" override --time "$clock" --batteryState charged --batteryLevel 100 \
     --cellularBars 4 --wifiBars 3 || true
   xcrun simctl ui "$UDID" appearance "$appearance"

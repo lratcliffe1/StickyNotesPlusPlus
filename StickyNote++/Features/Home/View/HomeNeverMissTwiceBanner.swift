@@ -1,16 +1,22 @@
 import SwiftUI
 
-/// Small reusable banner for never-miss-twice risk messaging on Home.
+/// Never-miss-twice warnings on Home, one line per list at risk.
+/// Readable in greyscale: the warning icon and bold text carry the meaning, not the colour.
 struct HomeNeverMissTwiceBanner: View {
-    let text: String
+    let lines: [String]
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "bolt.badge.clock")
-                .foregroundStyle(.orange)
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(lines, id: \.self) { line in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(line)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)

@@ -1,3 +1,4 @@
+import Combine
 import SwiftData
 import SwiftUI
 import os
@@ -44,8 +45,9 @@ struct HomeView: View {
 
                     selectedDayControls
 
-                    if let bannerText = vm.neverMissTwiceBannerText {
-                        HomeNeverMissTwiceBanner(text: bannerText)
+                    let bannerLines = vm.neverMissTwiceBannerLines
+                    if !bannerLines.isEmpty {
+                        HomeNeverMissTwiceBanner(lines: bannerLines)
                     }
 
                     HomeStickyNoteCard(
@@ -79,6 +81,23 @@ struct HomeView: View {
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 syncFromExternalWrites()
+            }
+            // Midnight, a time-zone change or a clock change while the app is open.
+            .onReceive(
+                NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
+                    .merge(with: NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification))
+                    .receive(on: RunLoop.main)
+            ) { _ in
+                vm.handleClockChange(context: modelContext)
+            }
+            // Sleep until the next cutoff or midnight, then refresh, so the list flips on time.
+            .task(id: vm.nextClockBoundary) {
+                let delay = vm.nextClockBoundary.timeIntervalSinceNow + 1
+                if delay > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(min(delay, 86_400 * 2) * 1_000_000_000))
+                }
+                guard !Task.isCancelled else { return }
+                vm.handleClockChange(context: modelContext)
             }
             .onOpenURL { url in
                 handleDeepLink(url)
@@ -299,7 +318,7 @@ struct HomeView: View {
             modelContext.rollback()
         }
 
-        vm.refresh(context: modelContext)
+        vm.handleClockChange(context: modelContext)
     }
 
     private func handleDeepLink(_ url: URL) {

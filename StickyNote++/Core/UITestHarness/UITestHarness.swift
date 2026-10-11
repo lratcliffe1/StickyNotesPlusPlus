@@ -18,6 +18,13 @@ enum UITestHarness {
         case daily
         /// 14:00, nothing set up at all.
         case empty
+        /// 08:15, both lists missed yesterday, morning still saveable: two "Missed yesterday" lines.
+        case missedYesterday
+        /// 14:00, both lists missed yesterday and this morning's routine unfinished past the cutoff:
+        /// "Missed twice" for the morning, "Missed yesterday" for the daily tasks.
+        case missedTwice
+
+        var missesYesterday: Bool { self == .missedYesterday || self == .missedTwice }
     }
 
     struct Configuration {
@@ -47,9 +54,9 @@ enum UITestHarness {
         let today = calendar.startOfDay(for: Date())
         let now: Date
         switch scenario {
-        case .morning:
+        case .morning, .missedYesterday:
             now = at(hour: 8, minute: 15, on: today, calendar: calendar)
-        case .daily, .empty:
+        case .daily, .empty, .missedTwice:
             now = at(hour: 14, minute: 0, on: today, calendar: calendar)
         }
 
@@ -62,7 +69,7 @@ enum UITestHarness {
             )
             let context = container.mainContext
             if scenario != .empty {
-                seedHistory(today: today, context: context, calendar: calendar)
+                seedHistory(today: today, missYesterday: scenario.missesYesterday, context: context, calendar: calendar)
                 seedToday(scenario: scenario, today: today, context: context, calendar: calendar)
             }
             try context.save()
@@ -81,14 +88,16 @@ enum UITestHarness {
     }
 
     /// Twelve past days: routine done by 07:50 on all but two days, and three tasks a day, mostly done.
-    private static func seedHistory(today: Date, context: ModelContext, calendar: Calendar) {
+    /// With `missYesterday`, yesterday's routine and tasks are left unfinished.
+    private static func seedHistory(today: Date, missYesterday: Bool, context: ModelContext, calendar: Calendar) {
         for (order, title) in routineTitles.enumerated() {
             context.insert(MorningRoutineTemplateItem(title: title, sortOrder: order))
         }
 
         for daysAgo in 1...12 {
             guard let day = calendar.date(byAdding: .day, value: -daysAgo, to: today) else { continue }
-            let routineMissed = daysAgo == 5 || daysAgo == 9
+            let missedThisDay = missYesterday && daysAgo == 1
+            let routineMissed = daysAgo == 5 || daysAgo == 9 || missedThisDay
             for (order, title) in routineTitles.enumerated() {
                 let done = !routineMissed || order < 3
                 context.insert(
@@ -104,7 +113,7 @@ enum UITestHarness {
 
             let tasks = ["Reply to emails", "Write for 30 minutes", "Stretch"]
             for (order, title) in tasks.enumerated() {
-                let done = daysAgo != 3 || order == 0
+                let done = !missedThisDay && (daysAgo != 3 || order == 0)
                 context.insert(
                     DailyTask(
                         date: day,
@@ -119,7 +128,7 @@ enum UITestHarness {
     }
 
     private static func seedToday(scenario: Scenario, today: Date, context: ModelContext, calendar: Calendar) {
-        let routineDoneCount = scenario == .morning ? 2 : routineTitles.count
+        let routineDoneCount = (scenario == .daily) ? routineTitles.count : 2
         for (order, title) in routineTitles.enumerated() {
             let done = order < routineDoneCount
             context.insert(
