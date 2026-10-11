@@ -155,8 +155,8 @@ final class DayRulesStoreTests: XCTestCase {
         let history = DayRulesStore.history(in: defaults)
         XCTAssertEqual(history.stored["2026-10-12"], setNine)
         let looks = try ListService.dayLooks(
-            for: .morning, through: "2026-10-12", todayKey: "2026-10-13", history: history, context: context, calendar: munich
-        )
+            from: "2026-10-01", through: "2026-10-12", todayKey: "2026-10-13", history: history, context: context, calendar: munich
+        ).looks[.morning] ?? [:]
         XCTAssertEqual(looks["2026-10-12"]?.status, .complete)
 
         // Tomorrow is stored from the settings: 08:00.
