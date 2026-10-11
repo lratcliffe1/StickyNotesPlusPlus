@@ -33,7 +33,8 @@ mkdir -p "$OUT"
 # launch arguments, e.g. -uiMorningEnds doneOrSkipped -uiEvening off). The status-bar clock matches
 # each scenario's time where simctl accepts it. Long-press menus and Menus can't be opened from
 # launch arguments, so 16-add-options shows the add menu's result and 17-add-deadline the sheet its
-# "Deadline…" opens. 05-settings is "At a set time" (the default) with the evening on.
+# "Deadline…" opens. 05-settings is "At a set time" (the default) with the evening on. The app
+# also forces the appearance (-uiAppearance), since simctl's switch can land after launch.
 SHOTS=(
   "01-home-morning|morning|home|light|"
   "02-home-daily|daily|home|light|"
@@ -56,7 +57,8 @@ SHOTS=(
   "19-settings-done-or-skipped-evening-off|daily|settings|light||-uiMorningEnds doneOrSkipped -uiEvening off"
   "20-home-evening-2130|evening|home|light|"
   "21-home-1030-done-or-skipped|lateMorning|home|light||-uiMorningEnds doneOrSkipped"
-  "22-home-1230-done-or-skipped|noon|home|light||-uiMorningEnds doneOrSkipped"
+  "22-home-1230-done-or-skipped-still-morning|noon|home|light||-uiMorningEnds doneOrSkipped"
+  "23-settings-applies-from-tomorrow|daily|settings|light||-uiMorningEnds doneOrSkipped -uiTodayKeeps 09:00"
 )
 
 for shot in "${SHOTS[@]}"; do
@@ -81,7 +83,7 @@ for shot in "${SHOTS[@]}"; do
   fi
   xcrun simctl ui "$UDID" appearance "$appearance"
   xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
-  xcrun simctl launch "$UDID" "$BUNDLE_ID" -uiScenario "$scenario" -uiScreen "$screen" \
+  xcrun simctl launch "$UDID" "$BUNDLE_ID" -uiScenario "$scenario" -uiScreen "$screen" -uiAppearance "$appearance" \
     ${list_args[@]+"${list_args[@]}"} ${settings_args[@]+"${settings_args[@]}"} >/dev/null
   sleep "$SETTLE_SECONDS"
   xcrun simctl io "$UDID" screenshot "$OUT/$name.png" >/dev/null
