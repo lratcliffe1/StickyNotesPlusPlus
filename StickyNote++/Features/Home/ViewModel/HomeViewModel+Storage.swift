@@ -52,12 +52,16 @@ extension HomeViewModel {
         }
     }
 
-    func unopenedMissDays(for list: ListKind, context: ModelContext) -> Set<String> {
+    /// How each day through `endKey` looks for a list: the same rules as the streak.
+    func dayLooks(for list: ListKind, through endKey: String, context: ModelContext) -> [String: ListRules.DayLook] {
         do {
-            return try repository.unopenedMissDays(for: list, before: HomeModel.dayKey(for: now), context: context)
+            return try repository.dayLooks(
+                for: list, through: endKey, todayKey: HomeModel.dayKey(for: now),
+                morningMode: morningMode, context: context
+            )
         } catch {
-            AppLogger.persistence.error("Unopened misses for \(list.rawValue, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
-            return []
+            AppLogger.persistence.error("Day looks for \(list.rawValue, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+            return [:]
         }
     }
 

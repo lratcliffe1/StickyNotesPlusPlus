@@ -85,13 +85,8 @@ enum ListRules {
         return HomeModel.StreakState(count: count, isFrozen: isFrozen && count > 0)
     }
 
-    /// Streak for one list's occurrences. `deadline` gives a day's cutoff (morning) or nil (midnight).
-    /// `schedules` are the list's items (ended ones too): past days nobody opened are judged against
-    /// what was due on them (`unopenedMisses`) instead of counting as neutral.
-    ///
-    /// An open repeating occurrence whose period runs past its own day (less often than daily) isn't
-    /// counted on that day: it can still be done later in the period. If it is still open, it is a miss
-    /// on its period end, once that day is before the anchor.
+    /// Streak for one list's occurrences through `anchorKey`, from the same day looks the ring and
+    /// calendar show (`dayLooks`), so display and streak can't disagree.
     static func streakState<T: OccurrenceFacts>(
         through anchorKey: String,
         occurrences: [T],
@@ -99,35 +94,87 @@ enum ListRules {
         calendar: Calendar = .current,
         deadline: (String) -> Date?
     ) -> HomeModel.StreakState {
-        var byDay: [String: [T]] = [:]
+        let looks = dayLooks(
+            occurrences: occurrences.filter { $0.dayKey <= anchorKey },
+            schedules: schedules,
+            missesBefore: anchorKey,
+            calendar: calendar,
+            deadline: deadline
+        )
+        return streakState(through: anchorKey, statuses: looks.mapValues(\.status))
+    }
+
+    // MARK: - How a day looks
+
+    /// How one day looks for one list: its streak status and the completion the ring and calendar show.
+    struct DayLook: Equatable {
+        let status: DayStatus
+        let completion: HomeModel.CompletionState
+    }
+
+    /// How each day looks for one list. The one source for the streak, the 7-day ring and the calendar.
+    ///
+    /// - A day's own rows count as before: skipped ones drop out, bumped ones count as done, and with a
+    ///   `deadline` (the morning cutoff) a late finish makes the day a miss.
+    /// - An open repeating occurrence whose period runs past its own day (less often than daily) isn't
+    ///   counted on its day: it can still be done later. If it's still open, it is a miss on its period
+    ///   end, once that day is before `missesBefore`.
+    /// - A past day nobody opened is judged by what was due (`unopenedMissCounts`).
+    /// - Each such miss adds one undone occurrence to its day, so the day shows below 100% (0% if it
+    ///   has no rows of its own) and its status is a miss.
+    /// - An item ended (deleted) on or before a period end never costs a miss on it: deleting an item
+    ///   never costs a streak day after the delete.
+    /// Days with nothing counted and nothing missed are absent (neutral).
+    static func dayLooks<T: OccurrenceFacts>(
+        occurrences: [T],
+        schedules: [ItemSchedule],
+        missesBefore cutoffKey: String,
+        calendar: Calendar = .current,
+        deadline: (String) -> Date?
+    ) -> [String: DayLook] {
+        var endByItem: [UUID: String] = [:]
+        for schedule in schedules {
+            if let end = schedule.endDayKey { endByItem[schedule.itemID] = end }
+        }
+
+        var counted: [String: [T]] = [:]
         var openedDays: Set<String> = []
         var materialised: Set<String> = []
-        var periodEndMisses: Set<String> = []
-        for occurrence in occurrences where occurrence.dayKey <= anchorKey {
+        var extraMisses: [String: Int] = [:]
+        for occurrence in occurrences {
             openedDays.insert(occurrence.dayKey)
             if let itemID = occurrence.itemID {
                 materialised.insert(materialisedKey(itemID, occurrence.scheduledDayKey ?? occurrence.dayKey))
             }
             if isDeferred(occurrence) {
-                if let periodEnd = occurrence.periodEndDayKey, periodEnd < anchorKey {
-                    periodEndMisses.insert(periodEnd)
+                if let periodEnd = occurrence.periodEndDayKey, periodEnd < cutoffKey,
+                   !endsOnOrBefore(endByItem[occurrence.itemID ?? UUID()], periodEnd) {
+                    extraMisses[periodEnd, default: 0] += 1
                 }
                 continue
             }
-            byDay[occurrence.dayKey, default: []].append(occurrence)
+            if occurrence.state != .skipped {
+                counted[occurrence.dayKey, default: []].append(occurrence)
+            }
         }
-        var statuses: [String: DayStatus] = [:]
-        for (key, rows) in byDay {
-            statuses[key] = dayStatus(rows, deadline: deadline(key))
-        }
-        let unopened = unopenedMisses(
+        let unopened = unopenedMissCounts(
             schedules: schedules, openedDays: openedDays, materialised: materialised,
-            before: anchorKey, calendar: calendar
+            before: cutoffKey, calendar: calendar
         )
-        for key in periodEndMisses.union(unopened) {
-            statuses[key] = .missed
+        extraMisses.merge(unopened, uniquingKeysWith: +)
+
+        var looks: [String: DayLook] = [:]
+        for key in Set(counted.keys).union(extraMisses.keys) {
+            let rows = counted[key] ?? []
+            let missed = extraMisses[key] ?? 0
+            let total = rows.count + missed
+            guard total > 0 else { continue }
+            let done = rows.filter { $0.state.countsAsDone }.count
+            let completion = HomeModel.CompletionState(value: Double(done) / Double(total), isNeutral: false)
+            let status: DayStatus = missed > 0 ? .missed : dayStatus(rows, deadline: deadline(key))
+            looks[key] = DayLook(status: status, completion: completion)
         }
-        return streakState(through: anchorKey, statuses: statuses)
+        return looks
     }
 
     /// An open repeating occurrence that can still be done after its own day.
@@ -141,6 +188,12 @@ enum ListRules {
     /// "itemID|scheduledDayKey": one occurrence of one item.
     static func materialisedKey(_ itemID: UUID, _ scheduledDayKey: String) -> String {
         "\(itemID.uuidString)|\(scheduledDayKey)"
+    }
+
+    /// Whether an item that ends on `endDayKey` (nil: never) is gone by `dayKey`.
+    private static func endsOnOrBefore(_ endDayKey: String?, _ dayKey: String) -> Bool {
+        guard let endDayKey else { return false }
+        return endDayKey <= dayKey
     }
 
     // MARK: - Days nobody opened
@@ -160,18 +213,8 @@ enum ListRules {
         }
     }
 
-    /// Misses that rows can't show, because nobody opened the day the item was due.
-    ///
-    /// Only today's rows are ever created, so a past day with no rows for a list was never opened.
-    /// "Neutral" means nothing was due, not nothing was created: for each unopened day S before the
-    /// anchor, every item that existed on S and whose rule falls on S was due and was never done.
-    /// That occurrence counts as a miss on its period end P (`RepeatRule.periodEnd`), the last day it
-    /// could have been done, if P is before the anchor. For a daily item P == S, so the unopened day
-    /// itself is the miss; for a weekly item the miss lands on its period end (Sunday), whether or
-    /// not that day was opened, and the unopened days inside the period aren't misses by themselves.
-    /// A day that was opened is judged by its own rows (opening creates every item due that day).
-    /// An occurrence that got a row later in its period (`materialised`, "itemID|scheduledDayKey")
-    /// is judged by that row instead.
+    /// Days with misses that rows can't show, because nobody opened the day the item was due.
+    /// See `unopenedMissCounts`.
     static func unopenedMisses(
         schedules: [ItemSchedule],
         openedDays: Set<String>,
@@ -179,9 +222,32 @@ enum ListRules {
         before anchorKey: String,
         calendar: Calendar = .current
     ) -> Set<String> {
-        guard let firstStart = schedules.map(\.startDayKey).min(), firstStart < anchorKey else { return [] }
+        Set(unopenedMissCounts(
+            schedules: schedules, openedDays: openedDays, materialised: materialised,
+            before: anchorKey, calendar: calendar
+        ).keys)
+    }
+
+    /// Only today's rows are ever created, so a past day with no rows for a list was never opened.
+    /// "Neutral" means nothing was due, not nothing was created: for each unopened day S before the
+    /// anchor, every item that existed on S and whose rule falls on S was due and was never done.
+    /// That occurrence counts as a miss on its period end P (`RepeatRule.periodEnd`), the last day it
+    /// could have been done, if P is before the anchor and the item hadn't ended by P. For a daily
+    /// item P == S, so the unopened day itself is the miss; for a weekly item the miss lands on its
+    /// period end (Sunday), whether or not that day was opened, and the unopened days inside the
+    /// period aren't misses by themselves. An occurrence that got a row later in its period
+    /// (`materialised`, "itemID|scheduledDayKey") is judged by that row instead.
+    /// Returns the number of missed occurrences per day.
+    static func unopenedMissCounts(
+        schedules: [ItemSchedule],
+        openedDays: Set<String>,
+        materialised: Set<String> = [],
+        before anchorKey: String,
+        calendar: Calendar = .current
+    ) -> [String: Int] {
+        guard let firstStart = schedules.map(\.startDayKey).min(), firstStart < anchorKey else { return [:] }
         let math = DayMath(calendar: calendar)
-        var misses: Set<String> = []
+        var misses: [String: Int] = [:]
         var day = firstStart
         while day < anchorKey {
             if !openedDays.contains(day) {
@@ -189,23 +255,14 @@ enum ListRules {
                     guard schedule.rule.occurs(on: day, startDayKey: schedule.startDayKey, math: math) else { continue }
                     guard !materialised.contains(materialisedKey(schedule.itemID, day)) else { continue }
                     let periodEnd = schedule.rule.periodEnd(for: day, startDayKey: schedule.startDayKey, calendar: calendar)
-                    if periodEnd < anchorKey {
-                        misses.insert(periodEnd)
+                    if periodEnd < anchorKey && !endsOnOrBefore(schedule.endDayKey, periodEnd) {
+                        misses[periodEnd, default: 0] += 1
                     }
                 }
             }
             day = math.adding(days: 1, to: day)
         }
         return misses
-    }
-
-    /// A day's completion for the ring and calendar: a past day nobody opened with something due
-    /// shows as 0% (a miss), not as neutral grey.
-    static func completion<T: OccurrenceFacts>(_ occurrences: [T], isUnopenedMiss: Bool) -> HomeModel.CompletionState {
-        if occurrences.isEmpty && isUnopenedMiss {
-            return HomeModel.CompletionState(value: 0, isNeutral: false)
-        }
-        return completion(occurrences)
     }
 
     // MARK: - Order

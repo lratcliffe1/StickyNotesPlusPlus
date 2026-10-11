@@ -13,8 +13,14 @@ protocol HomeRepository {
         morningMode: HomeModel.MorningMode,
         context: ModelContext
     ) throws -> HomeModel.StreakState
-    /// Past days nobody opened that still count as misses (something was due).
-    func unopenedMissDays(for list: ListKind, before anchorKey: String, context: ModelContext) throws -> Set<String>
+    /// How each day through `endKey` looks for a list (same rules as the streak).
+    func dayLooks(
+        for list: ListKind,
+        through endKey: String,
+        todayKey: String,
+        morningMode: HomeModel.MorningMode,
+        context: ModelContext
+    ) throws -> [String: ListRules.DayLook]
 }
 
 struct SwiftDataHomeRepository: HomeRepository {
@@ -42,7 +48,13 @@ struct SwiftDataHomeRepository: HomeRepository {
         try ListService.streakState(for: list, through: anchorKey, morningMode: morningMode, context: context, calendar: .current)
     }
 
-    func unopenedMissDays(for list: ListKind, before anchorKey: String, context: ModelContext) throws -> Set<String> {
-        try ListService.unopenedMissDays(for: list, before: anchorKey, context: context, calendar: .current)
+    func dayLooks(
+        for list: ListKind,
+        through endKey: String,
+        todayKey: String,
+        morningMode: HomeModel.MorningMode,
+        context: ModelContext
+    ) throws -> [String: ListRules.DayLook] {
+        try ListService.dayLooks(for: list, through: endKey, todayKey: todayKey, morningMode: morningMode, context: context, calendar: .current)
     }
 }

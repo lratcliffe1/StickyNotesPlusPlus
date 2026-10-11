@@ -173,9 +173,76 @@ final class StreakRuleTests: XCTestCase {
         )
     }
 
-    func testUnopenedMissShowsAsZeroNotNeutral() {
-        XCTAssertEqual(ListRules.completion([FactRow](), isUnopenedMiss: true), HomeModel.CompletionState(value: 0, isNeutral: false))
-        XCTAssertEqual(ListRules.completion([FactRow](), isUnopenedMiss: false), .neutral)
+    // MARK: - How a day looks (shared by streak, ring and calendar)
+
+    private func looks(_ rows: [FactRow], schedules: [ListRules.ItemSchedule], before cutoff: String) -> [String: ListRules.DayLook] {
+        ListRules.dayLooks(occurrences: rows, schedules: schedules, missesBefore: cutoff, calendar: TestCalendars.munich) { _ in nil }
+    }
+
+    private let missedNothingDone = ListRules.DayLook(status: .missed, completion: HomeModel.CompletionState(value: 0, isNeutral: false))
+
+    /// Weekly Monday item left open on Monday: Monday isn't a miss (absent: neutral), Sunday is,
+    /// and an opened Sunday with its own rows done no longer shows 100%.
+    func testDayLooksWeeklyOpenMondayIsAMissOnSundayNotMonday() {
+        let gym = UUID()
+        let monday = FactRow(dayKey: "2026-10-12", itemID: gym, state: .open, scheduledDayKey: "2026-10-12", periodEndDayKey: "2026-10-18")
+        let schedules = [ListRules.ItemSchedule(itemID: gym, rule: .weekly(on: [2]), startDayKey: "2026-10-12", endDayKey: nil)]
+
+        let unopenedSunday = looks([monday], schedules: schedules, before: "2026-10-19")
+        XCTAssertNil(unopenedSunday["2026-10-12"])
+        XCTAssertEqual(unopenedSunday["2026-10-18"], missedNothingDone)
+
+        let openedSunday = looks([monday, row("2026-10-18", .done)], schedules: schedules, before: "2026-10-19")
+        XCTAssertEqual(openedSunday["2026-10-18"], ListRules.DayLook(status: .missed, completion: HomeModel.CompletionState(value: 0.5, isNeutral: false)))
+        XCTAssertNil(looks([monday], schedules: schedules, before: "2026-10-18")["2026-10-18"], "no miss while Sunday is today")
+    }
+
+    func testDayLooksWeeklyCarriedAndDoneWednesdayIsNoMiss() {
+        let gym = UUID()
+        let wednesday = FactRow(dayKey: "2026-10-14", itemID: gym, completedAt: TestCalendars.date("2026-10-14", 18), state: .done,
+                                scheduledDayKey: "2026-10-12", periodEndDayKey: "2026-10-18")
+        let schedules = [ListRules.ItemSchedule(itemID: gym, rule: .weekly(on: [2]), startDayKey: "2026-10-12", endDayKey: nil)]
+        let result = looks([wednesday], schedules: schedules, before: "2026-10-19")
+        XCTAssertEqual(result, ["2026-10-14": ListRules.DayLook(status: .complete, completion: HomeModel.CompletionState(value: 1, isNeutral: false))])
+    }
+
+    func testDayLooksUnopenedDailyIsZeroPercent() {
+        let water = UUID()
+        let saturday = FactRow(dayKey: "2026-10-10", itemID: water, state: .done, scheduledDayKey: "2026-10-10", periodEndDayKey: "2026-10-10")
+        let schedules = [ListRules.ItemSchedule(itemID: water, rule: .daily, startDayKey: "2026-10-10", endDayKey: nil)]
+        let result = looks([saturday], schedules: schedules, before: "2026-10-12")
+        XCTAssertEqual(result["2026-10-11"], missedNothingDone)
+        XCTAssertEqual(result["2026-10-10"]?.status, .complete)
+    }
+
+    func testDayLooksAllSkippedAndEmptyAreNeutral() {
+        XCTAssertTrue(looks([row("2026-10-10", .skipped), row("2026-10-10", .skipped)], schedules: [], before: "2026-10-12").isEmpty)
+        XCTAssertTrue(looks([], schedules: [], before: "2026-10-12").isEmpty)
+    }
+
+    /// The streak is built from the same looks.
+    func testStreakMatchesDayLooks() {
+        let gym = UUID()
+        let rows = [
+            row("2026-10-11", .done),
+            FactRow(dayKey: "2026-10-12", itemID: gym, state: .open, scheduledDayKey: "2026-10-12", periodEndDayKey: "2026-10-18"),
+            row("2026-10-18", .done),
+        ]
+        let schedules = [ListRules.ItemSchedule(itemID: gym, rule: .weekly(on: [2]), startDayKey: "2026-10-12", endDayKey: nil)]
+        let looks = looks(rows, schedules: schedules, before: "2026-10-19")
+        XCTAssertEqual(ListRules.streakState(through: "2026-10-19", statuses: looks.mapValues(\.status)),
+                       streak(rows, schedules: schedules, through: "2026-10-19"))
+        XCTAssertEqual(streak(rows, schedules: schedules, through: "2026-10-19"), HomeModel.StreakState(count: 1, isFrozen: true))
+    }
+
+    /// Deleting an item never costs a streak day after the delete.
+    func testEndedItemCostsNoMissOnOrAfterItsEnd() {
+        let gym = UUID()
+        let monday = FactRow(dayKey: "2026-10-12", itemID: gym, state: .open, scheduledDayKey: "2026-10-12", periodEndDayKey: "2026-10-18")
+        let ended = [ListRules.ItemSchedule(itemID: gym, rule: .weekly(on: [2]), startDayKey: "2026-10-12", endDayKey: "2026-10-14")]
+        XCTAssertTrue(looks([monday], schedules: ended, before: "2026-10-19").isEmpty)
+        // Unopened Monday, item deleted on Wednesday: no miss on Sunday either.
+        XCTAssertTrue(looks([], schedules: ended, before: "2026-10-19").isEmpty)
     }
 
     /// A weekly occurrence left open on its Monday can still be done that week: not a miss on Monday,

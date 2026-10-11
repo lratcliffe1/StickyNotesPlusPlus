@@ -161,7 +161,34 @@ enum ListService {
     ) throws -> HomeModel.StreakState {
         let rows = try occurrences(through: anchorKey, list: list, context: context)
         let schedules = try self.schedules(for: list, context: context)
-        return ListRules.streakState(through: anchorKey, occurrences: rows, schedules: schedules, calendar: calendar) { key in
+        return ListRules.streakState(
+            through: anchorKey, occurrences: rows, schedules: schedules, calendar: calendar,
+            deadline: deadline(for: list, morningMode: morningMode, calendar: calendar)
+        )
+    }
+
+    /// How each day through `endKey` looks for a list (`ListRules.dayLooks`), with misses counted
+    /// only on days before `todayKey`. The ring and calendar show these, so they match the streak.
+    static func dayLooks(
+        for list: ListKind,
+        through endKey: String,
+        todayKey: String,
+        morningMode: HomeModel.MorningMode,
+        context: ModelContext,
+        calendar: Calendar = .current
+    ) throws -> [String: ListRules.DayLook] {
+        ListRules.dayLooks(
+            occurrences: try occurrences(through: endKey, list: list, context: context),
+            schedules: try schedules(for: list, context: context),
+            missesBefore: todayKey,
+            calendar: calendar,
+            deadline: deadline(for: list, morningMode: morningMode, calendar: calendar)
+        )
+    }
+
+    /// The morning list's cutoff for a day; the other lists count until midnight (nil).
+    static func deadline(for list: ListKind, morningMode: HomeModel.MorningMode, calendar: Calendar) -> (String) -> Date? {
+        { key in
             guard list == .morning, let day = HomeModel.date(fromDayKey: key, calendar: calendar) else { return nil }
             return HomeModel.morningDeadline(for: day, mode: morningMode, calendar: calendar)
         }

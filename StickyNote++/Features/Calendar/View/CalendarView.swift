@@ -139,35 +139,32 @@ struct CalendarView: View {
     }
 
     /// Morning and day lists only; the evening list isn't shown yet.
+    /// The same day looks the streak uses (`ListRules.dayLooks`), for the morning and day lists
+    /// (evening isn't shown yet). A day absent from both is neutral.
     private var dayProgressLookup: [Date: HomeModel.DayProgress] {
-        let byDayKey = Dictionary(grouping: occurrences, by: \.dayKey)
-        // Past days nobody opened, with something due, show as 0% rather than neutral grey.
         let todayKey = HomeModel.dayKey(for: Date())
-        func misses(_ list: ListKind) -> Set<String> {
-            let rows = occurrences.filter { $0.list == list }
-            return ListRules.unopenedMisses(
+        let morningMode = MorningModeProvider.load(from: SharedPersistence.sharedDefaults).mode
+        func looks(_ list: ListKind) -> [String: ListRules.DayLook] {
+            ListRules.dayLooks(
+                occurrences: occurrences.filter { $0.list == list },
                 schedules: items.filter { $0.list == list }.map(\.schedule),
-                openedDays: Set(rows.map(\.dayKey)),
-                materialised: Set(rows.compactMap { row in
-                    row.itemID.map { ListRules.materialisedKey($0, row.scheduledDayKey ?? row.dayKey) }
-                }),
-                before: todayKey
+                missesBefore: todayKey,
+                deadline: ListService.deadline(for: list, morningMode: morningMode, calendar: .current)
             )
         }
-        let morningMisses = misses(.morning)
-        let dailyMisses = misses(.day)
+        let morningLooks = looks(.morning)
+        let dailyLooks = looks(.day)
 
         var lookup: [Date: HomeModel.DayProgress] = [:]
-        lookup.reserveCapacity(byDayKey.count + morningMisses.count + dailyMisses.count)
+        lookup.reserveCapacity(morningLooks.count + dailyLooks.count)
 
-        for dayKey in Set(byDayKey.keys).union(morningMisses).union(dailyMisses) {
+        for dayKey in Set(morningLooks.keys).union(dailyLooks.keys) {
             guard let parsed = HomeModel.date(fromDayKey: dayKey, calendar: calendar) else { continue }
             let day = HomeModel.normalizedDay(parsed, calendar: calendar)
-            let rows = byDayKey[dayKey] ?? []
             lookup[day] = HomeModel.DayProgress(
                 date: day,
-                morning: ListRules.completion(rows.filter { $0.list == .morning }, isUnopenedMiss: morningMisses.contains(dayKey)),
-                daily: ListRules.completion(rows.filter { $0.list == .day }, isUnopenedMiss: dailyMisses.contains(dayKey))
+                morning: morningLooks[dayKey]?.completion ?? .neutral,
+                daily: dailyLooks[dayKey]?.completion ?? .neutral
             )
         }
 

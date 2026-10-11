@@ -143,7 +143,7 @@ final class ListServiceTests: XCTestCase {
             context.insert(ListService.makeOccurrence(for: item, scheduledOn: "2026-10-14", on: "2026-10-14", now: noon("2026-10-14"), calendar: munich))
         }
         try appContext.save()
-        try? widgetContext.save()
+        XCTAssertNoThrow(try widgetContext.save(), "a same-id insert from another process must not throw")
 
         XCTAssertEqual(try ListService.occurrences(on: "2026-10-14", list: .morning, context: ModelContext(app)).count, 1)
     }
@@ -376,6 +376,35 @@ final class ListServiceTests: XCTestCase {
         XCTAssertEqual(wednesday.state, .open, "as with deleteOneOff, the source day goes back to open")
         XCTAssertNil(wednesday.bumpedToID)
         XCTAssertNil(wednesday.completedAt)
+    }
+
+    /// Weekly item, Monday's row left open, deleted on Wednesday: no miss on Sunday.
+    func testDeletingAWeeklyItemMidPeriodCostsNoMiss() throws {
+        let gym = insertItem("Gym", list: .day, rule: .weekly(on: [2]), start: "2026-10-12")
+        _ = try ListService.addOneOff(list: .day, dayKey: "2026-10-11", title: "Post", context: context)
+        try ListService.complete(try rows(on: "2026-10-11", list: .day)[0], at: noon("2026-10-11"), context: context)
+        _ = try ensure("2026-10-12")
+        XCTAssertEqual(try dayStreak(through: "2026-10-19"), HomeModel.StreakState(count: 1, isFrozen: true), "before the delete: Sunday is a miss")
+
+        try ListService.deleteItem(gym, todayKey: "2026-10-14", context: context)
+        XCTAssertEqual(try dayStreak(through: "2026-10-19"), HomeModel.StreakState(count: 1, isFrozen: false))
+        let looks = try ListService.dayLooks(for: .day, through: "2026-10-19", todayKey: "2026-10-19",
+                                             morningMode: .cutoff(time: DateComponents(hour: 9, minute: 0)), context: context, calendar: munich)
+        XCTAssertNil(looks["2026-10-18"])
+    }
+
+    /// Same, when deleteItem reopens Monday's row by removing its bumped-in copy.
+    func testDeletingAfterABumpReopensTheSourceButCostsNoMiss() throws {
+        let gym = insertItem("Gym", list: .day, rule: .weekly(on: [2]), start: "2026-10-12")
+        _ = try ListService.addOneOff(list: .day, dayKey: "2026-10-11", title: "Post", context: context)
+        try ListService.complete(try rows(on: "2026-10-11", list: .day)[0], at: noon("2026-10-11"), context: context)
+        _ = try ensure("2026-10-12")
+        let monday = try XCTUnwrap(rows(on: "2026-10-12", list: .day).first { $0.itemID != nil })
+        _ = try XCTUnwrap(ListService.bump(monday, now: noon("2026-10-12"), calendar: munich, context: context))
+
+        try ListService.deleteItem(gym, todayKey: "2026-10-13", context: context)
+        XCTAssertEqual(monday.state, .open)
+        XCTAssertEqual(try dayStreak(through: "2026-10-19"), HomeModel.StreakState(count: 1, isFrozen: false))
     }
 
     func testDeleteKeepsTodaysOccurrenceIfDone() throws {
