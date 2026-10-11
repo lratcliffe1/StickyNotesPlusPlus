@@ -1,0 +1,33 @@
+name: Build IPA for SideStore
+
+# Manual only: builds an unsigned .ipa that SideStore signs on the phone with a free Apple ID.
+on: workflow_dispatch
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Archive without signing
+        run: >
+          xcodebuild -project "StickyNote++.xcodeproj" -scheme "StickyNote++"
+          -configuration Release -destination "generic/platform=iOS"
+          -archivePath build/App.xcarchive archive
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Embed the App Group entitlement (ad-hoc) and package
+        run: |
+          APP=$(ls -d build/App.xcarchive/Products/Applications/*.app)
+          for EX in "$APP"/PlugIns/*.appex; do
+            codesign -f -s - --entitlements "StickyNote++ Widget Extension/StickyNotePlusPlusWidgetExtension.entitlements" "$EX"
+          done
+          codesign -f -s - --entitlements "StickyNote++/StickyNotePlusPlus.entitlements" "$APP"
+          mkdir Payload && cp -R "$APP" Payload/ && zip -qry StickyNotesPlusPlus.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: StickyNotesPlusPlus-ipa
+          path: StickyNotesPlusPlus.ipa
