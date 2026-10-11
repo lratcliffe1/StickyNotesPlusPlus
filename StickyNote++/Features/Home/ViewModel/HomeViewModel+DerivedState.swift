@@ -9,19 +9,21 @@ extension HomeViewModel {
         isReadOnly = HomeModel.isPastDay(selectedDay, now: now, calendar: calendar)
         let anchorDay = HomeModel.normalizedDay(selectedDay, calendar: calendar)
 
-        let autoContextualList: HomeModel.ContextualList
-        if HomeModel.shouldShowMorningList(
+        automaticContextualList = HomeModel.automaticList(
             for: selectedDay,
-            morningCompletion: morningCompletionState,
-            mode: morningMode,
-            now: now
-        ) {
-            autoContextualList = .morning
-        } else {
-            autoContextualList = .daily
+            now: now,
+            rules: todaysRules,
+            morning: morningCompletionState,
+            eveningIsEmpty: eveningEntries.isEmpty,
+            calendar: calendar
+        )
+        // A flip that has expired (its boundary passed, even while the app was in the background)
+        // is dropped here, on every refresh.
+        if let flip = manualListFlip {
+            let capped = flip.capped(at: todaysRules.nextListBoundary(after: now, calendar: calendar))
+            manualListFlip = capped.isActive(at: now) ? capped : nil
         }
-
-        contextualList = manualContextualListOverride ?? autoContextualList
+        contextualList = HomeModel.shownList(automatic: automaticContextualList, flip: manualListFlip, now: now)
 
         refreshSevenDayProgress(anchoredOn: anchorDay, context: context)
         let streaks = refreshStreaks(through: anchorDay, context: context)

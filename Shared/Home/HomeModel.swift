@@ -2,13 +2,8 @@ import Foundation
 
 /// Pure domain rules for day identity, completion math, list gating, and streak behavior.
 enum HomeModel {
-    enum MorningMode: Equatable {
-        case cutoff(time: DateComponents)
-        case sinceWakeUp(wakeUpTime: DateComponents, durationMinutes: Int)
-    }
-
-    /// Which list the sticky note shows. The app picks morning or daily by time; the flip button
-    /// cycles through all three (DECISIONS.md, 2b).
+    /// Which list the sticky note shows. The app picks it by the time and what's done
+    /// (`automaticList`); the flip button cycles through all three (DECISIONS.md, 2b).
     enum ContextualList: CaseIterable {
         case morning
         case daily
@@ -101,41 +96,6 @@ enum HomeModel {
         normalizedDay(day, calendar: calendar) < normalizedDay(now, calendar: calendar)
     }
 
-    static func morningDeadline(
-        for day: Date,
-        mode: MorningMode,
-        calendar: Calendar = .current
-    ) -> Date {
-        let normalized = normalizedDay(day, calendar: calendar)
-
-        switch mode {
-        case let .cutoff(time):
-            let hour = time.hour ?? 9
-            let minute = time.minute ?? 0
-            return calendar.date(bySettingHour: hour, minute: minute, second: 0, of: normalized) ?? normalized
-        case let .sinceWakeUp(wakeUpTime, durationMinutes):
-            let hour = wakeUpTime.hour ?? 7
-            let minute = wakeUpTime.minute ?? 0
-            let wakeUp = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: normalized) ?? normalized
-            return calendar.date(byAdding: .minute, value: max(durationMinutes, 0), to: wakeUp) ?? wakeUp
-        }
-    }
-
-    /// The next moment Home can change on its own: today's morning deadline if it is still
-    /// ahead, otherwise the next midnight (calendar arithmetic, so DST days are 23 or 25 hours).
-    static func nextClockBoundary(
-        after now: Date,
-        mode: MorningMode,
-        calendar: Calendar = .current
-    ) -> Date {
-        let today = normalizedDay(now, calendar: calendar)
-        let deadline = morningDeadline(for: today, mode: mode, calendar: calendar)
-        if deadline > now {
-            return deadline
-        }
-        return calendar.date(byAdding: .day, value: 1, to: today) ?? now.addingTimeInterval(3_600)
-    }
-
     struct ClockFollow: Equatable {
         /// The day Home should show.
         let day: Date
@@ -179,16 +139,72 @@ enum HomeModel {
         return .saveable
     }
 
-    /// Today's morning list shows until it's complete (or neutral) or the morning deadline passes.
-    static func shouldShowMorningList(
+    /// The list Home and the widget show on their own (DECISIONS.md, "3: flip times and settings"):
+    /// Morning → Day → Evening, by today's `rules`. On any day but today it is the day list.
+    ///
+    /// - **Evening**, from its start time (unless Off) until midnight, if it has anything on it.
+    ///   Once complete it stays showing, as done. It takes over from an unfinished morning too.
+    /// - **Morning**, while it has something still to do (not complete, and not empty or all
+    ///   skipped): until its set time, or, with no set time, until it's done ("the list itself
+    ///   flips only when you're done"; the streak still counts only until 12:00).
+    /// - **Day** otherwise.
+    static func automaticList(
         for selectedDay: Date,
-        morningCompletion: CompletionState,
-        mode: MorningMode,
-        now: Date = Date(),
+        now: Date,
+        rules: DayRules,
+        morning: CompletionState,
+        eveningIsEmpty: Bool,
         calendar: Calendar = .current
-    ) -> Bool {
-        guard isToday(selectedDay, now: now, calendar: calendar) else { return false }
-        guard !morningCompletion.isNeutral, morningCompletion.value < 1.0 else { return false }
-        return now < morningDeadline(for: selectedDay, mode: mode, calendar: calendar)
+    ) -> ContextualList {
+        guard isToday(selectedDay, now: now, calendar: calendar) else { return .daily }
+        if !eveningIsEmpty, let start = rules.eveningStart(on: now, calendar: calendar), now >= start {
+            return .evening
+        }
+        let morningOpen = !morning.isNeutral && morning.value < 1.0
+        switch rules.morningEnd {
+        case .setTime:
+            if morningOpen, now < rules.morningDeadline(on: now, calendar: calendar) { return .morning }
+        case .doneOrSkipped:
+            if morningOpen { return .morning }
+        }
+        return .daily
+    }
+
+    /// A list picked with the flip button. It lasts until `expiresAt`: the next moment the
+    /// automatic list could change on its own (`DayRules.nextListBoundary`), or for a day other
+    /// than today, until Home leaves that day.
+    struct ManualListFlip: Equatable {
+        let list: ContextualList
+        let expiresAt: Date
+
+        /// A flip made at `now` while today is on screen.
+        static func today(_ list: ContextualList, at now: Date, rules: DayRules, calendar: Calendar = .current) -> ManualListFlip {
+            ManualListFlip(list: list, expiresAt: rules.nextListBoundary(after: now, calendar: calendar))
+        }
+
+        /// A flip on another day, or one that never expires on its own (the screenshot harness).
+        static func untilLeft(_ list: ContextualList) -> ManualListFlip {
+            ManualListFlip(list: list, expiresAt: .distantFuture)
+        }
+
+        func isActive(at now: Date) -> Bool {
+            now < expiresAt
+        }
+
+        /// The same flip, ending no later than `boundary` (today's next list boundary as the
+        /// settings now stand), so moving the evening earlier also ends the flip earlier. A flip
+        /// that never expires on its own is left alone.
+        func capped(at boundary: Date) -> ManualListFlip {
+            guard expiresAt != .distantFuture, boundary < expiresAt else { return self }
+            return ManualListFlip(list: list, expiresAt: boundary)
+        }
+    }
+
+    /// The list on screen: a manual flip while it lasts, otherwise the automatic choice. Read on
+    /// every refresh (foreground, timer, edits), so a flip can't outlive its boundary even when
+    /// the app was in the background as the boundary passed.
+    static func shownList(automatic: ContextualList, flip: ManualListFlip?, now: Date) -> ContextualList {
+        guard let flip, flip.isActive(at: now) else { return automatic }
+        return flip.list
     }
 }

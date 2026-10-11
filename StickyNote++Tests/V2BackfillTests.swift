@@ -166,7 +166,7 @@ final class V2BackfillTests: XCTestCase {
         try context.save()
         let streak = try ListService.streakState(
             for: .day, through: "2026-10-11",
-            morningMode: .cutoff(time: DateComponents(hour: 9, minute: 0)), context: context, calendar: munich
+            history: DayRulesHistory(), context: context, calendar: munich
         )
         XCTAssertEqual(streak, HomeModel.StreakState(count: 2, isFrozen: false))
     }

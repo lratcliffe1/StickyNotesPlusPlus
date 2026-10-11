@@ -29,9 +29,12 @@ echo "== installing and capturing"
 xcrun simctl install "$UDID" "$APP"
 mkdir -p "$OUT"
 
-# name | scenario | screen | appearance | list (optional: -uiList). The status-bar clock matches
-# each scenario's time. Long-press menus and Menus can't be opened from launch arguments, so
-# 16-add-options shows the add menu's result and 17-add-deadline the sheet its "Deadline…" opens.
+# name | scenario | screen | appearance | list (optional: -uiList) | settings (optional: extra
+# launch arguments, e.g. -uiMorningEnds doneOrSkipped -uiEvening off). The status-bar clock matches
+# each scenario's time where simctl accepts it. Long-press menus and Menus can't be opened from
+# launch arguments, so 16-add-options shows the add menu's result and 17-add-deadline the sheet its
+# "Deadline…" opens. 05-settings is "At a set time" (the default) with the evening on. The app
+# also forces the appearance (-uiAppearance), since simctl's switch can land after launch.
 SHOTS=(
   "01-home-morning|morning|home|light|"
   "02-home-daily|daily|home|light|"
@@ -50,16 +53,29 @@ SHOTS=(
   "15-bump-sheet-retype|daily|bump|light|"
   "16-add-options|daily|addOptions|light|"
   "17-add-deadline|daily|deadline|light|"
+  "18-settings-set-time-dark|daily|settings|dark|"
+  "19-settings-done-or-skipped-evening-off|daily|settings|light||-uiMorningEnds doneOrSkipped -uiEvening off"
+  "20-home-evening-2130|evening|home|light|"
+  "21-home-1030-done-or-skipped|lateMorning|home|light||-uiMorningEnds doneOrSkipped"
+  "22-home-1230-done-or-skipped-still-morning|noon|home|light||-uiMorningEnds doneOrSkipped"
+  "23-settings-applies-from-tomorrow|daily|settings|light||-uiMorningEnds doneOrSkipped -uiTodayKeeps 09:00"
 )
 
 for shot in "${SHOTS[@]}"; do
-  IFS='|' read -r name scenario screen appearance list <<<"$shot"
+  IFS='|' read -r name scenario screen appearance list settings <<<"$shot"
   list_args=()
   if [[ -n "$list" ]]; then list_args=(-uiList "$list"); fi
+  settings_args=()
+  if [[ -n "$settings" ]]; then read -r -a settings_args <<<"$settings"; fi
   # simctl refuses to replace an active override (it misreports this as "non-ISO date/time"),
   # so clear it first. A clock that still won't set only costs the status bar: warn and go on.
   clock="2:00"  # simctl only accepts 12-hour times here; "14:00" is rejected
-  case "$scenario" in morning|missedYesterday) clock="08:15" ;; esac
+  case "$scenario" in
+    morning|missedYesterday) clock="08:15" ;;
+    lateMorning) clock="10:30" ;;
+    noon) clock="12:30" ;;
+    evening) clock="9:30" ;;
+  esac
   xcrun simctl status_bar "$UDID" clear || true
   if ! xcrun simctl status_bar "$UDID" override --time "$clock" \
       --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3; then
@@ -67,7 +83,8 @@ for shot in "${SHOTS[@]}"; do
   fi
   xcrun simctl ui "$UDID" appearance "$appearance"
   xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
-  xcrun simctl launch "$UDID" "$BUNDLE_ID" -uiScenario "$scenario" -uiScreen "$screen" ${list_args[@]+"${list_args[@]}"} >/dev/null
+  xcrun simctl launch "$UDID" "$BUNDLE_ID" -uiScenario "$scenario" -uiScreen "$screen" -uiAppearance "$appearance" \
+    ${list_args[@]+"${list_args[@]}"} ${settings_args[@]+"${settings_args[@]}"} >/dev/null
   sleep "$SETTLE_SECONDS"
   xcrun simctl io "$UDID" screenshot "$OUT/$name.png" >/dev/null
   "$GREYSCALE" "$OUT/$name.png" "$OUT/$name-grey.png"

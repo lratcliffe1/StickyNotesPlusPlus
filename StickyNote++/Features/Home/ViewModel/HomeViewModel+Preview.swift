@@ -71,13 +71,14 @@ extension HomeViewModel {
             vm.morningEntries = routine(titles, doneAt: [(7, 4), nil, nil])
         }
 
-        let contextualList: HomeModel.ContextualList = HomeModel.shouldShowMorningList(
+        let contextualList = HomeModel.automaticList(
             for: today,
-            morningCompletion: ListRules.completion(vm.morningEntries),
-            mode: vm.morningMode,
             now: scenarioNow,
+            rules: .legacy,
+            morning: ListRules.completion(vm.morningEntries),
+            eveningIsEmpty: true,
             calendar: calendar
-        ) ? .morning : .daily
+        )
 
         let streakState: (morningCount: Int, dailyCount: Int, morningFrozen: Bool, dailyFrozen: Bool)
         switch scenario {

@@ -2,6 +2,24 @@
 
 **What this is for:** product rules Liam has decided, dated, newest first. Code and tests follow these. When a rule changes, add a new entry that names the one it replaces; never edit an old entry. **What must NOT go in here:** plans and status (→ `ROADMAP.md`).
 
+## 2026-10-11 (overnight, step 3): flip times and settings, provisional calls
+
+Taken while building step 3 with Liam asleep (see the working rules in the evening entry below). Each is *provisional: Liam to confirm*.
+
+**From the plan**
+- **On upgrade, the morning ends "At a set time", 09:00**, today's behaviour, so nothing changes until Liam picks. The evening starts at 21:00. *Provisional: Liam to confirm.*
+- **A morning with no set time stays the shown list until it's done or all skipped,** even after 12:00, as Liam decided ("the list itself flips only when you're done"); its streak still counts only until 12:00. Only the evening's start takes over from an unfinished morning. *(Replaces tonight's earlier provisional call that it flipped to the day list at 12:00.)*
+- **A settings change never redecides today's morning.** The morning part of today's stored rules changes only while `now` is before both the old and the new deadline and the morning isn't complete; otherwise the change applies from tomorrow, and Settings says so ("Today keeps 9:00; this applies from tomorrow."). The evening start never decides a streak (the evening counts until midnight), so it changes today. Past days never change. *(Replaces tonight's earlier provisional call that a change applied to today as well.) Provisional: Liam to confirm.*
+- **Each day's rules live in the App Group settings, not the store** (no schema change): stored the first time the app or widget reads the day, first read wins. Days before this build use the old 09:00 cutoff; a day nobody opened uses the nearest earlier stored day's rules. A saved wake-up window (never reachable in the UI) becomes "At a set time" at wake-up + duration. *Provisional: Liam to confirm.*
+
+**Made while building**
+- **An empty evening list doesn't take over:** from the evening's start, Home and the widget show the evening list only if it has something on it (done, skipped or open); with nothing on it the day list stays. *Provisional: Liam to confirm.*
+- **A manual flip lasts until the next moment the list would change on its own** (a set time, the evening's start, or midnight; with no set time, 12:00 isn't one), then the automatic choice takes over again, so flipping to the day list at 08:00 doesn't hide the evening at 21:00. The flip carries its expiry time, so this holds even when the app was in the background as the boundary passed. A flip on a day other than today lasts until Home leaves that day. *Provisional: Liam to confirm.*
+- **Finishing the morning moves to whichever list the time picks** (the day list, or the evening once it has started), not always the day list. *Provisional: Liam to confirm.*
+- **Settings keeps "Add a Task on Another Day"** as a second row under Lists (it was its own "Daily" section in 2b), so nothing is lost; the plan's sections are otherwise as listed. The morning's two choices are inline rows with a checkmark ("Ends at a Set Time", "Ends When Everything's Done or Skipped"), so the long label never truncates and the choice reads in greyscale. *Provisional: Liam to confirm.*
+- **The evening's Off is a toggle, "Switch to Evening List"**; off, Home never flips to the evening on its own, and the evening streak still counts until midnight. Its start time can be set from 12:00 to 23:45 (a start at 00:00 would make the whole day evening). *Provisional: Liam to confirm.*
+- **The header shows the evening streak** (a moon and the count, under the sun and flame) once the evening list is in use, i.e. has any item or task. *Provisional: Liam to confirm.*
+
 ## 2026-10-11 (overnight, step 2b): controls, provisional calls
 
 Taken while building step 2b with Liam asleep (see the working rules in the evening entry below). Each is *provisional: Liam to confirm*.

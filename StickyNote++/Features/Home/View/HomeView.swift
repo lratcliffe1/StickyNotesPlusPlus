@@ -126,7 +126,8 @@ struct HomeView: View {
             ) { _ in
                 vm.handleClockChange(context: modelContext)
             }
-            // Wait for the next cutoff or midnight, then refresh, so the list flips on time.
+            // Wait for the next boundary (the morning's end, the evening's start or midnight), then
+            // refresh, so the list flips on time.
             // Checks the wall clock at least once a minute, so it survives the phone sleeping
             // (uptime-based sleeps pause while locked) and wakes that come a little early.
             .task(id: vm.nextClockBoundary) {
@@ -145,10 +146,18 @@ struct HomeView: View {
                 calendarDestination
             }
             .navigationDestination(isPresented: $isShowingSettings) {
-                SettingsView(defaults: vm.defaults, now: { vm.now }) {
-                    // Re-read straight away: Edit Lists may have deleted rows Home still holds.
-                    vm.refresh(context: modelContext)
-                }
+                SettingsView(
+                    defaults: vm.defaults,
+                    now: { vm.now },
+                    onListsChanged: {
+                        // Re-read straight away: Edit Lists may have deleted rows Home still holds.
+                        vm.refresh(context: modelContext)
+                    },
+                    onRulesChanged: {
+                        // Home re-reads on return; the widget picks its list again now.
+                        vm.reloadWidget()
+                    }
+                )
             }
 #if DEBUG
             .navigationDestination(isPresented: $isShowingEditLists) {
@@ -245,6 +254,9 @@ struct HomeView: View {
                 dailyTaskStreakCount: vm.dailyTaskStreakCount,
                 isMorningStreakFrozen: vm.isMorningStreakFrozen,
                 isDailyTaskStreakFrozen: vm.isDailyTaskStreakFrozen,
+                eveningStreakCount: vm.eveningStreakCount,
+                isEveningStreakFrozen: vm.isEveningStreakFrozen,
+                showsEveningStreak: vm.isEveningInUse,
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
                 bumpsInSevenDays: vm.bumpsInSevenDays,
@@ -258,6 +270,9 @@ struct HomeView: View {
                 dailyTaskStreakCount: vm.dailyTaskStreakCount,
                 isMorningStreakFrozen: vm.isMorningStreakFrozen,
                 isDailyTaskStreakFrozen: vm.isDailyTaskStreakFrozen,
+                eveningStreakCount: vm.eveningStreakCount,
+                isEveningStreakFrozen: vm.isEveningStreakFrozen,
+                showsEveningStreak: vm.isEveningInUse,
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
                 bumpsInSevenDays: vm.bumpsInSevenDays,
@@ -283,7 +298,8 @@ struct HomeView: View {
             onSelectDay: { day in
                 setSelectedDay(day, preferredList: .daily)
                 isShowingCalendar = false
-            }
+            },
+            defaults: vm.defaults
         )
     }
 

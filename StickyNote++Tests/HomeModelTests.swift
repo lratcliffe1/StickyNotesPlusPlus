@@ -45,13 +45,14 @@ final class HomeModelTests: XCTestCase {
         let selectedDay = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10)) ?? Date()
         let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10, hour: 8, minute: 30)) ?? Date()
 
-        let shouldShow = HomeModel.shouldShowMorningList(
+        let shouldShow = HomeModel.automaticList(
             for: selectedDay,
-            morningCompletion: ListRules.completion([FactRow(dayKey: "2026-03-10", state: .open)]),
-            mode: .cutoff(time: DateComponents(hour: 9, minute: 0)),
             now: now,
+            rules: .legacy,
+            morning: ListRules.completion([FactRow(dayKey: "2026-03-10", state: .open)]),
+            eveningIsEmpty: true,
             calendar: calendar
-        )
+        ) == .morning
 
         XCTAssertTrue(shouldShow)
     }
@@ -61,13 +62,14 @@ final class HomeModelTests: XCTestCase {
         let selectedDay = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10)) ?? Date()
         let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10, hour: 9, minute: 1)) ?? Date()
 
-        let shouldShow = HomeModel.shouldShowMorningList(
+        let shouldShow = HomeModel.automaticList(
             for: selectedDay,
-            morningCompletion: ListRules.completion([FactRow(dayKey: "2026-03-10", state: .open)]),
-            mode: .cutoff(time: DateComponents(hour: 9, minute: 0)),
             now: now,
+            rules: .legacy,
+            morning: ListRules.completion([FactRow(dayKey: "2026-03-10", state: .open)]),
+            eveningIsEmpty: true,
             calendar: calendar
-        )
+        ) == .morning
 
         XCTAssertFalse(shouldShow)
     }
@@ -79,14 +81,16 @@ final class HomeModelTests: XCTestCase {
         let now = calendar.date(from: DateComponents(year: 2026, month: 3, day: 10, hour: 8, minute: 30)) ?? Date()
 
         for rows in [[], [FactRow(dayKey: "2026-03-10", state: .skipped)]] {
-            XCTAssertFalse(
-                HomeModel.shouldShowMorningList(
+            XCTAssertEqual(
+                HomeModel.automaticList(
                     for: selectedDay,
-                    morningCompletion: ListRules.completion(rows),
-                    mode: .cutoff(time: DateComponents(hour: 9, minute: 0)),
                     now: now,
+                    rules: .legacy,
+                    morning: ListRules.completion(rows),
+                    eveningIsEmpty: true,
                     calendar: calendar
-                )
+                ),
+                .daily
             )
         }
     }
