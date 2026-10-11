@@ -2,16 +2,44 @@ name: Screenshots
 
 # Opens each UITestHarness state in the simulator and uploads colour + greyscale PNGs,
 # so a change can be checked by eye (the owner's phone runs in greyscale).
+# Runs on every push (a PR's commits are pushes too, so no pull_request trigger to double-run).
 on:
-  pull_request:
+  push:
   workflow_dispatch:
+
+# A newer push to the same branch cancels the run it supersedes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Shared with ios-quality.yml, so both workflows restore the same module cache.
+  DERIVED_DATA: build/DerivedData
 
 jobs:
   screenshots:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Show Xcode version
+        id: xcode
+        run: |
+          xcodebuild -version
+          echo "version=$(xcodebuild -version | awk 'NR==1 {v=$2} NR==2 {b=$3} END {print v "-" b}')" >> "$GITHUB_OUTPUT"
+
+      # Same cache as iOS Quality (see the note there): module cache only, never build products.
+      - name: Restore module cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.DERIVED_DATA }}/ModuleCache.noindex
+            ${{ env.DERIVED_DATA }}/SDKStatCaches.noindex
+          key: xcode-modules-${{ runner.os }}-${{ steps.xcode.outputs.version }}-${{ hashFiles('StickyNote++.xcodeproj/project.pbxproj', '**/*.swift') }}
+          restore-keys: |
+            xcode-modules-${{ runner.os }}-${{ steps.xcode.outputs.version }}-
 
       - name: Capture screenshots
         run: ./scripts/screenshots.sh
