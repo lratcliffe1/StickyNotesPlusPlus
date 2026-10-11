@@ -35,18 +35,23 @@ struct VaultManifest: Codable, Equatable {
         /// The day of the task's latest done, skipped or bumped row, or of a row deleted in the
         /// app: the task is settled from then on, unless the file schedules it again (below).
         var settledOn: String?
-        /// The latest explicit scheduling: a future day the file gave it, or the day it came back
-        /// to the file after being gone. A settling on or after it wins; one before it doesn't.
+        /// The latest settling among rows trimmed from `rows` (older than 62 days), so trimming
+        /// never unsettles a task that is still listed.
+        var settledOnTrimmed: String?
+        /// The latest explicit scheduling: the future day the file gives it (moving it earlier moves
+        /// this too), or the day it came back to the file after being gone. A settling on or after
+        /// it wins; one before it doesn't.
         var scheduledFor: String?
         /// The first day the task was seen missing from the file (nil while it is listed). An entry
         /// is forgotten 62 days after that, never while the task is listed.
         var absentSince: String?
 
         init(rows: [String: UUID] = [:], fingerprint: String? = nil, settledOn: String? = nil,
-             scheduledFor: String? = nil, absentSince: String? = nil) {
+             settledOnTrimmed: String? = nil, scheduledFor: String? = nil, absentSince: String? = nil) {
             self.rows = rows
             self.fingerprint = fingerprint
             self.settledOn = settledOn
+            self.settledOnTrimmed = settledOnTrimmed
             self.scheduledFor = scheduledFor
             self.absentSince = absentSince
         }

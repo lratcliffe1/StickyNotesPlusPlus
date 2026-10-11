@@ -232,7 +232,7 @@ struct VaultLinkView: View {
         case .badFile:
             return "Nothing was changed. The next routine run should fix the file."
         case .manifestRebuilt:
-            return "The app’s record of imported tasks couldn’t be read, so it was rebuilt from your lists. Ticks and bumps are kept; a task you deleted here may come back once."
+            return "The app’s record of imported tasks couldn’t be read, so it was rebuilt from your lists. Recent ticks and bumps are kept; a task you ticked long ago or deleted here may come back once."
         case .lockFailed:
             return "The app couldn’t take its import lock, so nothing was imported this time. It tries again when you next open it."
         default:

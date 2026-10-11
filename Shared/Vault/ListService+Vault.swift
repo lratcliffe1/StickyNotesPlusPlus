@@ -37,7 +37,8 @@ extension ListService {
     ///   latest done, skipped or bumped row, or of a row deleted in the app (`settledOn`). The
     ///   routines carry a still-listed action forward to today, so a settled task stays settled
     ///   until the file schedules it again: an explicit future day, or coming back after being
-    ///   gone from the file (`scheduledFor`). A bumped chain owns its own future. An OPEN row left
+    ///   gone from the file (`scheduledFor`, set to that day, earlier or later). A bumped chain owns
+    ///   its own future. An OPEN row left
     ///   on a past day doesn't settle the task: it stays as that day's miss, and today gets a row.
     /// - When T has a row, any other open, never-bumped row of the task on today or later is removed
     ///   (the task moved).
@@ -70,17 +71,28 @@ extension ListService {
         }
 
         let wanted = Set(tasks.map(\.id))
+        let forgetBefore = DayMath(calendar: calendar).adding(days: -62, to: todayKey)
         for task in tasks {
             var entry = manifest.entries[task.id] ?? VaultManifest.Entry()
             let target = max(task.dayKey, todayKey)
             if entry.absentSince != nil {
-                // Back in the file after being gone: a new scheduling.
+                // Back in the file after being gone: a new scheduling, from its day.
                 entry.absentSince = nil
-                entry.scheduledFor = max(entry.scheduledFor ?? "", target)
+                entry.scheduledFor = target
             }
             if task.dayKey > todayKey {
-                // An explicit future day: a new scheduling (a later tick settles it again).
-                entry.scheduledFor = max(entry.scheduledFor ?? "", task.dayKey)
+                // An explicit future day: the scheduling is that day, earlier or later than before
+                // (a tick on or after it settles the task again).
+                entry.scheduledFor = task.dayKey
+            }
+            // Rows older than 62 days leave the manifest (they stay in the store); a settling among
+            // them is kept in `settledOnTrimmed`.
+            for (day, id) in entry.rows where day < forgetBefore {
+                let row = try occurrence(id: id, context: context)
+                if row.map({ !isOpenAndNeverBumped($0) }) ?? true {
+                    entry.settledOnTrimmed = max(entry.settledOnTrimmed ?? "", day)
+                }
+                entry.rows[day] = nil
             }
             let targetID = VaultTaskID.occurrenceID(for: task.id, dayKey: target)
             let fileChanged = entry.fingerprint != task.fingerprint
@@ -92,9 +104,9 @@ extension ListService {
                     known.append((day, try occurrence(id: id, context: context)))
                 }
             }
-            entry.settledOn = known
+            entry.settledOn = (known
                 .filter { $0.row.map { !isOpenAndNeverBumped($0) } ?? true }
-                .map(\.day)
+                .map(\.day) + [entry.settledOnTrimmed].compactMap { $0 })
                 .max()
             let settled = entry.settledOn.map { $0 >= (entry.scheduledFor ?? "") } ?? false
 
@@ -139,7 +151,6 @@ extension ListService {
             manifest.entries[task.id] = entry
         }
 
-        let forgetBefore = DayMath(calendar: calendar).adding(days: -62, to: todayKey)
         for (taskID, original) in manifest.entries where !wanted.contains(taskID) {
             var entry = original
             if entry.absentSince == nil {

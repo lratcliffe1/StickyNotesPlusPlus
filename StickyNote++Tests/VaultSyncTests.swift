@@ -463,7 +463,7 @@ final class VaultSyncTests: XCTestCase {
         let sync = makeSync()
         await sync.refreshTasks(context: context)
         XCTAssertEqual(sync.status.kind, .manifestRebuilt)
-        XCTAssertEqual(sync.status.text(), "Imported tasks: rebuilt; a task deleted in the app may come back once")
+        XCTAssertEqual(sync.status.text(), "Imported tasks: rebuilt; a task done or deleted in the app may come back once")
         XCTAssertTrue(sync.status.isProblem)
         XCTAssertEqual(try rowCount(), 2)
 

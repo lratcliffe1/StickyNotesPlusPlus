@@ -383,7 +383,42 @@ final class VaultReconcileTests: XCTestCase {
         try ListService.complete(try XCTUnwrap(row("a", on: "2026-08-01")), at: TestCalendars.date("2026-08-01", 10), context: context)
         let result = try reconcile([task("a", day: today)])
         XCTAssertTrue(result.added.isEmpty, "still settled 74 days later")
-        XCTAssertNotNil(VaultManifest.load(from: defaults)?.entries["a"]?.rows["2026-08-01"])
+        let entry = try XCTUnwrap(VaultManifest.load(from: defaults)?.entries["a"], "a listed task is never forgotten")
+        XCTAssertNil(entry.rows["2026-08-01"], "rows older than 62 days are trimmed")
+        XCTAssertEqual(entry.settledOnTrimmed, "2026-08-01")
+        XCTAssertEqual(entry.settledOn, "2026-08-01")
+
+        let later = try reconcile([task("a", day: "2026-10-15")], at: TestCalendars.date("2026-10-15", 9))
+        XCTAssertTrue(later.added.isEmpty, "trimming never unsettles it")
+    }
+
+    func testATaskMovedEarlierThenTickedIsNotAddedAgain() throws {
+        try reconcile([task("a", day: "2026-10-18")])
+        let moved = try reconcile([task("a", day: "2026-10-16")])
+        XCTAssertEqual(moved.added, ["a"])
+        XCTAssertNil(try row("a", on: "2026-10-18"))
+        XCTAssertEqual(VaultManifest.load(from: defaults)?.entries["a"]?.scheduledFor, "2026-10-16", "moved earlier, not kept at the 18th")
+
+        try reconcile([task("a", day: "2026-10-16")], at: TestCalendars.date("2026-10-16", 8))
+        try ListService.complete(try XCTUnwrap(row("a", on: "2026-10-16")), at: TestCalendars.date("2026-10-16", 10), context: context)
+        for day in ["2026-10-17", "2026-10-18"] {
+            let carried = try reconcile([task("a", day: day)], at: TestCalendars.date(day, 9))
+            XCTAssertTrue(carried.added.isEmpty, "carried to \(day): settled")
+        }
+        XCTAssertEqual(try allRows().count, 1)
+    }
+
+    func testATaskGoneAndBackWithAnEarlierDayIsSettledByItsTick() throws {
+        try reconcile([task("a", day: "2026-10-20")])
+        try reconcile([], at: TestCalendars.date("2026-10-15", 9))
+        let back = try reconcile([task("a", day: "2026-10-16")], at: TestCalendars.date("2026-10-16", 9))
+        XCTAssertEqual(back.added, ["a"])
+        XCTAssertEqual(VaultManifest.load(from: defaults)?.entries["a"]?.scheduledFor, "2026-10-16")
+        try ListService.complete(try XCTUnwrap(row("a", on: "2026-10-16")), at: TestCalendars.date("2026-10-16", 10), context: context)
+
+        let carried = try reconcile([task("a", day: "2026-10-17")], at: TestCalendars.date("2026-10-17", 9))
+        XCTAssertTrue(carried.added.isEmpty)
+        XCTAssertNil(try row("a", on: "2026-10-17"))
     }
 
     // MARK: - An unreadable manifest

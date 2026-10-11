@@ -93,7 +93,7 @@ struct VaultStatus: Codable, Equatable {
         case .offline: return "Offline"
         case .newerVersion: return "tasks.json is newer than this app"
         case .badFile: return "tasks.json couldn’t be read"
-        case .manifestRebuilt: return "Imported tasks: rebuilt; a task deleted in the app may come back once"
+        case .manifestRebuilt: return "Imported tasks: rebuilt; a task done or deleted in the app may come back once"
         case .lockFailed: return "Imported tasks: couldn’t lock"
         case .problem:
             if let code { return "GitHub didn’t answer (\(code))" }
