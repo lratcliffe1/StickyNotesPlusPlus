@@ -2,6 +2,24 @@
 
 **What this is for:** product rules Liam has decided, dated, newest first. Code and tests follow these. When a rule changes, add a new entry that names the one it replaces; never edit an old entry. **What must NOT go in here:** plans and status (→ `ROADMAP.md`).
 
+## 2026-10-11 (overnight, step 4): calendar, provisional calls
+
+Taken while building step 4 with Liam asleep (see the working rules in the evening entry below). Each is *provisional: Liam to confirm*.
+
+**From the plan**
+- **A day's circle is one ring split into equal arcs** (2 or 3), clockwise from 12 o'clock in Morning → Day → Evening order; a single list in use is a full ring. Each arc fills along its length as far as that list is done, so progress reads as length as well as colour. The 7-day ring uses the same component, evening included. *Provisional: Liam to confirm.*
+- **The future-day dot also shows for recurring items**, so with daily items most future days have a dot. If that's noise, a later change can limit it to one-offs. *Provisional: Liam to confirm.*
+- **Home on a future day** shows that day's one-offs and, under "Repeats · can be done on the day", the recurring items due then, read-only until the day: completing is disabled; adding, editing and deleting one-offs are allowed. Recurring items get rows only on the day itself, as before. *Provisional: Liam to confirm.*
+
+**Made while building**
+- **"Lists in use" is per day:** a list's segment appears from the first day it had an item or an occurrence. Days before Liam set up the evening list keep two segments rather than growing an empty third; a day before any list was in use is a plain date. *Provisional: Liam to confirm.*
+- **"Through the next 12 months"** means through the current month plus 12 (October 2026 → October 2027). A one-off added beyond that isn't shown until its month comes into range. *Provisional: Liam to confirm.*
+- **Nothing counted for a list that day** is a dashed outline arc; missed with nothing done is an empty outlined arc; the 7-day ring puts a ✓ in a day where every list in use is complete (the streak's verdict, so a late morning gets none). Step 5 replaces this with the full shape vocabulary. *Provisional: Liam to confirm.*
+- **Today** is the date on a filled disc in the calendar (an underlined, bold weekday letter in the ring); the day open on Home is tinted. Future days in the 7-day ring (when Home is on a future day) are drawn like the calendar's: no circle, a dot if something is planned. *Provisional: Liam to confirm.*
+- **The calendar has a standard navigation bar** ("Calendar", back, and a "Today" button that scrolls to the current month), replacing the floating Today capsule. *Provisional: Liam to confirm.*
+- **Fetching:** each month is fetched once, when it first scrolls into view, from its first day minus the longest repeat period among the items (0 days with only daily items, a week for weekly, a month for monthly, a year for yearly), so a miss from an occurrence before the month that lands on a period end inside it still shows. The 7-day ring reads the same way for its seven days. Streaks still read each list's whole history. *Provisional: Liam to confirm.*
+- **"N bumps in 7 days"** counts the ring's days up to today only, matching the ↻ marks (later days show none). *Provisional: Liam to confirm.*
+
 ## 2026-10-11 (overnight, step 3): flip times and settings, provisional calls
 
 Taken while building step 3 with Liam asleep (see the working rules in the evening entry below). Each is *provisional: Liam to confirm*.
