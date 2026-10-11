@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import SwiftData
+import os
 
 /// Test-only launch mode used by the screenshot workflow (`scripts/screenshots.sh`).
 ///
