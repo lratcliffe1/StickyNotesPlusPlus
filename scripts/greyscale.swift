@@ -1,5 +1,6 @@
 // Usage: swift scripts/greyscale.swift <in.png> <out.png>
 // Writes a greyscale copy (luminance only), approximating iOS's Greyscale colour filter.
+// scripts/screenshots.sh compiles it once with swiftc and runs the binary for each shot.
 import CoreImage
 import Foundation
 
