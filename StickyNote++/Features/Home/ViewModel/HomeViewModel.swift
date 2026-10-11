@@ -235,12 +235,13 @@ final class HomeViewModel: ObservableObject {
     }
 
     var activeListProgress: Double {
-        ListRules.completion(activeEntries).value
+        activeListProgressIsNeutral ? 0 : ListRules.completion(activeEntries).value
     }
 
-    /// Nothing counted on the list (empty, or all skipped): no fill and "—", never 100%.
+    /// Nothing counted on the list (empty, or all skipped): no fill and "—", never 100%. A future
+    /// day is neutral too: nothing can be done on it yet, so it shows "—", not "0%" (step 5).
     var activeListProgressIsNeutral: Bool {
-        ListRules.completion(activeEntries).isNeutral
+        isFutureDay || ListRules.completion(activeEntries).isNeutral
     }
 
     /// "40%", or "—" when there's nothing to count.
