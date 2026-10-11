@@ -45,11 +45,12 @@ struct RepeatPickerView: View {
                             if currentPreset == preset {
                                 Image(systemName: "checkmark")
                                     .fontWeight(.semibold)
-                                    .foregroundStyle(.tint)
+                                    .foregroundStyle(Color.accentColor)
                             }
                         }
                         .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                     .accessibilityAddTraits(currentPreset == preset ? .isSelected : [])
                 }
             } footer: {
@@ -84,11 +85,12 @@ struct RepeatPickerView: View {
                                 if chosenWeekdays.contains(weekday) {
                                     Image(systemName: "checkmark")
                                         .fontWeight(.semibold)
-                                        .foregroundStyle(.tint)
+                                        .foregroundStyle(Color.accentColor)
                                 }
                             }
                             .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                         .accessibilityAddTraits(chosenWeekdays.contains(weekday) ? .isSelected : [])
                     }
                 }
