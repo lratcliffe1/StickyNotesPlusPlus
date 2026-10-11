@@ -45,7 +45,7 @@ struct SegmentedDayRing: View {
     /// Red through to green as the list gets done; darker than a plain hue so it keeps its
     /// contrast against the track in greyscale.
     static func fillColor(_ value: Double) -> Color {
-        Color(hue: 0.02 + 0.30 * value, saturation: 0.85, brightness: 0.80)
+        Color(hue: 0.02 + 0.30 * value, saturation: 0.85, brightness: 0.70)
     }
 
     /// Degrees, 0 at 3 o'clock, increasing clockwise on screen. Segment `index` of `count`, starting
@@ -79,6 +79,12 @@ struct RingArc: Shape {
         path.move(to: point(outer, 0))
         for step in 1...steps {
             path.addLine(to: point(outer, step))
+        }
+        if abs(end - start) >= 359.9 {
+            // A whole ring: two closed circles, the inner one the other way round (a hole under
+            // the non-zero rule), so no seam is drawn at 12 o'clock.
+            path.closeSubpath()
+            path.move(to: point(inner, steps))
         }
         for step in stride(from: steps, through: 0, by: -1) {
             path.addLine(to: point(inner, step))
