@@ -7,10 +7,10 @@
 Taken while building step 2b with Liam asleep (see the working rules in the evening entry below). Each is *provisional: Liam to confirm*.
 
 **From the plan**
-- **Editing an item's repeat applies from today.** The old item ends and a new one starts today, or tomorrow if today's occurrence is already done, skipped or bumped, so past days are never recounted. A copy already bumped onto a later day stays with the old item and finishes its period. A bump-limit edit changes the item and today's open occurrence only. A title-only edit is a rename from today, as before. *Provisional: Liam to confirm.*
+- **Editing an item's repeat applies from today.** The old item ends and a new one starts today, or tomorrow if today's occurrence is already done, skipped or bumped, so past days are never recounted. A copy already bumped onto a later day stays with the old item and finishes its period. A bump-limit edit changes the item and today's open occurrence only. A title-only edit is a rename from today, as before, and a new title applies from today even when the repeat part starts tomorrow (today's done row takes it). An item that has already ended can't be edited or deleted again. *Provisional: Liam to confirm.*
 - **Delete on a recurring row** deletes the item from today on (as in Edit lists), after a confirmation. *Provisional: Liam to confirm.*
 - **Edit… on a one-off** edits its title, deadline and bump limit for that row only (not the rows earlier in its bump chain). On a recurring row it opens the item editor. *Provisional: Liam to confirm.*
-- **"N bumps this week"** counts bump actions on days in the current locale week up to today, across all three lists, whichever day Home is showing. *Provisional: Liam to confirm.*
+- **"N bumps in 7 days"** (Liam said "N bumps this week") counts bump actions on the seven days the ring shows, across all three lists, so the number always matches the ↻ marks on screen. Hidden at 0. *Provisional: Liam to confirm.*
 
 **Made while building**
 - **Bumping is only in the long-press menu.** The one-tap bump button on day-list rows is gone, since bumping should never be a single tap. *Provisional: Liam to confirm.*
@@ -20,7 +20,9 @@ Taken while building step 2b with Liam asleep (see the working rules in the even
 - **A skipped row** shows its title greyed, "Skipped today" under it and a skip icon. Tapping it still completes it. Past days have no long-press menu. *Provisional: Liam to confirm.*
 - **Deleting a one-off is confirmed too**, and the sticky note's title carries an icon per list (sun, checklist, moon), so the list reads in greyscale. *Provisional: Liam to confirm.*
 - **The ↻ marks and the weekly count include the evening list**, though the ring and calendar circles still show only morning and day (three segments are step 4). *Provisional: Liam to confirm.*
-- **The widget's bump doesn't ask you to retype** (a widget can't take text), as in 2a. *Provisional: Liam to confirm.*
+- **The widget follows Retype to bump.** With it on, the widget's bump button opens the app on that task's bump sheet (if it can still be bumped) instead of bumping in one tap. With it off, the widget bumps in one tap, within the task's limits. *Provisional: Liam to confirm.*
+- **A row whose item has ended** (deleted today, or replaced by a repeat change while today's row was already done, skipped or bumped) has no Edit… or Delete in its menu: without a link from the old item to its replacement, the app can't tell which item to edit. Skip and bump still work on the row. *Provisional: Liam to confirm.*
+- **Sheets and menus act only on today or later.** A bump, skip, undo skip, one-off edit or delete left open past midnight does nothing to yesterday's row. *Provisional: Liam to confirm.*
 - **Settings → Edit Lists replaces Edit Morning Routine.** Settings is now Lists (Edit Lists) · Daily (Add Daily Tasks) · Bumping (Retype to bump) until step 3 rebuilds it. *Provisional: Liam to confirm.*
 
 ## 2026-10-11 (evening): controls, flip times, calendar, greyscale, vault link (grilling for steps 2b–6)
