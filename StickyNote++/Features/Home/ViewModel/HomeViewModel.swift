@@ -102,9 +102,10 @@ final class HomeViewModel: ObservableObject {
     /// clock change, or the scheduled cutoff. Follows today if the user was on today, and drops
     /// yesterday's manual list flip.
     func handleClockChange(context: ModelContext) {
-        let target = HomeModel.dayToShow(selectedDay: selectedDay, followingToday: isFollowingToday, now: now)
-        if target != HomeModel.normalizedDay(selectedDay) {
-            selectedDay = target
+        let follow = HomeModel.followClock(selectedDay: selectedDay, followingToday: isFollowingToday, now: now)
+        selectedDay = follow.day
+        isFollowingToday = follow.followingToday
+        if follow.clearsManualList {
             manualContextualListOverride = nil
         }
         refresh(context: context)

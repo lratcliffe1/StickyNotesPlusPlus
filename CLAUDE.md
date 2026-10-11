@@ -40,7 +40,7 @@ The Xcode project uses **folder-synchronised groups**: a new `.swift` file dropp
 
 ## The screenshot harness
 
-In Debug builds only, launching with `-uiScenario <morning|daily|empty>` (and optionally `-uiScreen <home|calendar|settings>`) runs the app on an in-memory store with fixed sample data at a fixed time of day: `morning` is 08:15, with 2 of 6 routine items done; `daily` and `empty` are 14:00. In this mode the app never opens the shared on-disk store, and settings and migration flags go to their own suite. See `StickyNote++/Core/UITestHarness/UITestHarness.swift`. To add a state: add a scenario or screen there, then add a row to `SHOTS` in `scripts/screenshots.sh`.
+In Debug builds only, launching with `-uiScenario <morning|daily|empty|missedYesterday|missedTwice>` (and optionally `-uiScreen <home|calendar|settings>`) runs the app on an in-memory store with fixed sample data at a fixed time of day: `morning` and `missedYesterday` are 08:15, with 2 of 6 routine items done; `daily`, `empty` and `missedTwice` are 14:00. The two `missed…` scenarios leave yesterday unfinished, to show the never-miss-twice banner. In this mode the app never opens the shared on-disk store, and settings and migration flags go to their own suite. See `StickyNote++/Core/UITestHarness/UITestHarness.swift`. To add a state: add a scenario or screen there, then add a row to `SHOTS` in `scripts/screenshots.sh`.
 
 ## Shipping a build to the phone
 

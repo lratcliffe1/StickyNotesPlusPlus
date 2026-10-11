@@ -56,22 +56,40 @@ final class ClockAndRiskTests: XCTestCase {
 
     // MARK: - Following today
 
-    func testFollowingTodayMovesToNewDayAfterMidnight() {
-        let yesterday = date(2026, 10, 11)
-        let now = date(2026, 10, 12, 7, 5)
-        XCTAssertEqual(
-            HomeModel.dayToShow(selectedDay: yesterday, followingToday: true, now: now, calendar: berlin),
-            date(2026, 10, 12)
+    func testFollowingTodayMovesToNewDayAfterMidnightAndDropsManualFlip() {
+        let follow = HomeModel.followClock(
+            selectedDay: date(2026, 10, 11), followingToday: true, now: date(2026, 10, 12, 7, 5), calendar: berlin
         )
+        XCTAssertEqual(follow, HomeModel.ClockFollow(day: date(2026, 10, 12), followingToday: true, clearsManualList: true))
     }
 
-    func testChosenDayStaysPutAfterMidnight() {
-        let chosen = date(2026, 10, 3)
-        let now = date(2026, 10, 12, 7, 5)
-        XCTAssertEqual(
-            HomeModel.dayToShow(selectedDay: chosen, followingToday: false, now: now, calendar: berlin),
-            chosen
+    func testFollowingTodaySameDayKeepsManualFlip() {
+        let follow = HomeModel.followClock(
+            selectedDay: date(2026, 10, 12), followingToday: true, now: date(2026, 10, 12, 9, 1), calendar: berlin
         )
+        XCTAssertEqual(follow, HomeModel.ClockFollow(day: date(2026, 10, 12), followingToday: true, clearsManualList: false))
+    }
+
+    func testChosenPastDayStaysPutAndKeepsNotFollowing() {
+        let follow = HomeModel.followClock(
+            selectedDay: date(2026, 10, 3), followingToday: false, now: date(2026, 10, 12, 7, 5), calendar: berlin
+        )
+        XCTAssertEqual(follow, HomeModel.ClockFollow(day: date(2026, 10, 3), followingToday: false, clearsManualList: false))
+    }
+
+    /// Monday picked on Sunday evening: at midnight it becomes today, so following resumes,
+    /// and on Tuesday Home moves on instead of sticking on Monday.
+    func testChosenDayThatBecomesTodayResumesFollowing() {
+        let mondayMidnight = HomeModel.followClock(
+            selectedDay: date(2026, 10, 12), followingToday: false, now: date(2026, 10, 12, 0, 0), calendar: berlin
+        )
+        XCTAssertEqual(mondayMidnight, HomeModel.ClockFollow(day: date(2026, 10, 12), followingToday: true, clearsManualList: false))
+
+        let tuesday = HomeModel.followClock(
+            selectedDay: mondayMidnight.day, followingToday: mondayMidnight.followingToday,
+            now: date(2026, 10, 13, 7, 0), calendar: berlin
+        )
+        XCTAssertEqual(tuesday.day, date(2026, 10, 13))
     }
 
     // MARK: - Never-miss-twice risk

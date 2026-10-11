@@ -86,15 +86,18 @@ struct HomeView: View {
             .onReceive(
                 NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
                     .merge(with: NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification))
-                    .receive(on: RunLoop.main)
+                    .receive(on: DispatchQueue.main)
             ) { _ in
                 vm.handleClockChange(context: modelContext)
             }
-            // Sleep until the next cutoff or midnight, then refresh, so the list flips on time.
+            // Wait for the next cutoff or midnight, then refresh, so the list flips on time.
+            // Checks the wall clock at least once a minute, so it survives the phone sleeping
+            // (uptime-based sleeps pause while locked) and wakes that come a little early.
             .task(id: vm.nextClockBoundary) {
-                let delay = vm.nextClockBoundary.timeIntervalSinceNow + 1
-                if delay > 0 {
-                    try? await Task.sleep(nanoseconds: UInt64(min(delay, 86_400 * 2) * 1_000_000_000))
+                let due = vm.nextClockBoundary.addingTimeInterval(1)
+                while Date() < due, !Task.isCancelled {
+                    let remaining = due.timeIntervalSinceNow
+                    try? await Task.sleep(for: .seconds(min(max(remaining, 0.5), 60)), clock: .continuous)
                 }
                 guard !Task.isCancelled else { return }
                 vm.handleClockChange(context: modelContext)

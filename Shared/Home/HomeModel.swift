@@ -107,15 +107,29 @@ enum HomeModel {
         return calendar.date(byAdding: .day, value: 1, to: today) ?? now.addingTimeInterval(3_600)
     }
 
-    /// Which day Home shows once the clock has moved (midnight, foregrounding, a time-zone change):
-    /// the new today if the user was following today, otherwise the day they chose.
-    static func dayToShow(
+    struct ClockFollow: Equatable {
+        /// The day Home should show.
+        let day: Date
+        /// Whether Home keeps moving with the clock from here on.
+        let followingToday: Bool
+        /// Whether yesterday's manual list flip should be dropped (the day changed under the user).
+        let clearsManualList: Bool
+    }
+
+    /// What Home does once the clock has moved (midnight, foregrounding, a time-zone change):
+    /// - following today: move to the new today, dropping yesterday's manual list flip;
+    /// - on a chosen day: stay put, but once that day *is* today (e.g. Monday picked on Sunday
+    ///   evening), start following again, or Home would stick on it the day after.
+    static func followClock(
         selectedDay: Date,
         followingToday: Bool,
         now: Date,
         calendar: Calendar = .current
-    ) -> Date {
-        followingToday ? normalizedDay(now, calendar: calendar) : normalizedDay(selectedDay, calendar: calendar)
+    ) -> ClockFollow {
+        let today = normalizedDay(now, calendar: calendar)
+        let selected = normalizedDay(selectedDay, calendar: calendar)
+        let day = followingToday ? today : selected
+        return ClockFollow(day: day, followingToday: day == today, clearsManualList: day != selected)
     }
 
     enum StreakRisk: Equatable {

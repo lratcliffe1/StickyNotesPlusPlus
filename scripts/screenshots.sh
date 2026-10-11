@@ -51,10 +51,11 @@ SHOTS=(
 
 for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name scenario screen appearance <<<"$shot"
-  clock="14:00"
-  case "$scenario" in morning|missedYesterday) clock="08:15" ;; esac
-  xcrun simctl status_bar "$UDID" override --time "$clock" --batteryState charged --batteryLevel 100 \
-    --cellularBars 4 --wifiBars 3 || true
+  # simctl wants an ISO date-time here ("14:00" is rejected); the simulator shares the host's time zone.
+  clock="14:00:00"
+  case "$scenario" in morning|missedYesterday) clock="08:15:00" ;; esac
+  xcrun simctl status_bar "$UDID" override --time "$(date +%Y-%m-%d)T${clock}$(date +%z | sed -E 's/(..)$/:\1/')" \
+    --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3
   xcrun simctl ui "$UDID" appearance "$appearance"
   xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
   xcrun simctl launch "$UDID" "$BUNDLE_ID" -uiScenario "$scenario" -uiScreen "$screen" >/dev/null

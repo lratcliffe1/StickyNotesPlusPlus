@@ -5,7 +5,8 @@ import os
 
 /// Test-only launch mode used by the screenshot workflow (`scripts/screenshots.sh`).
 ///
-/// Launch with `-uiScenario <morning|daily|empty>` and optionally `-uiScreen <home|calendar|settings>`.
+/// Launch with `-uiScenario <morning|daily|empty|missedYesterday|missedTwice>` and optionally
+/// `-uiScreen <home|calendar|settings>`.
 /// The app then runs on an in-memory store seeded with fixed sample data, at a fixed time of day,
 /// with its own settings suite, and the app skips opening the shared on-disk store entirely,
 /// so real data and settings are never touched. It fixes the time of day only: dates are still
