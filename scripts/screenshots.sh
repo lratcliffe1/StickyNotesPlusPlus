@@ -45,14 +45,21 @@ SHOTS=(
   "04-calendar|daily|calendar|light"
   "05-settings|daily|settings|light"
   "06-home-morning-dark|morning|home|dark"
+  "07-banner-missed-yesterday|missedYesterday|home|light"
+  "08-banner-missed-twice|missedTwice|home|light"
 )
 
 for shot in "${SHOTS[@]}"; do
   IFS='|' read -r name scenario screen appearance <<<"$shot"
-  clock="14:00"
-  [ "$scenario" = "morning" ] && clock="08:15"
-  xcrun simctl status_bar "$UDID" override --time "$clock" --batteryState charged --batteryLevel 100 \
-    --cellularBars 4 --wifiBars 3 || true
+  # simctl refuses to replace an active override (it misreports this as "non-ISO date/time"),
+  # so clear it first. A clock that still won't set only costs the status bar: warn and go on.
+  clock="2:00"  # simctl only accepts 12-hour times here; "14:00" is rejected
+  case "$scenario" in morning|missedYesterday) clock="08:15" ;; esac
+  xcrun simctl status_bar "$UDID" clear || true
+  if ! xcrun simctl status_bar "$UDID" override --time "$clock" \
+      --batteryState charged --batteryLevel 100 --cellularBars 4 --wifiBars 3; then
+    echo "WARNING: status-bar clock not set for $name; its clock is wrong, not the app's time" >&2
+  fi
   xcrun simctl ui "$UDID" appearance "$appearance"
   xcrun simctl terminate "$UDID" "$BUNDLE_ID" 2>/dev/null || true
   xcrun simctl launch "$UDID" "$BUNDLE_ID" -uiScenario "$scenario" -uiScreen "$screen" >/dev/null

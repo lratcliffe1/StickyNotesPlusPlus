@@ -1,3 +1,4 @@
+import Combine
 import SwiftData
 import SwiftUI
 import os
@@ -44,8 +45,9 @@ struct HomeView: View {
 
                     selectedDayControls
 
-                    if let bannerText = vm.neverMissTwiceBannerText {
-                        HomeNeverMissTwiceBanner(text: bannerText)
+                    let bannerLines = vm.neverMissTwiceBannerLines
+                    if !bannerLines.isEmpty {
+                        HomeNeverMissTwiceBanner(lines: bannerLines)
                     }
 
                     HomeStickyNoteCard(
@@ -79,6 +81,26 @@ struct HomeView: View {
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
                 syncFromExternalWrites()
+            }
+            // Midnight, a time-zone change or a clock change while the app is open.
+            .onReceive(
+                NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
+                    .merge(with: NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification))
+                    .receive(on: DispatchQueue.main)
+            ) { _ in
+                vm.handleClockChange(context: modelContext)
+            }
+            // Wait for the next cutoff or midnight, then refresh, so the list flips on time.
+            // Checks the wall clock at least once a minute, so it survives the phone sleeping
+            // (uptime-based sleeps pause while locked) and wakes that come a little early.
+            .task(id: vm.nextClockBoundary) {
+                let due = vm.nextClockBoundary.addingTimeInterval(1)
+                while Date() < due, !Task.isCancelled {
+                    let remaining = due.timeIntervalSinceNow
+                    try? await Task.sleep(for: .seconds(min(max(remaining, 0.5), 60)), clock: .continuous)
+                }
+                guard !Task.isCancelled else { return }
+                vm.handleClockChange(context: modelContext)
             }
             .onOpenURL { url in
                 handleDeepLink(url)
@@ -299,7 +321,7 @@ struct HomeView: View {
             modelContext.rollback()
         }
 
-        vm.refresh(context: modelContext)
+        vm.handleClockChange(context: modelContext)
     }
 
     private func handleDeepLink(_ url: URL) {

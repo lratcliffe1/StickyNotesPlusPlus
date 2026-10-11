@@ -29,6 +29,8 @@ final class HomeViewModel: ObservableObject {
     @Published var sevenDayProgress: [HomeModel.DayProgress] = []
     @Published var isNeverMissTwiceMorningRisk: Bool = false
     @Published var isNeverMissTwiceDailyRisk: Bool = false
+    /// When Home next needs a refresh on its own (cutoff or midnight). HomeView sleeps until it.
+    @Published var nextClockBoundary: Date = .distantFuture
 
     // Defaults from the implementation spec.
     var morningModeSelection: MorningModeSelection = .cutoff
@@ -42,6 +44,8 @@ final class HomeViewModel: ObservableObject {
     let reloadWidget: () -> Void
     let createDailyTask: (Date, String, Bool, ModelContext) throws -> DailyTask
     var manualContextualListOverride: HomeModel.ContextualList?
+    /// True while the user is on "today", so Home moves with the clock; false once they pick another day.
+    var isFollowingToday = true
     let streakLookbackDays = 365
     let progressWindowDays = 7
 
@@ -91,6 +95,20 @@ final class HomeViewModel: ObservableObject {
         upsertDayRecord(for: day, context: context)
 
         recalculateDerivedState(context: context)
+        nextClockBoundary = HomeModel.nextClockBoundary(after: now, mode: morningMode, calendar: calendar)
+    }
+
+    /// Called when time may have moved on: returning to the foreground, midnight, a time-zone or
+    /// clock change, or the scheduled cutoff. Follows today if the user was on today, and drops
+    /// yesterday's manual list flip.
+    func handleClockChange(context: ModelContext) {
+        let follow = HomeModel.followClock(selectedDay: selectedDay, followingToday: isFollowingToday, now: now)
+        selectedDay = follow.day
+        isFollowingToday = follow.followingToday
+        if follow.clearsManualList {
+            manualContextualListOverride = nil
+        }
+        refresh(context: context)
     }
 
     func setSelectedDay(
@@ -99,12 +117,14 @@ final class HomeViewModel: ObservableObject {
         preferredList: HomeModel.ContextualList? = nil
     ) {
         selectedDay = HomeModel.normalizedDay(day)
+        isFollowingToday = HomeModel.isToday(selectedDay, now: now)
         manualContextualListOverride = preferredList
         refresh(context: context)
     }
 
     func goToToday(context: ModelContext) {
         selectedDay = HomeModel.normalizedDay(now)
+        isFollowingToday = true
         manualContextualListOverride = nil
         refresh(context: context)
     }
@@ -187,19 +207,32 @@ final class HomeViewModel: ObservableObject {
         newTaskTitle = value
     }
 
-    var neverMissTwiceBannerText: String? {
-        guard isNeverMissTwiceMorningRisk || isNeverMissTwiceDailyRisk else { return nil }
+    /// One line per list at risk, the list on screen first. Empty when nothing is at risk.
+    var neverMissTwiceBannerLines: [String] {
+        let morningLine = Self.bannerLine(
+            risk: HomeModel.streakRisk(isFrozen: isNeverMissTwiceMorningRisk, deadline: todaysMorningDeadline, now: now),
+            saveable: "Missed yesterday. Don't miss twice: finish your morning routine by \(todaysMorningDeadline.formatted(date: .omitted, time: .shortened)).",
+            lost: "Missed twice: your morning streak resets tomorrow."
+        )
+        let dailyLine = Self.bannerLine(
+            risk: HomeModel.streakRisk(isFrozen: isNeverMissTwiceDailyRisk, deadline: nil, now: now),
+            saveable: "Missed yesterday. Don't miss twice: finish today's tasks.",
+            lost: "Missed twice: your daily-task streak resets tomorrow."
+        )
+        let ordered = isMorningMode ? [morningLine, dailyLine] : [dailyLine, morningLine]
+        return ordered.compactMap { $0 }
+    }
 
-        if isMorningMode, isNeverMissTwiceMorningRisk {
-            return "NEVER MISS TWICE! Finish your morning todos."
+    private var todaysMorningDeadline: Date {
+        HomeModel.morningDeadline(for: HomeModel.normalizedDay(now), mode: morningMode)
+    }
+
+    private static func bannerLine(risk: HomeModel.StreakRisk, saveable: String, lost: String) -> String? {
+        switch risk {
+        case .none: return nil
+        case .saveable: return saveable
+        case .lost: return lost
         }
-        if !isMorningMode, isNeverMissTwiceDailyRisk {
-            return "NEVER MISS TWICE! Finish your daily todos."
-        }
-        if isNeverMissTwiceMorningRisk {
-            return "You missed your morning todos twice, resetting tomorrow..."
-        }
-        return "You missed your daily todos twice, resetting tomorrow..."
     }
 
     func dayFromStored(
