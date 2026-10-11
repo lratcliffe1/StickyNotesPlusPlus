@@ -7,7 +7,7 @@ import os
 /// Test-only launch mode used by the screenshot workflow (`scripts/screenshots.sh`).
 ///
 /// Launch with `-uiScenario <morning|lateMorning|noon|daily|evening|empty|missedYesterday|missedTwice|states|statesMorning>`,
-/// optionally `-uiScreen <home|calendar|settings|editLists|itemEditor|repeatPicker|bump|addOptions|deadline>`,
+/// optionally `-uiScreen <home|calendar|settings|editLists|itemEditor|repeatPicker|bump|addOptions|deadline|vaultLink>`,
 /// `-uiList <morning|day|evening>` (the list Home shows, or Edit Lists' segment),
 /// `-uiMorningEnds <setTime|doneOrSkipped>` (default setTime, 09:00) and `-uiEvening <on|off>`
 /// (default on, 21:00): the settings, which today's rules are stored from; `-uiTodayKeeps HH:MM`
@@ -15,6 +15,8 @@ import os
 /// Home on the day N days from today (e.g. `+3`, a future day with a planned task), and
 /// `-uiCalendarMonth <±N>` opens the calendar N months from the current one. `-uiOnlyLists
 /// <morning,day,evening>` keeps only those lists' seed data (the calendar with one or two segments).
+/// `-uiVault <off|updated|rejected>` sets up the vault link with a fake GitHub and an in-memory token
+/// (`UITestHarness+Vault.swift`).
 /// The app then runs on an in-memory store seeded with fixed sample data (V2 items and occurrences;
 /// the V1 tables stay empty, so the one-time backfill finds nothing), at a fixed time of day,
 /// with its own settings suite, and the app skips opening the shared on-disk store entirely,
@@ -84,6 +86,8 @@ enum UITestHarness {
         case addOptions
         /// The add menu's deadline sheet.
         case deadline
+        /// Settings → Vault link (with `-uiVault`).
+        case vaultLink
     }
 
     struct Configuration {
@@ -97,6 +101,7 @@ enum UITestHarness {
         let colorScheme: ColorScheme?
         /// The calendar's first month, as months after the current one.
         let calendarMonthOffset: Int
+        let vault: VaultSync
     }
 
     static let routineTitles = ["Cold shower", "Hang", "Teeth", "Floss", "Water", "Outside"]
@@ -179,6 +184,9 @@ enum UITestHarness {
             }
             try context.save()
 
+            let vaultState = value(after: "-uiVault", in: arguments).flatMap(VaultState.init(rawValue:)) ?? .off
+            let vault = makeVault(state: vaultState, defaults: defaults, now: now, context: context, calendar: calendar)
+
             let viewModel = HomeViewModel(
                 defaults: defaults,
                 repository: SwiftDataHomeRepository(defaults: defaults),
@@ -204,6 +212,9 @@ enum UITestHarness {
                 destination = .calendar
             case .settings:
                 destination = .settings
+            case .vaultLink:
+                destination = .settings
+                vault.opensLinkScreenOnAppear = true
             case .editLists:
                 editListsLaunch = EditListsLaunch(list: list ?? .morning)
             case .itemEditor, .repeatPicker:
@@ -228,7 +239,8 @@ enum UITestHarness {
                 editListsLaunch: editListsLaunch,
                 initialSheet: initialSheet,
                 colorScheme: colorScheme,
-                calendarMonthOffset: calendarMonthOffset
+                calendarMonthOffset: calendarMonthOffset,
+                vault: vault
             )
         } catch {
             AppLogger.persistence.error("UITestHarness setup failed: \(error.localizedDescription, privacy: .public)")

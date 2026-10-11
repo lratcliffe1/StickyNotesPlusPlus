@@ -3,7 +3,8 @@ import SwiftUI
 import os
 
 /// Settings (DECISIONS.md, "3: flip times and settings"): a native grouped form with Lists ·
-/// Morning (how it ends, the time) · Evening (start time or Off) · Bumping (Retype to bump).
+/// Morning (how it ends, the time) · Evening (start time or Off) · Bumping (Retype to bump) ·
+/// Vault (the vault link, step 6).
 /// An evening change applies today; a morning change applies today only while this morning is
 /// still undecided, otherwise from tomorrow (`DayRules.todayAfterChange`). Past days keep theirs.
 struct SettingsView: View {
@@ -56,7 +57,9 @@ struct SettingsView: View {
             morningSection
             eveningSection
             bumpingSection
+            VaultLinkSettingsSection()
         }
+        .vaultLinkHarnessDestination()
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)

@@ -43,6 +43,8 @@ mkdir -p "$OUT"
 # nothing due, done with a bump (↻) twice, today nothing done yet; Home has the "↻2" row. 33–34 are
 # the morning list alone at 10:30, past its 09:00 set time: done, done late, partly done, missed,
 # all skipped, done, and today done late (half-filled with ×).
+# 40–44 are the vault link (-uiVault: a fake GitHub and an in-memory token, never the network or
+# the Keychain).
 SHOTS=(
   "01-home-morning|morning|home|light|"
   "02-home-daily|daily|home|light|"
@@ -78,6 +80,11 @@ SHOTS=(
   "32-states-calendar-dark|states|calendar|dark||-AppleLocale en_GB"
   "33-states-morning-late|statesMorning|home|light|morning"
   "34-states-morning-calendar|statesMorning|calendar|light||-AppleLocale en_GB"
+  "40-home-vault-tasks|empty|home|light||-uiVault updated"
+  "41-home-daily-vault-tasks|daily|home|light||-uiVault updated"
+  "42-vault-link-not-set-up|daily|vaultLink|light|"
+  "43-vault-link-updated|daily|vaultLink|light||-uiVault updated"
+  "44-vault-link-token-not-accepted|daily|vaultLink|light||-uiVault rejected"
 )
 
 for shot in "${SHOTS[@]}"; do
