@@ -105,7 +105,7 @@ Taken while building step 2b with Liam asleep (see the working rules in the even
 - **The ↻ marks and the weekly count include the evening list**, though the ring and calendar circles still show only morning and day (three segments are step 4). *Provisional: Liam to confirm.*
 - **The widget follows Retype to bump.** With it on, the widget's bump button opens the app on that task's bump sheet (if it can still be bumped) instead of bumping in one tap. With it off, the widget bumps in one tap, within the task's limits. *Provisional: Liam to confirm.*
 - **A row whose item has ended** (deleted today, or replaced by a repeat change while today's row was already done, skipped or bumped) has no Edit… or Delete in its menu: without a link from the old item to its replacement, the app can't tell which item to edit. Skip and bump still work on the row. *Provisional: Liam to confirm.*
-- **Sheets and menus act only on today or later.** A bump, skip, undo skip, one-off edit or delete left open past midnight does nothing to yesterday's row. *Provisional: Liam to confirm.*
+- **Sheets and menus never act on past rows.** A bump, skip or undo skip acts on today's rows only (tightened in step 4: nothing can be settled on a future day either); a one-off edit or delete acts on today or later. Left open past midnight, none of them changes yesterday's row. *Provisional: Liam to confirm.*
 - **Settings → Edit Lists replaces Edit Morning Routine.** Settings is now Lists (Edit Lists) · Daily (Add Daily Tasks) · Bumping (Retype to bump) until step 3 rebuilds it. *Provisional: Liam to confirm.*
 
 ## 2026-10-11 (evening): controls, flip times, calendar, greyscale, vault link (grilling for steps 2b–6)

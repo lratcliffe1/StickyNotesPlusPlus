@@ -84,3 +84,11 @@ All the decisions are in DECISIONS.md, in the 2026-10-11 evening entry. Extra de
 - 17:50: 2b built, green (00c52e9). Blind review: 1 HIGH, 2 MED, 6 LOW. Fix round started; step 3 started in parallel in a worktree (`~/code/sn-step3`), stacked on 2b.
 - 18:25: 2b fixes green (2bf5102, 167 tests). Re-review: all 8 fixed, 3 new LOWs deferred (listed in PR #7). Step 3 built and green (d78b826), PR #8; its blind review found 1 HIGH, 3 MED (two of them were the coordinator's provisional calls contradicting the evening decisions) → fix round. Step 4 started in `~/code/sn-step4`, stacked on 3.
 - 18:40: PR #7 body final (Verified / Not verified). 2b done, pending Liam's phone check.
+- 18:25–19:20: step 3 built in a parallel worktree; review found two of the coordinator's own provisional calls contradicted the evening decisions (the 12:00 flip; settings changes applying to today) → rebuilt to follow Liam; re-review clean; two follow-ups. PR #8 final at 704a870 (199 tests).
+- 18:30–18:55: step 6 vault side done by the coordinator: `7 Projects/StickyNotes/` (README, tasks.json, habits/), router row, index, Operating manual DataviewJS streak view. New routine `trig_017isnVE13xzQXLpDw2NLf3K` + GitHub push webhook (path filter not honoured; the prompt's loop guard works: first run wrote 13 tasks, its echo run said "No change"). Brief `trig_01QRQ…` now refreshes tasks.json (STEP 3) and lists tasks ticked in the app (item 8). Later: both routines leave out ids in `habits/` `vaultTasksDone`.
+- 19:50: the three running builders hit the weekly API limit; Liam reset usage; resumed 19:55 with no work lost.
+- 20:22: step 4 final — PR #10 at 92723c4 (225 tests); review's drawing findings handed to step 5.
+- 21:15: step 5 final — PR #11 at 5f79284 (239 tests); review found no HIGH/MED.
+- 21:45: step 6 app final — PR #9 at 0167dfc on step 5 (327 tests) after four review rounds (past days frozen, one row per task per day, a cross-process lock, settled tasks never come back when the routines carry them forward or move them earlier).
+- Next: this docs commit, the combined IPA, the morning report on the Desktop.
+
