@@ -6,7 +6,7 @@ import os
 
 /// Test-only launch mode used by the screenshot workflow (`scripts/screenshots.sh`).
 ///
-/// Launch with `-uiScenario <morning|lateMorning|noon|daily|evening|empty|missedYesterday|missedTwice>`,
+/// Launch with `-uiScenario <morning|lateMorning|noon|daily|evening|empty|missedYesterday|missedTwice|states|statesMorning>`,
 /// optionally `-uiScreen <home|calendar|settings|editLists|itemEditor|repeatPicker|bump|addOptions|deadline>`,
 /// `-uiList <morning|day|evening>` (the list Home shows, or Edit Lists' segment),
 /// `-uiMorningEnds <setTime|doneOrSkipped>` (default setTime, 09:00) and `-uiEvening <on|off>`
@@ -40,6 +40,14 @@ enum UITestHarness {
         /// 14:00, both lists missed yesterday and this morning's routine unfinished past the cutoff:
         /// "Missed twice" for the morning, "Missed yesterday" for the daily tasks.
         case missedTwice
+        /// 14:00, only the day list (one-offs), one state a day for the greyscale shapes (step 5):
+        /// 6 days ago done, 5 partly done, 4 missed, 3 nothing due, 2 and 1 done with a bump (↻),
+        /// today nothing done yet, with "Buy an alarm clock" bumped twice ("↻2").
+        case states
+        /// 10:30, only the morning list (three daily items), past its 09:00 set time: 6 days ago
+        /// done, 5 done late (after 09:00), 4 partly done, 3 missed, 2 all skipped (nothing due),
+        /// yesterday done, today all done late, at 09:20 (half-filled with ×).
+        case statesMorning
 
         var missesYesterday: Bool { self == .missedYesterday || self == .missedTwice }
 
@@ -49,9 +57,9 @@ enum UITestHarness {
         var time: (hour: Int, minute: Int) {
             switch self {
             case .morning, .missedYesterday: return (8, 15)
-            case .lateMorning: return (10, 30)
+            case .lateMorning, .statesMorning: return (10, 30)
             case .noon: return (12, 30)
-            case .daily, .empty, .missedTwice: return (14, 0)
+            case .daily, .empty, .missedTwice, .states: return (14, 0)
             case .evening: return (21, 30)
             }
         }
@@ -152,7 +160,11 @@ enum UITestHarness {
             )
             let context = container.mainContext
             var alarmClock: Occurrence?
-            if scenario != .empty {
+            if scenario == .states {
+                alarmClock = seedStates(today: today, context: context, calendar: calendar)
+            } else if scenario == .statesMorning {
+                seedStatesMorning(today: today, context: context, calendar: calendar)
+            } else if scenario != .empty {
                 let items = seedHistory(today: today, missYesterday: scenario.missesYesterday, context: context, calendar: calendar)
                 alarmClock = seedToday(scenario: scenario, items: items, today: today, now: now, context: context, calendar: calendar)
             }
@@ -292,8 +304,86 @@ enum UITestHarness {
         return items
     }
 
+    /// The `states` scenario: day-list one-offs only, so every day is a one-list circle (with its
+    /// ✓ or × badge in the calendar). Earlier days are done, from 12 days ago. Returns today's
+    /// "Buy an alarm clock" (bumped from 2 days ago, so those two days carry the ↻).
+    private static func seedStates(today: Date, context: ModelContext, calendar: Calendar) -> Occurrence {
+        // Per day: (done, open) one-offs. 3 days ago has no rows: nothing due.
+        var plan: [Int: (done: Int, open: Int)] = [6: (2, 0), 5: (1, 2), 4: (0, 2), 2: (1, 0), 1: (1, 0)]
+        for daysAgo in 7...12 {
+            plan[daysAgo] = (2, 0)
+        }
+        let titles = ["Reply to emails", "Write for 30 minutes", "Stretch"]
+        for (daysAgo, counts) in plan {
+            guard let day = calendar.date(byAdding: .day, value: -daysAgo, to: today) else { continue }
+            for order in 0..<(counts.done + counts.open) {
+                let done = order < counts.done
+                context.insert(
+                    Occurrence(
+                        list: .day,
+                        dayKey: key(day),
+                        title: titles[order % titles.count],
+                        sortOrder: order,
+                        state: done ? .done : .open,
+                        completedAt: done ? at(hour: 18, minute: order * 10, on: day, calendar: calendar) : nil,
+                        createdAt: at(hour: 7, minute: order, on: day, calendar: calendar)
+                    )
+                )
+            }
+        }
+        context.insert(
+            Occurrence(
+                list: .day,
+                dayKey: key(today),
+                title: "Post the parcel",
+                sortOrder: 0,
+                createdAt: at(hour: 7, minute: 0, on: today, calendar: calendar),
+                bumpLimit: .defaultForNewOneOffs
+            )
+        )
+        return seedAlarmClockChain(today: today, context: context, calendar: calendar)
+    }
+
+    /// The `statesMorning` scenario: three daily morning items from 12 days ago, one state a day
+    /// over the last week (see `Scenario.statesMorning`); earlier days done on time.
+    private static func seedStatesMorning(today: Date, context: ModelContext, calendar: Calendar) {
+        guard let firstDay = calendar.date(byAdding: .day, value: -12, to: today) else { return }
+        let items = ["Cold shower", "Teeth", "Water"].enumerated().map { order, title in
+            Item(list: .morning, title: title, sortOrder: order, repeatRule: .daily, startDayKey: key(firstDay), createdAt: firstDay)
+        }
+        for item in items {
+            context.insert(item)
+        }
+        enum Morning { case onTime, late, partly, missed, skipped }
+        var plan: [Int: Morning] = [6: .onTime, 5: .late, 4: .partly, 3: .missed, 2: .skipped, 1: .onTime, 0: .late]
+        for daysAgo in 7...12 {
+            plan[daysAgo] = .onTime
+        }
+        for (daysAgo, morning) in plan {
+            guard let day = calendar.date(byAdding: .day, value: -daysAgo, to: today) else { continue }
+            for (order, item) in items.enumerated() {
+                let state: OccurrenceState
+                switch morning {
+                case .onTime, .late: state = .done
+                case .partly: state = order == 0 ? .done : .open
+                case .missed: state = .open
+                case .skipped: state = .skipped
+                }
+                let hour = morning == .late ? 9 : 7
+                context.insert(
+                    routineOccurrence(
+                        item: item,
+                        dayKey: key(day),
+                        state: state,
+                        completedAt: state == .done ? at(hour: hour, minute: 20 + order * 3, on: day, calendar: calendar) : nil
+                    )
+                )
+            }
+        }
+    }
+
     /// "Buy an alarm clock": first added 2 days ago and bumped each day since, so today's row is
-    /// "Bumped 2×" with one of its three bumps left. Returns today's row.
+    /// "↻2" with one of its three bumps left. Returns today's row.
     private static func seedAlarmClockChain(today: Date, context: ModelContext, calendar: Calendar) -> Occurrence {
         let title = "Buy an alarm clock"
         let firstDay = calendar.date(byAdding: .day, value: -2, to: today) ?? today

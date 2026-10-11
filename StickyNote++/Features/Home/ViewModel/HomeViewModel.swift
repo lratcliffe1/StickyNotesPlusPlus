@@ -235,12 +235,13 @@ final class HomeViewModel: ObservableObject {
     }
 
     var activeListProgress: Double {
-        ListRules.completion(activeEntries).value
+        activeListProgressIsNeutral ? 0 : ListRules.completion(activeEntries).value
     }
 
-    /// Nothing counted on the list (empty, or all skipped): no fill and "—", never 100%.
+    /// Nothing counted on the list (empty, or all skipped): no fill and "—", never 100%. A future
+    /// day is neutral too: nothing can be done on it yet, so it shows "—", not "0%" (step 5).
     var activeListProgressIsNeutral: Bool {
-        ListRules.completion(activeEntries).isNeutral
+        isFutureDay || ListRules.completion(activeEntries).isNeutral
     }
 
     /// "40%", or "—" when there's nothing to count.
@@ -368,6 +369,11 @@ final class HomeViewModel: ObservableObject {
     /// today goes by the settings as they are (the same helper as the widget).
     func loadDayRules() {
         dayRulesHistory = DayRulesStore.resolvedHistory(in: defaults, todayKey: HomeModel.dayKey(for: now))
+    }
+
+    /// Today's lists still undecided: the ring draws them in progress, not missed (step 5).
+    var todayOpenLists: Set<ListKind> {
+        DayMark.openListsToday(now: now, rules: todaysRules)
     }
 
     /// Today's flip-time rules (the real today, whichever day is on screen).

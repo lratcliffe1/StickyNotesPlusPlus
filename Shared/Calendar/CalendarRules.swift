@@ -159,14 +159,17 @@ enum CalendarRules {
 
     // MARK: - Accessibility
 
-    /// "Monday 12 October: morning done, day missed, bumped". Past days and today say each list's
-    /// state; future days say whether anything is planned.
+    /// "Monday 12 October: morning done; day missed, 50 percent done; bumped". Past days and today
+    /// say each list's state, in the words of its drawn shape (`DayMark`); future days say whether anything is
+    /// planned. `todayOpenLists`: the lists still undecided today (`DayMark.openListsToday`); nil
+    /// treats every list as still open today.
     static func accessibilityLabel(
         dayKey: String,
         todayKey: String,
         segments: [DaySegment],
         hasBump: Bool,
         isPlanned: Bool,
+        todayOpenLists: Set<ListKind>? = nil,
         calendar: Calendar
     ) -> String {
         let date = spokenDate(dayKey, calendar: calendar)
@@ -175,11 +178,12 @@ enum CalendarRules {
         if dayKey > todayKey {
             parts = [isPlanned ? "something planned" : "nothing planned"]
         } else {
-            parts = segments.map { "\(listName($0.list)) \(stateWords($0.look, isToday: dayKey == todayKey))" }
+            let open = dayKey == todayKey ? (todayOpenLists ?? Set(ListKind.allCases)) : []
+            parts = segments.map { "\(listName($0.list)) \(stateWords($0.look, isOpen: open.contains($0.list)))" }
             if hasBump { parts.append("bumped") }
         }
         guard !parts.isEmpty else { return prefix }
-        return "\(prefix): \(parts.joined(separator: ", "))"
+        return "\(prefix): \(parts.joined(separator: "; "))"
     }
 
     /// "Monday 12 October" in the calendar's locale.
@@ -208,20 +212,9 @@ enum CalendarRules {
         }
     }
 
-    /// One list's state in words: done, missed, nothing due, or today's progress so far.
-    static func stateWords(_ look: ListRules.DayLook?, isToday: Bool) -> String {
-        guard let look else { return "nothing due" }
-        switch look.status {
-        case .complete:
-            return "done"
-        case .neutral:
-            return "nothing due"
-        case .missed:
-            if isToday && !look.completion.isComplete {
-                return "\(Int((look.completion.value * 100).rounded())) percent done so far"
-            }
-            return "missed"
-        }
+    /// One list's state in words, matching its drawn shape (`DayMark`).
+    static func stateWords(_ look: ListRules.DayLook?, isOpen: Bool) -> String {
+        DayMark.words(for: look, isOpen: isOpen)
     }
 }
 

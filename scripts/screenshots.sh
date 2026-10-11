@@ -39,6 +39,10 @@ mkdir -p "$OUT"
 # days ahead (-uiDay +3), with a planned one-off and the recurring items due that day. The calendar
 # shots use a British locale (-AppleLocale en_GB), so weeks start on Monday as on Liam's phone.
 # 27 and 28 keep only the morning list, then morning and day (-uiOnlyLists): one and two segments.
+# 29–32 are the greyscale shapes (step 5), one list, one state a day: done, partly done, missed,
+# nothing due, done with a bump (↻) twice, today nothing done yet; Home has the "↻2" row. 33–34 are
+# the morning list alone at 10:30, past its 09:00 set time: done, done late, partly done, missed,
+# all skipped, done, and today done late (half-filled with ×).
 SHOTS=(
   "01-home-morning|morning|home|light|"
   "02-home-daily|daily|home|light|"
@@ -68,6 +72,12 @@ SHOTS=(
   "26-calendar-dark|daily|calendar|dark||-AppleLocale en_GB"
   "27-calendar-one-list|daily|calendar|light||-uiOnlyLists morning -AppleLocale en_GB"
   "28-calendar-two-lists|daily|calendar|light||-uiOnlyLists morning,day -AppleLocale en_GB"
+  "29-states-home|states|home|light|"
+  "30-states-calendar|states|calendar|light||-AppleLocale en_GB"
+  "31-states-home-dark|states|home|dark|"
+  "32-states-calendar-dark|states|calendar|dark||-AppleLocale en_GB"
+  "33-states-morning-late|statesMorning|home|light|morning"
+  "34-states-morning-calendar|statesMorning|calendar|light||-AppleLocale en_GB"
 )
 
 for shot in "${SHOTS[@]}"; do
@@ -81,7 +91,7 @@ for shot in "${SHOTS[@]}"; do
   clock="2:00"  # simctl only accepts 12-hour times here; "14:00" is rejected
   case "$scenario" in
     morning|missedYesterday) clock="08:15" ;;
-    lateMorning) clock="10:30" ;;
+    lateMorning|statesMorning) clock="10:30" ;;
     noon) clock="12:30" ;;
     evening) clock="9:30" ;;
   esac

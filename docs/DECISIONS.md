@@ -2,6 +2,28 @@
 
 **What this is for:** product rules Liam has decided, dated, newest first. Code and tests follow these. When a rule changes, add a new entry that names the one it replaces; never edit an old entry. **What must NOT go in here:** plans and status (→ `ROADMAP.md`).
 
+## 2026-10-11 (overnight, step 5): greyscale, provisional calls
+
+Taken while building step 5 with Liam asleep (see the working rules in the evening entry below). Each is *provisional: Liam to confirm*.
+
+**From the plan**
+- **Today, not yet decided,** is half-filled if anything is done, otherwise a plain outline (not dashed, no ×), since it isn't missed yet. A list is undecided until its streak deadline: the morning until its set time (12:00 with no set time), the day and evening lists until midnight. Once today's morning is past its deadline unfinished, it's drawn as the miss it is (with ×). *Provisional: Liam to confirm.*
+- **In a 2–3 segment calendar circle,** each segment takes the same shapes at small size (filled / half / empty / dashed); the ✓ and × appear only on one-list calendar days, as a small badge at the bottom right (the date fills the middle; the ↻ badge stays top right), and in the middle of every 7-day ring day. *Provisional: Liam to confirm.*
+
+**Made while building**
+- **One mapping, `DayMark`** (`Shared/Calendar/DayMark.swift`), drawn only by `SegmentedDayRing`, driven by the streak status first: done (complete) = filled · a miss with something done = half-filled · a miss with nothing done = empty · still open today = half-filled or empty, with no × · nothing due = dashed. So on a decided day only a filled segment is done. *Provisional: Liam to confirm.*
+- **The day's ✓ or ×:** ✓ when every list in use is done or had nothing due, and at least one is done (a day before the evening list existed, or with nothing on the day list, keeps its ✓); × when any list is a miss; none otherwise. *Provisional: Liam to confirm.*
+- **Half-filled is always exactly half** of the segment, with a solid edge where the fill stops, whatever the share done (1 of 6 or 5 of 6). This replaces step 4's arcs that filled along their length by the share done, which were faint in greyscale at small shares and drew a late finish as done. The exact percentage is on Home and in VoiceOver. *Provisional: Liam to confirm.*
+- **A list done late** (everything done, after the morning's cutoff) is half-filled with a ×, like any other miss with something done, not filled: it still cost the streak. VoiceOver says "missed, all done after the cutoff". *Provisional: Liam to confirm.*
+- **An open calendar reads again at the next boundary** (the morning's deadline, the evening's start, midnight: the same `DayRules.nextBoundary` as Home's timer), so today's morning stops showing as open once its deadline passes. *Provisional: Liam to confirm.*
+- **The ↻ badge moves clear of the ring:** above the circle in the 7-day ring, and further out at the top right of a calendar day (the ✓/× badge mirrors it at the bottom right), so it never hides the morning segment's shape. *Provisional: Liam to confirm.*
+- **Colours stay** (red through green by the share done), darker so they keep contrast against the track in greyscale. *Provisional: Liam to confirm.*
+- **"↻2"** sits at the right of a bumped task's row, a bold arrow and count (VoiceOver: "Bumped 2 times"), replacing the "Bumped 2×" subtitle. The strike-through on day-list rows is now the list's colour instead of a colour scale by bump count. *Provisional: Liam to confirm.*
+- **A frozen streak** shows a snowflake after its count (it was only blue, and smaller). *Provisional: Liam to confirm.*
+- **Home on a future day** shows "—" and an empty bar, like a neutral day, not "0%": nothing can be done on it yet. *Provisional: Liam to confirm.*
+- **VoiceOver words follow the shapes:** the verdict comes first, so a past day partly done says "missed, 50 percent done" (it said "missed"); today with nothing done says "nothing done yet"; today's morning past its deadline is a miss. A day's lists are joined with semicolons ("Monday 12 October: morning done; day missed, 50 percent done; bumped"), so each reads as one item. *Provisional: Liam to confirm.*
+- **Left as they are:** the progress bar's colour per list (the list is named by the title and icon beside it), the banner's orange triangle (the icon and bold text carry it), Settings, Edit Lists and the bump sheet (no meaning in hue alone), and the widget (it draws no day states; its bump button is an icon). *Provisional: Liam to confirm.*
+
 ## 2026-10-11 (overnight, step 4): calendar, provisional calls
 
 Taken while building step 4 with Liam asleep (see the working rules in the evening entry below). Each is *provisional: Liam to confirm*.

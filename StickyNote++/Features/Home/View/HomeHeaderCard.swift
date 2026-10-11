@@ -16,6 +16,8 @@ struct HomeHeaderCard: View {
     var bumpsInSevenDays: Int = 0
     /// Today (Home's clock, which the screenshot harness fixes).
     var today: Date = Date()
+    /// Today's lists still undecided (`DayMark.openListsToday`): in progress, not missed.
+    var todayOpenLists: Set<ListKind> = Set(ListKind.allCases)
     let onTap: () -> Void
 
     private let calendar = Calendar.current
@@ -70,6 +72,7 @@ struct HomeHeaderCard: View {
                                         isSelected: calendar.isDate(day.date, inSameDayAs: selectedDay),
                                         isToday: calendar.isDate(day.date, inSameDayAs: today),
                                         todayKey: HomeModel.dayKey(for: today, calendar: calendar),
+                                        todayOpenLists: todayOpenLists,
                                         diameter: metrics.daySize
                                     )
                                 }
@@ -158,22 +161,19 @@ private struct StreakValue: View {
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(tint)
 
+            Text("\(value)")
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .foregroundStyle(isFrozen ? AnyShapeStyle(Color(red: 0.10, green: 0.37, blue: 0.57)) : AnyShapeStyle(.primary))
+                .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(minWidth: 14, alignment: .leading)
+
             if isFrozen {
-                Text("\(value)")
-                    .font(.caption2.monospacedDigit().weight(.bold))
-                    .foregroundStyle(Color(red: 0.10, green: 0.37, blue: 0.57))
-                    .contentTransition(.numericText())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(minWidth: 14)
-            } else {
-                Text("\(value)")
-                    .font(.caption.monospacedDigit().weight(.semibold))
+                // Frozen reads by shape, not only the blue: a snowflake after the count.
+                Image(systemName: "snowflake")
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(.primary)
-                    .contentTransition(.numericText())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(minWidth: 14, alignment: .leading)
             }
         }
         .padding(.horizontal, 6)
@@ -191,16 +191,18 @@ private struct DayProgressCell: View {
     let isSelected: Bool
     let isToday: Bool
     let todayKey: String
+    let todayOpenLists: Set<ListKind>
     let diameter: CGFloat
 
     var body: some View {
         VStack(spacing: max(2, diameter * 0.14)) {
             circle
                 .frame(width: diameter, height: diameter)
-                .overlay(alignment: .topTrailing) {
+                .overlay(alignment: .top) {
+                    // Above the circle, not on it, so it never hides a segment's shape (step 5).
                     if day.hasBump {
-                        BumpBadge(diameter: diameter)
-                            .offset(x: diameter * 0.22, y: -diameter * 0.22)
+                        BumpBadge(diameter: diameter * 0.9)
+                            .offset(y: -(BumpBadge.size(for: diameter * 0.9) + 1))
                     }
                 }
                 .background {
@@ -230,20 +232,12 @@ private struct DayProgressCell: View {
                 .frame(width: max(3, diameter * 0.2), height: max(3, diameter * 0.2))
                 .opacity(day.isPlanned ? 1 : 0)
         } else {
-            SegmentedDayRing(segments: day.segments, lineWidth: max(3, diameter * 0.27))
-                .overlay {
-                    if isAllDone {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: max(5, diameter * 0.3), weight: .black))
-                            .foregroundStyle(.primary)
-                    }
-                }
+            // The day's ✓ (every list done, by the streak's verdict) or × (a miss) in the middle.
+            SegmentedDayRing(
+                segments: day.segments, openLists: isToday ? todayOpenLists : [],
+                lineWidth: max(3, diameter * 0.22), showsGlyph: true
+            )
         }
-    }
-
-    /// Every list in use that day is done (the streak's verdict, so a late morning isn't).
-    private var isAllDone: Bool {
-        !day.segments.isEmpty && day.segments.allSatisfy { $0.look?.status == .complete }
     }
 
     private var label: String {
@@ -257,6 +251,7 @@ private struct DayProgressCell: View {
             segments: day.segments,
             hasBump: day.hasBump,
             isPlanned: day.isPlanned,
+            todayOpenLists: todayOpenLists,
             calendar: .current
         )
         return isSelected ? "Selected, \(label)" : label

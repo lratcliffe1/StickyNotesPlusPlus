@@ -9,10 +9,15 @@ struct BumpBadge: View {
         Image(systemName: "arrow.clockwise")
             .font(.system(size: max(6, diameter * 0.34), weight: .black))
             .foregroundStyle(.primary)
-            .frame(width: max(10, diameter * 0.56), height: max(10, diameter * 0.56))
+            .frame(width: Self.size(for: diameter), height: Self.size(for: diameter))
             .background(Circle().fill(Color(uiColor: .systemBackground)))
             .overlay(Circle().stroke(Color.primary.opacity(0.7), lineWidth: 0.75))
             .accessibilityHidden(true)
+    }
+
+    /// The badge's side for a circle of `diameter`.
+    static func size(for diameter: CGFloat) -> CGFloat {
+        max(10, diameter * 0.56)
     }
 }
 

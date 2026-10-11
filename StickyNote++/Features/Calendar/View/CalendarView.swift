@@ -48,6 +48,7 @@ struct CalendarView: View {
                             lists: model.lists,
                             firstEntryDayKey: model.firstEntryDayKey,
                             todayKey: model.todayKey,
+                            todayOpenLists: model.todayOpenLists,
                             selectedKey: HomeModel.dayKey(for: selectedDay, calendar: model.calendar),
                             calendar: model.calendar,
                             diameter: min(scaledDiameter, 48),
@@ -73,6 +74,15 @@ struct CalendarView: View {
                     }
                 }
             }
+        }
+        // While on screen, read again at the next boundary, so today's morning stops being drawn
+        // as open once its deadline passes (step 5). A fixed clock (the harness) never gets there.
+        .task(id: model.nextBoundary) { @MainActor in
+            let wait = model.nextBoundary.timeIntervalSince(now())
+            guard wait > 0, wait < 2 * 86_400 else { return }
+            try? await Task.sleep(for: .seconds(wait))
+            guard !Task.isCancelled else { return }
+            model.reload(now: now(), context: modelContext)
         }
         // Back from the background (the widget may have written) or a new day: read again.
         // Deferred a turn so Home's own foreground sync (it refreshes the shared context) runs first.
@@ -119,6 +129,7 @@ private struct CalendarMonthSection: View {
     let lists: [ListKind]
     let firstEntryDayKey: String?
     let todayKey: String
+    let todayOpenLists: Set<ListKind>
     let selectedKey: String
     let calendar: Calendar
     let diameter: CGFloat
@@ -181,10 +192,11 @@ private struct CalendarMonthSection: View {
             segments: segments,
             hasBump: hasBump,
             isPlanned: isPlanned,
+            openLists: dayKey == todayKey ? todayOpenLists : [],
             diameter: diameter,
             accessibilityLabel: CalendarRules.accessibilityLabel(
                 dayKey: dayKey, todayKey: todayKey, segments: segments,
-                hasBump: hasBump, isPlanned: isPlanned, calendar: calendar
+                hasBump: hasBump, isPlanned: isPlanned, todayOpenLists: todayOpenLists, calendar: calendar
             ),
             onTap: { onSelect(dayKey) }
         )
@@ -192,7 +204,7 @@ private struct CalendarMonthSection: View {
 }
 
 /// One day. Past days and today: the date inside its segmented circle (no circle before any list
-/// was in use). Later days: the plain date, with a dot under it when something is planned. Today's
+/// was in use), each segment in the `DayMark` shapes, with a ✓ or × badge on one-list days. Later days: the plain date, with a dot under it when something is planned. Today's
 /// date sits on a filled disc; the day open on Home is tinted.
 private struct CalendarDayCell: View {
     let dayNumber: Int
@@ -202,6 +214,8 @@ private struct CalendarDayCell: View {
     let segments: [DaySegment]
     let hasBump: Bool
     let isPlanned: Bool
+    /// Today's lists still undecided; empty on other days.
+    let openLists: Set<ListKind>
     let diameter: CGFloat
     let accessibilityLabel: String
     let onTap: () -> Void
@@ -211,7 +225,7 @@ private struct CalendarDayCell: View {
             VStack(spacing: 3) {
                 ZStack {
                     if !segments.isEmpty {
-                        SegmentedDayRing(segments: segments, lineWidth: max(3, diameter * 0.15))
+                        SegmentedDayRing(segments: segments, openLists: openLists, lineWidth: max(3, diameter * 0.15))
                     }
                     if isToday {
                         Circle()
@@ -229,8 +243,16 @@ private struct CalendarDayCell: View {
                 .frame(width: diameter, height: diameter)
                 .overlay(alignment: .topTrailing) {
                     if hasBump {
+                        // Clear of the ring, so it never hides the first segment (step 5).
                         BumpBadge(diameter: diameter * 0.75)
-                            .offset(x: diameter * 0.14, y: -diameter * 0.14)
+                            .offset(x: diameter * 0.25, y: -diameter * 0.14)
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    // ✓ or × only where there's room: a one-list day (provisional, step 5).
+                    if segments.count == 1, let glyph = dayGlyph {
+                        DayGlyphBadge(glyph: glyph, diameter: diameter * 0.75)
+                            .offset(x: diameter * 0.25, y: diameter * 0.14)
                     }
                 }
 
@@ -252,6 +274,10 @@ private struct CalendarDayCell: View {
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var dayGlyph: DayMark.Glyph? {
+        DayMark.glyph(for: segments.map { DayMark.mark(for: $0, openLists: openLists) })
     }
 
     private var numberStyle: AnyShapeStyle {

@@ -332,13 +332,13 @@ final class CalendarRulesTests: XCTestCase {
         XCTAssertEqual(
             CalendarRules.accessibilityLabel(dayKey: "2026-10-12", todayKey: "2026-10-14", segments: segments,
                                              hasBump: true, isPlanned: false, calendar: british),
-            "Monday 12 October: morning done, day missed, bumped"
+            "Monday 12 October: morning done; day missed, 50 percent done; bumped"
         )
         XCTAssertEqual(
             CalendarRules.accessibilityLabel(dayKey: "2026-10-14", todayKey: "2026-10-14",
                                              segments: [DaySegment(list: .day, look: missed), DaySegment(list: .evening, look: nil)],
                                              hasBump: false, isPlanned: false, calendar: british),
-            "Today, Wednesday 14 October: day 50 percent done so far, evening nothing due"
+            "Today, Wednesday 14 October: day 50 percent done so far; evening nothing due"
         )
         XCTAssertEqual(
             CalendarRules.accessibilityLabel(dayKey: "2026-10-15", todayKey: "2026-10-14", segments: [],
