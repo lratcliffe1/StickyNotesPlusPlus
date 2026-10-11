@@ -24,7 +24,9 @@ final class VaultSyncTests: XCTestCase {
 
     override func setUp() async throws {
         context = try StoreTestSupport.makeContext()
-        (defaults, suiteName) = StoreTestSupport.makeDefaults()
+        let made = StoreTestSupport.makeDefaults()
+        defaults = made.defaults
+        suiteName = made.name
         tokens = InMemoryVaultTokenStore(token: "test-token")
         http = FakeVaultHTTPClient { _ in .init(status: 500) }
     }

@@ -2,6 +2,26 @@
 
 **What this is for:** product rules Liam has decided, dated, newest first. Code and tests follow these. When a rule changes, add a new entry that names the one it replaces; never edit an old entry. **What must NOT go in here:** plans and status (→ `ROADMAP.md`).
 
+## 2026-10-11 (overnight, step 6): vault link, provisional calls
+
+Taken while building step 6 with Liam asleep (see the working rules in the evening entry below). The file formats and the rules the app follows are in `VAULT-API.md`. Each is *provisional: Liam to confirm*.
+
+**From the plan**
+- **Imported tasks go on the Day list** unless `tasks.json` says otherwise; an open task dated in the past lands on today. *Provisional: Liam to confirm.*
+- **Habits are written for completed days plus today** (today `open` until it's complete), at the first going-to-the-background after the morning ends (the contract's "past the morning"; the plan said after 21:00), or, failing that, on the next day's first launch. *Provisional: Liam to confirm.*
+- **The streak view in the vault uses DataviewJS** reading the month's JSON; no `streaks.md`. *Provisional: Liam to confirm.*
+
+**Made while building**
+- **An open imported task left on a past day moves to today** at the next import, as the contract says ("update … day"). That day then no longer counts it as a miss, like a bump without the ↻ mark. The alternative is to leave it as that day's miss and add a fresh copy today. *Provisional: Liam to confirm.*
+- **An edit made in the app to an imported task** (Edit… on the row: title, deadline, bump limit) lasts until Now.md changes that task; then the file wins. *Provisional: Liam to confirm.*
+- **An imported task deleted in the app stays deleted**, even while it is still in `tasks.json`. *Provisional: Liam to confirm.*
+- **One bad task makes the whole `tasks.json` "couldn't be read"**, so nothing changes, rather than skipping it (skipping would remove its row as "gone from Now.md"). *Provisional: Liam to confirm.*
+- **One commit a day, in practice:** on the 1st of a month the day's commit finishes the previous month (so its last day goes out complete) and the new month's file starts on the 2nd. A launch that finds yesterday unsent sends it, using that day's commit. Only a success or a second sha conflict closes the day; offline, auth and server errors try again at the next chance. *Provisional: Liam to confirm.*
+- **Settings → Vault link is its own screen**, opened from a "Vault link" row (with the status beside it) in a new Vault section at the bottom of Settings: Status (symbol + text, Habits sent, Token expires, Check now), GitHub token (secure field, the system Paste button, Save, Remove token with a confirmation), How it works. The labels are sentence case ("Vault link", "GitHub token", "Remove token") to match the setup note word for word, unlike the title case elsewhere in Settings. *Provisional: Liam to confirm.*
+- **The token is shared with the widget through the App Group as its keychain access group** (no new entitlement, so SideStore's free-account signing is unchanged). If iOS refuses that group, the token is kept for the app only, and the widget shows the app's last import without fetching. The widget fetches at most every 15 minutes. *Provisional: Liam to confirm.*
+- **Imported tasks look exactly like one-offs** (no "From Now.md" mark yet), to keep the step small while steps 4 and 5 rework the rows. *Provisional: Liam to confirm.*
+- **Removing the token keeps the imported tasks** where they are; nothing more is fetched or sent. *Provisional: Liam to confirm.*
+
 ## 2026-10-11 (overnight, step 5): greyscale, provisional calls
 
 Taken while building step 5 with Liam asleep (see the working rules in the evening entry below). Each is *provisional: Liam to confirm*.

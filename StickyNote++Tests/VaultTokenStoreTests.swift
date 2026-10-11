@@ -11,7 +11,9 @@ final class VaultTokenStoreTests: XCTestCase {
     private var added: [[String: Any]] = []
 
     override func setUp() {
-        (defaults, suiteName) = StoreTestSupport.makeDefaults()
+        let made = StoreTestSupport.makeDefaults()
+        defaults = made.defaults
+        suiteName = made.name
         added = []
     }
 

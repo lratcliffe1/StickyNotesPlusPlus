@@ -13,7 +13,9 @@ final class VaultReconcileTests: XCTestCase {
 
     override func setUpWithError() throws {
         context = try StoreTestSupport.makeContext()
-        (defaults, suiteName) = StoreTestSupport.makeDefaults()
+        let made = StoreTestSupport.makeDefaults()
+        defaults = made.defaults
+        suiteName = made.name
     }
 
     override func tearDown() {
