@@ -16,6 +16,8 @@ struct HomeHeaderCard: View {
     var bumpsInSevenDays: Int = 0
     /// Today (Home's clock, which the screenshot harness fixes).
     var today: Date = Date()
+    /// Today's lists still undecided (`DayMark.openListsToday`): in progress, not missed.
+    var todayOpenLists: Set<ListKind> = Set(ListKind.allCases)
     let onTap: () -> Void
 
     private let calendar = Calendar.current
@@ -70,6 +72,7 @@ struct HomeHeaderCard: View {
                                         isSelected: calendar.isDate(day.date, inSameDayAs: selectedDay),
                                         isToday: calendar.isDate(day.date, inSameDayAs: today),
                                         todayKey: HomeModel.dayKey(for: today, calendar: calendar),
+                                        todayOpenLists: todayOpenLists,
                                         diameter: metrics.daySize
                                     )
                                 }
@@ -188,6 +191,7 @@ private struct DayProgressCell: View {
     let isSelected: Bool
     let isToday: Bool
     let todayKey: String
+    let todayOpenLists: Set<ListKind>
     let diameter: CGFloat
 
     var body: some View {
@@ -228,7 +232,10 @@ private struct DayProgressCell: View {
                 .opacity(day.isPlanned ? 1 : 0)
         } else {
             // The day's ✓ (every list done, by the streak's verdict) or × (a miss) in the middle.
-            SegmentedDayRing(segments: day.segments, isToday: isToday, lineWidth: max(3, diameter * 0.27), showsGlyph: true)
+            SegmentedDayRing(
+                segments: day.segments, openLists: isToday ? todayOpenLists : [],
+                lineWidth: max(3, diameter * 0.27), showsGlyph: true
+            )
         }
     }
 
@@ -243,6 +250,7 @@ private struct DayProgressCell: View {
             segments: day.segments,
             hasBump: day.hasBump,
             isPlanned: day.isPlanned,
+            todayOpenLists: todayOpenLists,
             calendar: .current
         )
         return isSelected ? "Selected, \(label)" : label

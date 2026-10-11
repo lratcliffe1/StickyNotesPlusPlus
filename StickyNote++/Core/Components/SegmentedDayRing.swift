@@ -12,15 +12,16 @@ import SwiftUI
 /// calendar puts its date there and adds a `DayGlyphBadge` on one-list days instead.
 struct SegmentedDayRing: View {
     let segments: [DaySegment]
-    /// Today isn't decided yet: half-filled or a plain outline, never ×.
-    let isToday: Bool
+    /// The lists still undecided (today's, before their streak deadline: `DayMark.openListsToday`;
+    /// empty on a past day): half-filled or a plain outline, never a miss.
+    let openLists: Set<ListKind>
     /// The ring's thickness.
     let lineWidth: CGFloat
     let showsGlyph: Bool
 
-    init(segments: [DaySegment], isToday: Bool = false, lineWidth: CGFloat, showsGlyph: Bool = false) {
+    init(segments: [DaySegment], openLists: Set<ListKind> = [], lineWidth: CGFloat, showsGlyph: Bool = false) {
         self.segments = segments
-        self.isToday = isToday
+        self.openLists = openLists
         self.lineWidth = lineWidth
         self.showsGlyph = showsGlyph
     }
@@ -45,12 +46,12 @@ struct SegmentedDayRing: View {
     }
 
     private var marks: [DayMark] {
-        segments.map { DayMark.mark(for: $0.look, isToday: isToday) }
+        segments.map { DayMark.mark(for: $0, openLists: openLists) }
     }
 
     @ViewBuilder
     private func arc(_ segment: DaySegment, from start: Double, to end: Double) -> some View {
-        let mark = DayMark.mark(for: segment.look, isToday: isToday)
+        let mark = DayMark.mark(for: segment, openLists: openLists)
         let whole = RingArc(start: start, end: end, thickness: lineWidth)
         let ink = Self.fillColor(segment.look?.completion.value ?? 0)
         // Exactly half, whatever the share done, with a solid edge where the fill stops.

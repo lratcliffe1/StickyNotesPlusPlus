@@ -371,6 +371,11 @@ final class HomeViewModel: ObservableObject {
         dayRulesHistory = DayRulesStore.resolvedHistory(in: defaults, todayKey: HomeModel.dayKey(for: now))
     }
 
+    /// Today's lists still undecided: the ring draws them in progress, not missed (step 5).
+    var todayOpenLists: Set<ListKind> {
+        DayMark.openListsToday(now: now, rules: todaysRules)
+    }
+
     /// Today's flip-time rules (the real today, whichever day is on screen).
     var todaysRules: DayRules {
         dayRulesHistory.rules(for: HomeModel.dayKey(for: now))

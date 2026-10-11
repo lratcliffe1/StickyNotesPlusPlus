@@ -2,32 +2,30 @@ import Foundation
 
 /// How one list's part of a day is drawn: the greyscale shape vocabulary (DECISIONS.md, 2026-10-11
 /// evening, "5: greyscale"). Colours stay; the shape carries the meaning, so every state reads on
-/// Liam's greyscale phone:
+/// Liam's greyscale phone. Driven by the look's streak status first, then its share done:
 ///
-/// | Mark | Fill | Day glyph |
-/// |---|---|---|
-/// | done | filled | ✓ |
-/// | doneLate | filled | × |
-/// | partlyDone | half-filled | × |
-/// | inProgress (today) | half-filled | none |
-/// | missed | empty | × |
-/// | notYet (today) | empty | none |
-/// | nothingDue | dashed outline | none |
+/// | Mark | When | Fill | Day glyph |
+/// |---|---|---|---|
+/// | done | complete | filled | ✓ |
+/// | partlyDone | missed, something done (incl. all done after the cutoff) | half-filled | × |
+/// | missed | missed, nothing done | empty | × |
+/// | inProgress | still open today, something done | half-filled | none |
+/// | notYet | still open today, nothing done | empty | none |
+/// | nothingDue | nothing counted | dashed outline | none |
 ///
-/// Bumped days carry the separate ↻ badge. Pure, so the test target can pin every case; the app
-/// draws it with `SegmentedDayRing`.
+/// On a decided day only a filled segment is done: anything less is a miss. Bumped days carry the
+/// separate ↻ badge. Pure, so the test target can pin every case; the app draws it with
+/// `SegmentedDayRing`.
 enum DayMark: Equatable, CaseIterable {
     /// Everything counted was done (or bumped) in time: the streak's "complete".
     case done
-    /// Everything was done, but after the morning's cutoff: a miss for the streak.
-    case doneLate
-    /// A decided day with some, not all, done: a miss.
+    /// A decided miss with something done, including everything done after the morning's cutoff.
     case partlyDone
-    /// Today, some done so far: not decided yet.
-    case inProgress
-    /// A decided day with nothing done: a miss.
+    /// A decided miss with nothing done.
     case missed
-    /// Today, nothing done yet: not a miss yet.
+    /// Still open today, something done so far: not decided yet.
+    case inProgress
+    /// Still open today, nothing done yet: not a miss yet.
     case notYet
     /// Nothing counted that day (nothing due, or all skipped): neither progress nor a miss.
     case nothingDue
@@ -49,7 +47,7 @@ enum DayMark: Equatable, CaseIterable {
 
     var fill: Fill {
         switch self {
-        case .done, .doneLate: return .full
+        case .done: return .full
         case .partlyDone, .inProgress: return .half
         case .missed, .notYet: return .empty
         case .nothingDue: return .dashed
@@ -58,17 +56,14 @@ enum DayMark: Equatable, CaseIterable {
 
     /// The day was decided and counts as a miss for the streak.
     var isMiss: Bool {
-        switch self {
-        case .doneLate, .partlyDone, .missed: return true
-        case .done, .inProgress, .notYet, .nothingDue: return false
-        }
+        self == .partlyDone || self == .missed
     }
 
     /// The mark for one list on one day, from its look (`ListRules.dayLooks`; nil when nothing
-    /// counted). Today isn't decided until it's done: it's in progress (half) if anything is done,
-    /// otherwise not yet (a plain outline, not ×), except that everything done after the cutoff
-    /// is already decided.
-    static func mark(for look: ListRules.DayLook?, isToday: Bool) -> DayMark {
+    /// counted). `isOpen`: the list is still undecided (today, before its streak deadline), so an
+    /// unfinished list is in progress or not yet, never a miss. A list that's complete is done
+    /// whenever it's drawn.
+    static func mark(for look: ListRules.DayLook?, isOpen: Bool) -> DayMark {
         guard let look, !look.completion.isNeutral else { return .nothingDue }
         switch look.status {
         case .neutral:
@@ -76,31 +71,47 @@ enum DayMark: Equatable, CaseIterable {
         case .complete:
             return .done
         case .missed:
-            let value = look.completion.value
-            if value >= 1 { return .doneLate }
-            if value > 0 { return isToday ? .inProgress : .partlyDone }
-            return isToday ? .notYet : .missed
+            let somethingDone = look.completion.value > 0
+            if isOpen && look.completion.value < 1 {
+                return somethingDone ? .inProgress : .notYet
+            }
+            return somethingDone ? .partlyDone : .missed
         }
     }
 
-    /// The glyph for a whole day: ✓ when every list in use is done, × when any list is a miss,
-    /// otherwise none (nothing due, or today still open). No segments, no glyph.
+    static func mark(for segment: DaySegment, openLists: Set<ListKind>) -> DayMark {
+        mark(for: segment.look, isOpen: openLists.contains(segment.list))
+    }
+
+    /// The lists still undecided today at `now`: the day and evening lists count until midnight,
+    /// the morning until its streak deadline (its set time, or 12:00 with none). The same deadline
+    /// the streak uses (`ListService.deadline`).
+    static func openListsToday(now: Date, rules: DayRules, calendar: Calendar = .current) -> Set<ListKind> {
+        var open: Set<ListKind> = [.day, .evening]
+        if now < rules.morningDeadline(on: now, calendar: calendar) {
+            open.insert(.morning)
+        }
+        return open
+    }
+
+    /// The glyph for a whole day: ✓ when every list in use is done or had nothing due, and at
+    /// least one is done; × when any list is a miss; otherwise none (nothing due at all, or a list
+    /// still open today). No segments, no glyph.
     static func glyph(for marks: [DayMark]) -> Glyph? {
-        guard !marks.isEmpty else { return nil }
-        if marks.allSatisfy({ $0 == .done }) { return .check }
         if marks.contains(where: \.isMiss) { return .cross }
+        if marks.contains(.done), marks.allSatisfy({ $0 == .done || $0 == .nothingDue }) { return .check }
         return nil
     }
 
     /// One list's state in words, for VoiceOver.
-    static func words(for look: ListRules.DayLook?, isToday: Bool) -> String {
-        let percent = Int(((look?.completion.value ?? 0) * 100).rounded())
-        switch mark(for: look, isToday: isToday) {
+    static func words(for look: ListRules.DayLook?, isOpen: Bool) -> String {
+        let value = look?.completion.value ?? 0
+        let percent = Int((value * 100).rounded())
+        switch mark(for: look, isOpen: isOpen) {
         case .done: return "done"
-        case .doneLate: return "all done after the cutoff, missed"
-        case .partlyDone: return "\(percent) percent done, missed"
-        case .inProgress: return "\(percent) percent done so far"
+        case .partlyDone: return value >= 1 ? "all done after the cutoff, missed" : "\(percent) percent done, missed"
         case .missed: return "missed"
+        case .inProgress: return "\(percent) percent done so far"
         case .notYet: return "nothing done yet"
         case .nothingDue: return "nothing due"
         }

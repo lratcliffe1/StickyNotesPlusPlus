@@ -48,6 +48,7 @@ struct CalendarView: View {
                             lists: model.lists,
                             firstEntryDayKey: model.firstEntryDayKey,
                             todayKey: model.todayKey,
+                            todayOpenLists: model.todayOpenLists,
                             selectedKey: HomeModel.dayKey(for: selectedDay, calendar: model.calendar),
                             calendar: model.calendar,
                             diameter: min(scaledDiameter, 48),
@@ -119,6 +120,7 @@ private struct CalendarMonthSection: View {
     let lists: [ListKind]
     let firstEntryDayKey: String?
     let todayKey: String
+    let todayOpenLists: Set<ListKind>
     let selectedKey: String
     let calendar: Calendar
     let diameter: CGFloat
@@ -181,10 +183,11 @@ private struct CalendarMonthSection: View {
             segments: segments,
             hasBump: hasBump,
             isPlanned: isPlanned,
+            openLists: dayKey == todayKey ? todayOpenLists : [],
             diameter: diameter,
             accessibilityLabel: CalendarRules.accessibilityLabel(
                 dayKey: dayKey, todayKey: todayKey, segments: segments,
-                hasBump: hasBump, isPlanned: isPlanned, calendar: calendar
+                hasBump: hasBump, isPlanned: isPlanned, todayOpenLists: todayOpenLists, calendar: calendar
             ),
             onTap: { onSelect(dayKey) }
         )
@@ -202,6 +205,8 @@ private struct CalendarDayCell: View {
     let segments: [DaySegment]
     let hasBump: Bool
     let isPlanned: Bool
+    /// Today's lists still undecided; empty on other days.
+    let openLists: Set<ListKind>
     let diameter: CGFloat
     let accessibilityLabel: String
     let onTap: () -> Void
@@ -211,7 +216,7 @@ private struct CalendarDayCell: View {
             VStack(spacing: 3) {
                 ZStack {
                     if !segments.isEmpty {
-                        SegmentedDayRing(segments: segments, isToday: isToday, lineWidth: max(3, diameter * 0.15))
+                        SegmentedDayRing(segments: segments, openLists: openLists, lineWidth: max(3, diameter * 0.15))
                     }
                     if isToday {
                         Circle()
@@ -262,7 +267,7 @@ private struct CalendarDayCell: View {
     }
 
     private var dayGlyph: DayMark.Glyph? {
-        DayMark.glyph(for: segments.map { DayMark.mark(for: $0.look, isToday: isToday) })
+        DayMark.glyph(for: segments.map { DayMark.mark(for: $0, openLists: openLists) })
     }
 
     private var numberStyle: AnyShapeStyle {

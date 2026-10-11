@@ -265,6 +265,7 @@ struct HomeView: View {
                 selectedDay: vm.selectedDay,
                 bumpsInSevenDays: vm.bumpsInSevenDays,
                 today: vm.now,
+                todayOpenLists: vm.todayOpenLists,
                 onTap: openCalendar
             )
             .frame(maxWidth: .infinity)
@@ -282,6 +283,7 @@ struct HomeView: View {
                 selectedDay: vm.selectedDay,
                 bumpsInSevenDays: vm.bumpsInSevenDays,
                 today: vm.now,
+                todayOpenLists: vm.todayOpenLists,
                 onTap: openCalendar
             )
             .frame(maxWidth: .infinity)
