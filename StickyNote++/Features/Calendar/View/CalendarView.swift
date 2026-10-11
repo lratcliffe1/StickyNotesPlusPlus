@@ -144,9 +144,13 @@ struct CalendarView: View {
         // Past days nobody opened, with something due, show as 0% rather than neutral grey.
         let todayKey = HomeModel.dayKey(for: Date())
         func misses(_ list: ListKind) -> Set<String> {
-            ListRules.unopenedMisses(
+            let rows = occurrences.filter { $0.list == list }
+            return ListRules.unopenedMisses(
                 schedules: items.filter { $0.list == list }.map(\.schedule),
-                openedDays: Set(occurrences.filter { $0.list == list }.map(\.dayKey)),
+                openedDays: Set(rows.map(\.dayKey)),
+                materialised: Set(rows.compactMap { row in
+                    row.itemID.map { ListRules.materialisedKey($0, row.scheduledDayKey ?? row.dayKey) }
+                }),
                 before: todayKey
             )
         }

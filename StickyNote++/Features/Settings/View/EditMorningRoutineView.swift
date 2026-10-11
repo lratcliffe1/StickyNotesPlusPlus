@@ -67,7 +67,9 @@ struct EditMorningRoutineView: View {
         newItemTitle = ""
     }
 
+    /// An empty or whitespace-only title is ignored: the item keeps its name.
     private func rename(_ item: Item, to title: String) {
+        guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         perform("Rename routine item") {
             try ListService.renameItem(item, to: title, todayKey: todayKey, context: modelContext)
         }

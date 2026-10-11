@@ -36,6 +36,8 @@ enum UITestHarness {
     }
 
     static let routineTitles = ["Cold shower", "Hang", "Teeth", "Floss", "Water", "Outside"]
+    /// The history day nobody opened (no rows; the routine was due).
+    static let unopenedDaysAgo = 3
 
     /// Built once per launch: `nil` unless the app was started with `-uiScenario`.
     @MainActor static let current: Configuration? = configuration()
@@ -93,7 +95,9 @@ enum UITestHarness {
     /// 07:50 on all but two days, and three one-off tasks a day, mostly done. Two days exercise the
     /// new streak rules without changing what's on screen: 8 days ago one routine item was skipped
     /// (the rest done, so still complete), and 6 days ago "Stretch" was bumped to the next day and
-    /// done there. With `missYesterday`, yesterday's routine and tasks are left unfinished.
+    /// done there. 3 days ago nobody opened the app: no rows at all, while the daily routine was due,
+    /// so the ring shows that morning as a 0% miss and its day half as neutral grey.
+    /// With `missYesterday`, yesterday's routine and tasks are left unfinished.
     private static func seedHistory(today: Date, missYesterday: Bool, context: ModelContext, calendar: Calendar) -> [Item] {
         guard let firstDay = calendar.date(byAdding: .day, value: -12, to: today) else { return [] }
         let items = routineTitles.enumerated().map { order, title in
@@ -112,6 +116,7 @@ enum UITestHarness {
         var stretchToBump: Occurrence?
 
         for daysAgo in 1...12 {
+            guard daysAgo != unopenedDaysAgo else { continue }
             guard let day = calendar.date(byAdding: .day, value: -daysAgo, to: today) else { continue }
             let dayKey = key(day)
             let missedThisDay = missYesterday && daysAgo == 1
@@ -131,7 +136,7 @@ enum UITestHarness {
 
             let tasks = ["Reply to emails", "Write for 30 minutes", "Stretch"]
             for (order, title) in tasks.enumerated() {
-                let done = !missedThisDay && (daysAgo != 3 || order == 0)
+                let done = !missedThisDay
                 let task = Occurrence(
                     list: .day,
                     dayKey: dayKey,

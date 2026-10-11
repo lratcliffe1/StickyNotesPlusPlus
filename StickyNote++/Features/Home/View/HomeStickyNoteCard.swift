@@ -143,6 +143,11 @@ struct HomeStickyNoteCard: View {
                             Text("Must do")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.secondary)
+                        } else if !task.isRepeating, task.state == .open, !vm.isReadOnly {
+                            // Its bump limit is used up (bumps, deadline or end of week).
+                            Text("No bumps left")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
                         }
                     }
                     .draggable(task.id.uuidString)
