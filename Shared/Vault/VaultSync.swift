@@ -229,7 +229,7 @@ final class VaultSync: ObservableObject {
 
         let current = now()
         let todayKey = HomeModel.dayKey(for: current, calendar: calendar)
-        let rules = DayRulesStore.history(in: defaults).rules(for: todayKey)
+        let rules = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey).rules(for: todayKey)
         let morningOver = current >= rules.morningDeadline(on: current, calendar: calendar)
         guard let targetKey = VaultHabitsGate.plan(
             reason: reason,

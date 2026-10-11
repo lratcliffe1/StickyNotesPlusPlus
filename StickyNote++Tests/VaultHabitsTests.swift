@@ -163,7 +163,7 @@ final class VaultHabitsTests: XCTestCase {
             "id": .string("deel"), "title": .string("Chase Deel"), "doneAt": .string("2026-10-14T15:00:00+02:00"),
         ])]))
 
-        let history = DayRulesStore.history(in: defaults)
+        let history = DayRulesStore.resolvedHistory(in: defaults, todayKey: "2026-10-14")
         let morningStreak = try ListService.streakState(for: .morning, through: "2026-10-14", history: history, context: context, calendar: munich)
         XCTAssertEqual(document["streaks"]?["morning"], .int(morningStreak.count), "the same streak Home shows")
     }

@@ -201,22 +201,27 @@ extension ListService {
         let todayKey = dayKey(for: now, calendar: calendar)
         let month = String(targetKey.prefix(7))
         let startKey = "\(month)-01"
-        let history = DayRulesStore.history(in: defaults)
+        // The same rules Home and the widget judge by (today from the settings if not stored yet).
+        let history = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey)
+        let looks = try dayLooks(
+            from: startKey, through: targetKey, todayKey: todayKey, history: history, context: context, calendar: calendar
+        ).looks
+        let inUse = Set(try listsInUse(context: context))
 
         var lists: [ListKind: VaultHabits.ListInput] = [:]
         var streaks: [ListKind: Int] = [:]
         for list in ListKind.allCases {
             let rows = try occurrences(from: startKey, through: targetKey, list: list, context: context)
-            let looks = try dayLooks(
-                for: list, through: targetKey, todayKey: todayKey, history: history, context: context, calendar: calendar
-            )
             lists[list] = VaultHabits.ListInput(
                 rowsByDay: Dictionary(grouping: rows.map { VaultHabits.RowFacts($0) }, by: \.dayKey),
-                looks: looks.filter { $0.key >= startKey && $0.key <= targetKey }
+                looks: looks[list] ?? [:]
             )
-            streaks[list] = try streakState(
-                for: list, through: todayKey, history: history, context: context, calendar: calendar
-            ).count
+            // A list not in use (no items, no rows ever) has no streak.
+            if inUse.contains(list) {
+                streaks[list] = try streakState(for: list, through: todayKey, history: history, context: context, calendar: calendar).count
+            } else {
+                streaks[list] = 0
+            }
         }
 
         return VaultHabits.document(
