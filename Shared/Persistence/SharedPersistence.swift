@@ -4,8 +4,24 @@ import os
 
 /// Shared SwiftData container factory + legacy store migration into the App Group location.
 enum SharedPersistence {
-    static let appGroupIdentifier = "group.com.liamratcliffe.Sticky-Notes-Sticky-Life"
+    static let appGroupIdentifier = resolveAppGroupIdentifier()
+    private static let defaultAppGroupIdentifier = "group.com.liamratcliffe.Sticky-Notes-Sticky-Life"
     private static let sharedStoreName = "StickyNotesSharedStore"
+
+    /// SideStore/AltStore re-sign with a free Apple ID by renaming the App Group, and list the
+    /// real identifiers under `ALTAppGroups` in Info.plist. The widget reads its containing app's
+    /// Info.plist too, in case only the app's was rewritten. Xcode builds fall back to the default.
+    private static func resolveAppGroupIdentifier() -> String {
+        let containingAppURL = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent()
+        let bundles = [Bundle.main, Bundle(url: containingAppURL)].compactMap { $0 }
+        for bundle in bundles {
+            guard let groups = bundle.object(forInfoDictionaryKey: "ALTAppGroups") as? [String] else { continue }
+            if let match = groups.first(where: { $0.hasPrefix(defaultAppGroupIdentifier) }) ?? groups.first {
+                return match
+            }
+        }
+        return defaultAppGroupIdentifier
+    }
 
     static var sharedDefaults: UserDefaults {
         UserDefaults(suiteName: appGroupIdentifier) ?? .standard
