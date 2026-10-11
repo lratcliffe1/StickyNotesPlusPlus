@@ -143,6 +143,10 @@ struct HomeView: View {
                 guard !Task.isCancelled else { return }
                 vm.handleClockChange(context: modelContext)
             }
+            // The vault link imported or changed tasks (launch, foreground, background refresh).
+            .onReceive(NotificationCenter.default.publisher(for: VaultSync.tasksDidChange)) { _ in
+                vm.refresh(context: modelContext)
+            }
             .onOpenURL { url in
                 handleDeepLink(url)
             }

@@ -39,6 +39,8 @@ struct TopTasksProvider: AppIntentTimelineProvider {
     }
 
     func timeline(for configuration: TopTasksWidgetConfigurationIntent, in context: Context) async -> Timeline<TopTasksEntry> {
+        // New Now.md tasks first (vault link; skipped without a shared token, time-boxed).
+        await WidgetVaultRefresh.runIfPossible()
         let snapshot = WidgetTaskStore.snapshot()
         let entry = TopTasksEntry(
             date: snapshot.date,

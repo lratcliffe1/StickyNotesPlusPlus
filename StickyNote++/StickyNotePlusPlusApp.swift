@@ -6,15 +6,21 @@ import os
 @main
 struct StickyNotePlusPlusApp: App {
     private let modelContainer: ModelContainer
+    /// The vault link (Settings → Vault link): tasks.json in, habits out.
+    private let vault: VaultSync
+    private var schedulesBackgroundWork = true
 
     init() {
 #if DEBUG
         // Screenshot harness: use its in-memory store and never open the shared on-disk one.
         if let harness = UITestHarness.current {
             modelContainer = harness.container
+            vault = harness.vault
+            schedulesBackgroundWork = false
             return
         }
 #endif
+        vault = VaultSync.live()
         do {
             modelContainer = try SharedPersistence.makeContainer()
         } catch {
@@ -30,24 +36,35 @@ struct StickyNotePlusPlusApp: App {
     }
 
     var body: some Scene {
+        let vault = vault
+        let container = modelContainer
         WindowGroup {
-#if DEBUG
-            if let harness = UITestHarness.current {
-                HomeView(
-                    viewModel: harness.viewModel,
-                    initialDestination: harness.initialDestination,
-                    editListsLaunch: harness.editListsLaunch,
-                    initialSheet: harness.initialSheet,
-                    calendarMonthOffset: harness.calendarMonthOffset
-                )
-                .preferredColorScheme(harness.colorScheme)
-            } else {
-                ContentView()
-            }
-#else
-            ContentView()
-#endif
+            root
+                .modifier(VaultLifecycle(vault: vault, container: container, schedulesBackgroundWork: schedulesBackgroundWork))
         }
         .modelContainer(modelContainer)
+        .backgroundTask(.appRefresh(VaultBackground.refreshTaskID)) {
+            await VaultBackground.runRefresh(vault: vault, container: container)
+        }
+    }
+
+    @ViewBuilder
+    private var root: some View {
+#if DEBUG
+        if let harness = UITestHarness.current {
+            HomeView(
+                viewModel: harness.viewModel,
+                initialDestination: harness.initialDestination,
+                editListsLaunch: harness.editListsLaunch,
+                initialSheet: harness.initialSheet,
+                calendarMonthOffset: harness.calendarMonthOffset
+            )
+            .preferredColorScheme(harness.colorScheme)
+        } else {
+            ContentView()
+        }
+#else
+        ContentView()
+#endif
     }
 }
