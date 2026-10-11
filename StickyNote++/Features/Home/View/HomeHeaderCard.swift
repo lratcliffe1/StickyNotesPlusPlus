@@ -202,7 +202,7 @@ private struct DayProgressCell: View {
                     // Above the circle, not on it, so it never hides a segment's shape (step 5).
                     if day.hasBump {
                         BumpBadge(diameter: diameter * 0.9)
-                            .alignmentGuide(.top) { $0[.bottom] + 1 }
+                            .offset(y: -(BumpBadge.size(for: diameter * 0.9) + 1))
                     }
                 }
                 .background {

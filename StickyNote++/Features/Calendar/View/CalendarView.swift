@@ -236,14 +236,14 @@ private struct CalendarDayCell: View {
                     if hasBump {
                         // Clear of the ring, so it never hides the first segment (step 5).
                         BumpBadge(diameter: diameter * 0.75)
-                            .offset(x: diameter * 0.25, y: -diameter * 0.25)
+                            .offset(x: diameter * 0.25, y: -diameter * 0.14)
                     }
                 }
                 .overlay(alignment: .bottomTrailing) {
                     // ✓ or × only where there's room: a one-list day (provisional, step 5).
                     if segments.count == 1, let glyph = dayGlyph {
                         DayGlyphBadge(glyph: glyph, diameter: diameter * 0.75)
-                            .offset(x: diameter * 0.25, y: diameter * 0.25)
+                            .offset(x: diameter * 0.25, y: diameter * 0.14)
                     }
                 }
 
