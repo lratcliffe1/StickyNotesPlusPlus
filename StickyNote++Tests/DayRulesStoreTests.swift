@@ -210,6 +210,29 @@ final class DayRulesStoreTests: XCTestCase {
         XCTAssertFalse(eveningOnly.morningFromTomorrow, "the morning didn't change")
     }
 
+    /// 08:20, today at 09:00. Aiming for 08:10, the minutes change first (09:10), then the hour
+    /// (08:10). Judged from the record as Settings opened, today ends as if 09:00 → 08:10 had been
+    /// one change: 08:10 is past, so today keeps 09:00 (never the 09:10 nobody chose).
+    func testHalfMadeEditIsJudgedFromTheOriginalRecord() throws {
+        let context = try StoreTestSupport.makeContext()
+        let now = TestCalendars.date("2026-10-12", 8, 20)
+        DayRulesStore.record(setNine, for: "2026-10-12", in: defaults)
+        let original = ListService.todaysRules(now: now, calendar: munich, defaults: defaults)
+
+        defaults.set(9 * 60 + 10, forKey: AppSettings.morningCutoffMinutesKey)
+        XCTAssertFalse(try ListService.applySettingsToToday(now: now, calendar: munich, defaults: defaults, original: original, context: context))
+        XCTAssertEqual(DayRulesStore.history(in: defaults).stored["2026-10-12"]?.morningEndMinutes, 9 * 60 + 10, "mid-edit")
+
+        defaults.set(8 * 60 + 10, forKey: AppSettings.morningCutoffMinutesKey)
+        XCTAssertTrue(try ListService.applySettingsToToday(now: now, calendar: munich, defaults: defaults, original: original, context: context))
+
+        let direct = DayRules.todayAfterChange(
+            old: setNine, new: AppSettings.currentRules(in: defaults), now: now, morningComplete: false, calendar: munich
+        )
+        XCTAssertEqual(DayRulesStore.history(in: defaults).stored["2026-10-12"], direct.rules)
+        XCTAssertEqual(direct.rules.morningEndMinutes, 9 * 60)
+    }
+
     func testListInUse() throws {
         let context = try StoreTestSupport.makeContext()
         XCTAssertFalse(try ListService.isInUse(.evening, context: context))

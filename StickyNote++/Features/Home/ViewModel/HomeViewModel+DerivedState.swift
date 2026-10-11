@@ -19,8 +19,9 @@ extension HomeViewModel {
         )
         // A flip that has expired (its boundary passed, even while the app was in the background)
         // is dropped here, on every refresh.
-        if let flip = manualListFlip, !flip.isActive(at: now) {
-            manualListFlip = nil
+        if let flip = manualListFlip {
+            let capped = flip.capped(at: todaysRules.nextListBoundary(after: now, calendar: calendar))
+            manualListFlip = capped.isActive(at: now) ? capped : nil
         }
         contextualList = HomeModel.shownList(automatic: automaticContextualList, flip: manualListFlip, now: now)
 

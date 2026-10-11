@@ -190,6 +190,14 @@ enum HomeModel {
         func isActive(at now: Date) -> Bool {
             now < expiresAt
         }
+
+        /// The same flip, ending no later than `boundary` (today's next list boundary as the
+        /// settings now stand), so moving the evening earlier also ends the flip earlier. A flip
+        /// that never expires on its own is left alone.
+        func capped(at boundary: Date) -> ManualListFlip {
+            guard expiresAt != .distantFuture, boundary < expiresAt else { return self }
+            return ManualListFlip(list: list, expiresAt: boundary)
+        }
     }
 
     /// The list on screen: a manual flip while it lasts, otherwise the automatic choice. Read on

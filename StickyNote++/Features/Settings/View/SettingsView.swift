@@ -11,6 +11,9 @@ struct SettingsView: View {
     /// Today's stored rules, when their morning differs from the settings (the change waits for
     /// tomorrow): shown as a line in the Morning footer.
     @State private var todayKeeps: DayRules?
+    /// Today's record as it was when Settings opened (with its day): every change in this visit
+    /// is judged from it, so a half-made edit never sticks.
+    @State private var original: (dayKey: String, rules: DayRules)?
 
     let now: () -> Date
     let defaults: UserDefaults
@@ -61,7 +64,15 @@ struct SettingsView: View {
         .onChange(of: morningEndMinutes) { applyToToday() }
         .onChange(of: eveningEnabled) { applyToToday() }
         .onChange(of: eveningStartMinutes) { applyToToday() }
-        .onAppear { readTodaysRules() }
+        .onAppear {
+            // Once per visit (not again on returning from Edit Lists), unless the day changed.
+            let current = now()
+            let todayKey = HomeModel.dayKey(for: current)
+            if original?.dayKey != todayKey {
+                original = (todayKey, ListService.todaysRules(now: current, defaults: defaults))
+            }
+            readTodaysRules()
+        }
     }
 
     // MARK: - Sections
@@ -192,7 +203,9 @@ struct SettingsView: View {
     /// Rewrites today's rules: the evening always, the morning only while it's undecided.
     private func applyToToday() {
         do {
-            try ListService.applySettingsToToday(now: now(), defaults: defaults, context: modelContext)
+            let current = now()
+            let snapshot = original.flatMap { $0.dayKey == HomeModel.dayKey(for: current) ? $0.rules : nil }
+            try ListService.applySettingsToToday(now: current, defaults: defaults, original: snapshot, context: modelContext)
         } catch {
             AppLogger.persistence.error("Applying settings to today failed: \(error.localizedDescription, privacy: .public)")
         }

@@ -38,15 +38,21 @@ enum ListService {
     /// After a settings change: today takes the new evening start, and the new morning only while
     /// today's morning is still undecided (`DayRules.todayAfterChange`); past days keep theirs.
     /// Returns whether the morning change waits until tomorrow.
+    ///
+    /// `original` is today's record as it was when Settings opened (`todaysRules`). Each change in
+    /// one visit is judged from it, not from what a half-made edit left (minutes first, then the
+    /// hour), so today's morning ends up either as it was or as the latest setting, never as an
+    /// in-between time nobody chose.
     @discardableResult
     static func applySettingsToToday(
         now: Date = Date(),
         calendar: Calendar = .current,
         defaults: UserDefaults,
+        original: DayRules? = nil,
         context: ModelContext
     ) throws -> Bool {
         let todayKey = dayKey(for: now, calendar: calendar)
-        let old = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey).rules(for: todayKey)
+        let old = original ?? todaysRules(now: now, calendar: calendar, defaults: defaults)
         let morningComplete = ListRules.completion(try occurrences(on: todayKey, list: .morning, context: context)).isComplete
         let change = DayRules.todayAfterChange(
             old: old, new: AppSettings.currentRules(in: defaults), now: now,
@@ -54,6 +60,12 @@ enum ListService {
         )
         DayRulesStore.overwrite(change.rules, for: todayKey, in: defaults)
         return change.morningFromTomorrow
+    }
+
+    /// Today's rules as stored (or, without a record, from the settings).
+    static func todaysRules(now: Date = Date(), calendar: Calendar = .current, defaults: UserDefaults) -> DayRules {
+        let todayKey = dayKey(for: now, calendar: calendar)
+        return DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey).rules(for: todayKey)
     }
 
     /// Whether a list is in use: it has any item (ended ones too) or any occurrence.

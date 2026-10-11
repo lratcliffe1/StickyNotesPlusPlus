@@ -120,6 +120,24 @@ final class FlipTimeTests: XCTestCase {
         XCTAssertEqual(HomeModel.shownList(automatic: .evening, flip: nil, now: TestCalendars.date("2026-10-12", 21, 30)), .evening)
     }
 
+    /// Flipped at 18:00 with the evening at 21:00; the evening moves to 19:00. Capped at the
+    /// boundary as the settings now stand, the flip ends at 19:00. A later boundary never extends it.
+    func testFlipIsCappedAtTheCurrentListBoundary() {
+        let flip = HomeModel.ManualListFlip.today(.morning, at: TestCalendars.date("2026-10-12", 18), rules: setNine, calendar: munich)
+        XCTAssertEqual(flip.expiresAt, TestCalendars.date("2026-10-12", 21))
+        var earlier = setNine
+        earlier.eveningStartMinutes = 19 * 60
+        let now = TestCalendars.date("2026-10-12", 18, 5)
+        let capped = flip.capped(at: earlier.nextListBoundary(after: now, calendar: munich))
+        XCTAssertEqual(capped.expiresAt, TestCalendars.date("2026-10-12", 19))
+        XCTAssertEqual(HomeModel.shownList(automatic: .evening, flip: capped, now: TestCalendars.date("2026-10-12", 19)), .evening)
+
+        var later = setNine
+        later.eveningStartMinutes = 22 * 60
+        XCTAssertEqual(flip.capped(at: later.nextListBoundary(after: now, calendar: munich)).expiresAt, flip.expiresAt)
+        XCTAssertEqual(HomeModel.ManualListFlip.untilLeft(.daily).capped(at: now).expiresAt, .distantFuture)
+    }
+
     func testFlipOnAnotherDayLastsUntilHomeLeavesIt() {
         let flip = HomeModel.ManualListFlip.untilLeft(.evening)
         XCTAssertEqual(HomeModel.shownList(automatic: .daily, flip: flip, now: TestCalendars.date("2026-10-13", 23, 59)), .evening)
