@@ -33,7 +33,12 @@ struct StickyNotePlusPlusApp: App {
         WindowGroup {
 #if DEBUG
             if let harness = UITestHarness.current {
-                HomeView(viewModel: harness.viewModel, initialDestination: harness.initialDestination)
+                HomeView(
+                    viewModel: harness.viewModel,
+                    initialDestination: harness.initialDestination,
+                    editListsLaunch: harness.editListsLaunch,
+                    initialSheet: harness.initialSheet
+                )
             } else {
                 ContentView()
             }

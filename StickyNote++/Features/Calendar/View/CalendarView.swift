@@ -138,9 +138,9 @@ struct CalendarView: View {
         }
     }
 
-    /// Morning and day lists only; the evening list isn't shown yet.
     /// The same day looks the streak uses (`ListRules.dayLooks`), for the morning and day lists
-    /// (evening isn't shown yet). A day absent from both is neutral.
+    /// (evening isn't shown yet). A day absent from both is neutral. A day with a bump on any list
+    /// gets the ↻ mark.
     private var dayProgressLookup: [Date: HomeModel.DayProgress] {
         let todayKey = HomeModel.dayKey(for: Date())
         let morningMode = MorningModeProvider.load(from: SharedPersistence.sharedDefaults).mode
@@ -154,17 +154,19 @@ struct CalendarView: View {
         }
         let morningLooks = looks(.morning)
         let dailyLooks = looks(.day)
+        let bumpedDays = ListRules.bumpedDays(occurrences)
 
         var lookup: [Date: HomeModel.DayProgress] = [:]
         lookup.reserveCapacity(morningLooks.count + dailyLooks.count)
 
-        for dayKey in Set(morningLooks.keys).union(dailyLooks.keys) {
+        for dayKey in Set(morningLooks.keys).union(dailyLooks.keys).union(bumpedDays) {
             guard let parsed = HomeModel.date(fromDayKey: dayKey, calendar: calendar) else { continue }
             let day = HomeModel.normalizedDay(parsed, calendar: calendar)
             lookup[day] = HomeModel.DayProgress(
                 date: day,
                 morning: morningLooks[dayKey]?.completion ?? .neutral,
-                daily: dailyLooks[dayKey]?.completion ?? .neutral
+                daily: dailyLooks[dayKey]?.completion ?? .neutral,
+                hasBump: bumpedDays.contains(dayKey)
             )
         }
 
@@ -545,6 +547,12 @@ private struct CalendarMonthCardView: View, Equatable {
                     completionTickDiameter: circleDiameter
                 )
                 .frame(width: circleDiameter, height: circleDiameter)
+                .overlay(alignment: .topTrailing) {
+                    if progress.hasBump {
+                        BumpBadge(diameter: circleDiameter)
+                            .offset(x: circleDiameter * 0.22, y: -circleDiameter * 0.22)
+                    }
+                }
 
                 Text("\(calendar.component(.day, from: normalized))")
                     .font(.system(size: 10, weight: .semibold))
@@ -565,7 +573,7 @@ private struct CalendarMonthCardView: View, Equatable {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "\(normalized.formatted(date: .abbreviated, time: .omitted)), morning \(Int((progress.morning.value * 100).rounded())) percent, daily \(Int((progress.daily.value * 100).rounded())) percent"
+            "\(normalized.formatted(date: .abbreviated, time: .omitted)), morning \(Int((progress.morning.value * 100).rounded())) percent, daily \(Int((progress.daily.value * 100).rounded())) percent\(progress.hasBump ? ", bumped" : "")"
         )
     }
 

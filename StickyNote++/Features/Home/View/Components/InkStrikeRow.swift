@@ -7,6 +7,8 @@ struct InkStrikeRow<Trailing: View>: View {
     let isCompleted: Bool
     let canEdit: Bool
     let strikeColor: Color
+    /// Skipped: the title is greyed (no strike-through, since it isn't done).
+    var isDimmed: Bool = false
     var onHorizontalSwipeActivityChange: ((Bool) -> Void)? = nil
     let onToggle: () -> Void
     @ViewBuilder var trailing: Trailing
@@ -21,6 +23,7 @@ struct InkStrikeRow<Trailing: View>: View {
                 InkStrikeText(
                     title: title,
                     isCompleted: isCompleted,
+                    isDimmed: isDimmed,
                     dragProgress: dragProgress,
                     strikeColor: strikeColor
                 )
@@ -129,13 +132,14 @@ struct InkStrikeRow<Trailing: View>: View {
 private struct InkStrikeText: View {
     let title: String
     let isCompleted: Bool
+    let isDimmed: Bool
     let dragProgress: CGFloat
     let strikeColor: Color
 
     var body: some View {
         Text(title)
             .font(.subheadline)
-            .foregroundStyle(isCompleted ? .secondary : .primary)
+            .foregroundStyle(isCompleted || isDimmed ? .secondary : .primary)
             .animation(.easeInOut(duration: 0.2), value: dragProgress)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in

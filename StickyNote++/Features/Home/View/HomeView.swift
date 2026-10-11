@@ -12,12 +12,16 @@ struct HomeView: View {
     @State private var isShowingCalendar = false
     @State private var isShowingSettings = false
     @State private var isShowingAddDailyTask = false
+    @State private var isShowingEditLists = false
+    @State private var didRunLaunch = false
     @State private var dayTransitionDirection: DayTransitionDirection = .next
     @State private var isTaskRowSwipeActive = false
 
     private let onOpenCalendar: () -> Void
     private let refreshOnAppear: Bool
     private let initialDestination: HomeInitialDestination
+    private let editListsLaunch: EditListsLaunch?
+    private let initialSheet: HomeSheet?
     private let calendarTransitionSourceID = "home-calendar-header"
 
     @MainActor
@@ -25,11 +29,15 @@ struct HomeView: View {
         viewModel: HomeViewModel? = nil,
         refreshOnAppear: Bool = true,
         initialDestination: HomeInitialDestination = .home,
+        editListsLaunch: EditListsLaunch? = nil,
+        initialSheet: HomeSheet? = nil,
         onOpenCalendar: @escaping () -> Void = {}
     ) {
         _vm = StateObject(wrappedValue: viewModel ?? HomeViewModel())
         self.refreshOnAppear = refreshOnAppear
         self.initialDestination = initialDestination
+        self.editListsLaunch = editListsLaunch
+        self.initialSheet = initialSheet
         self.onOpenCalendar = onOpenCalendar
     }
 
@@ -66,9 +74,12 @@ struct HomeView: View {
             .simultaneousGesture(daySwipeGesture)
             .background(AppTheme.pageBackground.ignoresSafeArea())
             .task {
+                // Also runs on returning from Settings, so edits made there show.
                 if refreshOnAppear {
                     vm.refresh(context: modelContext)
                 }
+                guard !didRunLaunch else { return }
+                didRunLaunch = true
                 switch initialDestination {
                 case .home:
                     break
@@ -76,6 +87,13 @@ struct HomeView: View {
                     isShowingCalendar = true
                 case .settings:
                     isShowingSettings = true
+                }
+                if editListsLaunch != nil {
+                    isShowingEditLists = true
+                }
+                if let initialSheet {
+                    try? await Task.sleep(for: .milliseconds(400))
+                    vm.activeSheet = initialSheet
                 }
             }
             .onChange(of: scenePhase) { _, phase in
@@ -109,7 +127,15 @@ struct HomeView: View {
                 calendarDestination
             }
             .navigationDestination(isPresented: $isShowingSettings) {
-                SettingsView()
+                SettingsView(defaults: vm.defaults, now: vm.now)
+            }
+            .navigationDestination(isPresented: $isShowingEditLists) {
+                EditListsView(
+                    initialList: editListsLaunch?.list ?? .morning,
+                    now: vm.now,
+                    autoOpenItemTitle: editListsLaunch?.openItemTitle,
+                    autoShowsRepeat: editListsLaunch?.showsRepeat ?? false
+                )
             }
             .navigationDestination(isPresented: $isShowingAddDailyTask) {
                 AddDailyTaskView()
@@ -200,6 +226,7 @@ struct HomeView: View {
                 isDailyTaskStreakFrozen: vm.isDailyTaskStreakFrozen,
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
+                bumpsThisWeek: vm.bumpsThisWeek,
                 onTap: openCalendar
             )
             .frame(maxWidth: .infinity)
@@ -212,6 +239,7 @@ struct HomeView: View {
                 isDailyTaskStreakFrozen: vm.isDailyTaskStreakFrozen,
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
+                bumpsThisWeek: vm.bumpsThisWeek,
                 onTap: openCalendar
             )
             .frame(maxWidth: .infinity)
@@ -345,6 +373,14 @@ enum HomeInitialDestination: String {
     case home
     case calendar
     case settings
+}
+
+/// Edit Lists pushed when Home first appears, on a given list (screenshot harness only).
+struct EditListsLaunch {
+    let list: ListKind
+    /// Opens this item's editor, and with `showsRepeat` its repeat picker.
+    var openItemTitle: String?
+    var showsRepeat = false
 }
 
 private enum DayTransitionDirection {

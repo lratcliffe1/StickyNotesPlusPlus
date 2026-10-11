@@ -65,6 +65,26 @@ extension HomeViewModel {
         }
     }
 
+    /// Days from `startKey` through `endKey` with a bump on any list.
+    func bumpedDayKeys(from startKey: String, through endKey: String, context: ModelContext) -> Set<String> {
+        do {
+            return try repository.bumpedDayKeys(from: startKey, through: endKey, context: context)
+        } catch {
+            AppLogger.persistence.error("Bumped days failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    /// Bumps this week up to today (the real today, whichever day is on screen).
+    func bumpCountThisWeek(context: ModelContext) -> Int {
+        do {
+            return try repository.bumpsThisWeek(todayKey: HomeModel.dayKey(for: now), context: context)
+        } catch {
+            AppLogger.persistence.error("Bumps this week failed: \(error.localizedDescription, privacy: .public)")
+            return 0
+        }
+    }
+
     // MARK: - Writing
 
     /// Runs one `ListService` write, logging (and rolling back) on failure.

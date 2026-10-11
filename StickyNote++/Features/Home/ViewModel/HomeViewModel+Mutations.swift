@@ -60,36 +60,93 @@ extension HomeViewModel {
         return didComplete
     }
 
+    /// Adds a one-off to the day list with the add menu's options, then resets them.
     @discardableResult
-    func addDailyTask(context: ModelContext, mustHappenToday: Bool = false) -> Bool {
+    func addDailyTask(context: ModelContext) -> Bool {
         guard canManage(day: selectedDay) else { return false }
 
         let title = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return false }
+        let options = newTaskOptions
         let added: Occurrence? = write("Create daily task", context: context) {
-            try createDailyTask(selectedDay, title, mustHappenToday, context)
+            try createDailyTask(selectedDay, title, options, context)
         } ?? nil
         guard added != nil else { return false }
 
         newTaskTitle = ""
+        newTaskOptions = OneOffOptions()
         finishMutation(context: context)
         return true
     }
 
-    func bumpTaskToTomorrow(
-        _ task: Occurrence,
-        bumpedTitle: String,
+    /// Bumps to tomorrow with the title typed in the bump sheet. With Retype to bump on, nothing
+    /// typed means no bump (`BumpRules.bumpedTitle`). Returns whether it bumped.
+    @discardableResult
+    func bump(_ occurrence: Occurrence, typedTitle: String, context: ModelContext) -> Bool {
+        guard canManage(day: selectedDay) else { return false }
+        guard canBump(occurrence) else { return false }
+        guard let title = BumpRules.bumpedTitle(typed: typedTitle, original: occurrence.title, retypeRequired: retypeToBump) else {
+            return false
+        }
+
+        let moved: Occurrence? = write("Bump task", context: context) {
+            try ListService.bump(occurrence, newTitle: title, now: now, context: context)
+        } ?? nil
+        finishMutation(context: context)
+        return moved != nil
+    }
+
+    /// Skip today (recurring rows): it drops out of the day's count.
+    func skip(_ occurrence: Occurrence, context: ModelContext) {
+        guard canComplete(day: selectedDay), occurrence.isRepeating else { return }
+        write("Skip", context: context) {
+            _ = try ListService.skip(occurrence, context: context)
+        }
+        finishMutation(context: context)
+    }
+
+    func unskip(_ occurrence: Occurrence, context: ModelContext) {
+        guard canComplete(day: selectedDay) else { return }
+        write("Undo skip", context: context) {
+            _ = try ListService.unskip(occurrence, context: context)
+        }
+        finishMutation(context: context)
+    }
+
+    /// Delete from the row menu, after its confirmation: a one-off goes; a recurring row deletes
+    /// its item from today on (as in Edit lists), keeping earlier days.
+    func delete(_ occurrence: Occurrence, context: ModelContext) {
+        guard canManage(day: selectedDay) else { return }
+        let todayKey = HomeModel.dayKey(for: now)
+        write("Delete", context: context) {
+            if let itemID = occurrence.itemID {
+                if let item = try ListService.item(id: itemID, context: context) {
+                    try ListService.deleteItem(item, todayKey: todayKey, context: context)
+                }
+            } else {
+                _ = try ListService.deleteOneOff(occurrence, context: context)
+            }
+        }
+        finishMutation(context: context)
+    }
+
+    /// Edit… on a one-off: this row only.
+    func editOneOff(
+        _ occurrence: Occurrence,
+        title: String,
+        bumpLimit: BumpLimit,
+        deadlineDayKey: String?,
         context: ModelContext
     ) {
         guard canManage(day: selectedDay) else { return }
-        guard canBump(task) else { return }
-
-        let trimmedTitle = bumpedTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedTitle.isEmpty else { return }
-
-        write("Bump task", context: context) {
-            _ = try ListService.bump(task, newTitle: trimmedTitle, now: now, context: context)
+        write("Edit one-off", context: context) {
+            _ = try ListService.editOneOff(occurrence, title: title, bumpLimit: bumpLimit, deadlineDayKey: deadlineDayKey, context: context)
         }
+        finishMutation(context: context)
+    }
+
+    /// After the item editor saved (it writes through `ListService` itself).
+    func itemsDidChange(context: ModelContext) {
         finishMutation(context: context)
     }
 

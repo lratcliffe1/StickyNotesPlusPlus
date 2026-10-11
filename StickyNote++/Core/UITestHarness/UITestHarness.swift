@@ -5,8 +5,9 @@ import os
 
 /// Test-only launch mode used by the screenshot workflow (`scripts/screenshots.sh`).
 ///
-/// Launch with `-uiScenario <morning|daily|empty|missedYesterday|missedTwice>` and optionally
-/// `-uiScreen <home|calendar|settings>`.
+/// Launch with `-uiScenario <morning|daily|empty|missedYesterday|missedTwice>`, optionally
+/// `-uiScreen <home|calendar|settings|editLists|itemEditor|repeatPicker|bump|addOptions|deadline>`
+/// and `-uiList <morning|day|evening>` (the list Home shows, or Edit Lists' segment).
 /// The app then runs on an in-memory store seeded with fixed sample data (V2 items and occurrences;
 /// the V1 tables stay empty, so the one-time backfill finds nothing), at a fixed time of day,
 /// with its own settings suite, and the app skips opening the shared on-disk store entirely,
@@ -29,10 +30,33 @@ enum UITestHarness {
         var missesYesterday: Bool { self == .missedYesterday || self == .missedTwice }
     }
 
+    /// What opens at launch. Menus and long-press menus can't be opened from launch arguments, so
+    /// `addOptions` shows the add menu's result (options set, summary under the field) and
+    /// `deadline` the sheet its "Deadline…" opens.
+    enum Screen: String {
+        case home
+        case calendar
+        case settings
+        /// Settings → Edit Lists, on `-uiList` (default morning).
+        case editLists
+        /// Edit Lists → the item editor for the weekly "Gym" (day list).
+        case itemEditor
+        /// The same, with its repeat picker pushed.
+        case repeatPicker
+        /// The bump sheet for "Buy an alarm clock" (bumped twice, up to 3 days).
+        case bump
+        /// The add field with a title typed and a deadline + "until deadline" chosen.
+        case addOptions
+        /// The add menu's deadline sheet.
+        case deadline
+    }
+
     struct Configuration {
         let container: ModelContainer
         let viewModel: HomeViewModel
         let initialDestination: HomeInitialDestination
+        let editListsLaunch: EditListsLaunch?
+        let initialSheet: HomeSheet?
     }
 
     static let routineTitles = ["Cold shower", "Hang", "Teeth", "Floss", "Water", "Outside"]
@@ -47,8 +71,8 @@ enum UITestHarness {
         guard let scenario = value(after: "-uiScenario", in: arguments).flatMap(Scenario.init(rawValue:)) else {
             return nil
         }
-        let destination = value(after: "-uiScreen", in: arguments)
-            .flatMap(HomeInitialDestination.init(rawValue:)) ?? .home
+        let screen = value(after: "-uiScreen", in: arguments).flatMap(Screen.init(rawValue:)) ?? .home
+        let list = value(after: "-uiList", in: arguments).flatMap(ListKind.init(rawValue:))
 
         let suiteName = "uitest-harness"
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard
@@ -72,9 +96,10 @@ enum UITestHarness {
                 configurations: [config]
             )
             let context = container.mainContext
+            var alarmClock: Occurrence?
             if scenario != .empty {
                 let items = seedHistory(today: today, missYesterday: scenario.missesYesterday, context: context, calendar: calendar)
-                seedToday(scenario: scenario, items: items, today: today, context: context, calendar: calendar)
+                alarmClock = seedToday(scenario: scenario, items: items, today: today, now: now, context: context, calendar: calendar)
             }
             try context.save()
 
@@ -84,7 +109,43 @@ enum UITestHarness {
                 reloadWidget: {}
             )
             viewModel.nowOverride = now
-            return Configuration(container: container, viewModel: viewModel, initialDestination: destination)
+
+            var destination = HomeInitialDestination.home
+            var editListsLaunch: EditListsLaunch?
+            var initialSheet: HomeSheet?
+            switch screen {
+            case .home:
+                if let list {
+                    viewModel.manualContextualListOverride = contextualList(for: list)
+                }
+            case .calendar:
+                destination = .calendar
+            case .settings:
+                destination = .settings
+            case .editLists:
+                editListsLaunch = EditListsLaunch(list: list ?? .morning)
+            case .itemEditor, .repeatPicker:
+                editListsLaunch = EditListsLaunch(list: list ?? .day, openItemTitle: "Gym", showsRepeat: screen == .repeatPicker)
+            case .bump:
+                initialSheet = alarmClock.map { HomeSheet.bump($0.id) }
+            case .addOptions, .deadline:
+                viewModel.manualContextualListOverride = .daily
+                viewModel.newTaskTitle = "Renew passport photos"
+                viewModel.newTaskOptions = OneOffOptions(
+                    deadlineDayKey: key(calendar.date(byAdding: .day, value: 4, to: today) ?? today),
+                    limitChoice: .untilDeadline
+                )
+                if screen == .deadline {
+                    initialSheet = .deadline
+                }
+            }
+            return Configuration(
+                container: container,
+                viewModel: viewModel,
+                initialDestination: destination,
+                editListsLaunch: editListsLaunch,
+                initialSheet: initialSheet
+            )
         } catch {
             AppLogger.persistence.error("UITestHarness setup failed: \(error.localizedDescription, privacy: .public)")
             return nil
@@ -159,6 +220,39 @@ enum UITestHarness {
         return items
     }
 
+    /// "Buy an alarm clock": first added 2 days ago and bumped each day since, so today's row is
+    /// "Bumped 2×" with one of its three bumps left. Returns today's row.
+    private static func seedAlarmClockChain(today: Date, context: ModelContext, calendar: Calendar) -> Occurrence {
+        let title = "Buy an alarm clock"
+        let firstDay = calendar.date(byAdding: .day, value: -2, to: today) ?? today
+        let firstKey = key(firstDay)
+        var previous: Occurrence?
+        var row: Occurrence?
+        for (bumps, daysAgo) in [2, 1, 0].enumerated() {
+            let day = calendar.date(byAdding: .day, value: -daysAgo, to: today) ?? today
+            let isToday = daysAgo == 0
+            let next = Occurrence(
+                list: .day,
+                dayKey: key(day),
+                title: title,
+                sortOrder: 3,
+                state: isToday ? .open : .bumped,
+                completedAt: isToday ? nil : at(hour: 21, minute: 0, on: day, calendar: calendar),
+                createdAt: at(hour: 7, minute: 2, on: firstDay, calendar: calendar),
+                bumpLimit: .defaultForNewOneOffs,
+                bumpedFromID: previous?.id,
+                bumpCount: bumps,
+                firstAddedDayKey: firstKey,
+                firstAddedTitle: title
+            )
+            context.insert(next)
+            previous?.bumpedToID = next.id
+            previous = next
+            row = next
+        }
+        return row ?? Occurrence(list: .day, dayKey: key(today), title: title)
+    }
+
     /// 6 days ago, "Stretch" was bumped (done for that day) and finished the next day.
     private static func seedBump(of stretch: Occurrence, today: Date, context: ModelContext, calendar: Calendar) {
         guard
@@ -186,7 +280,19 @@ enum UITestHarness {
         stretch.bumpedToID = moved.id
     }
 
-    private static func seedToday(scenario: Scenario, items: [Item], today: Date, context: ModelContext, calendar: Calendar) {
+    /// Today's rows, plus the items added today: an evening routine (one done, one skipped, one open)
+    /// and two repeating day-list items, so all three lists and Edit Lists have content. Today also
+    /// has a bump ("Call the dentist"), so "N bumps this week" and today's ↻ always show.
+    /// Returns "Buy an alarm clock" (the bump sheet's row).
+    @discardableResult
+    private static func seedToday(
+        scenario: Scenario,
+        items: [Item],
+        today: Date,
+        now: Date,
+        context: ModelContext,
+        calendar: Calendar
+    ) -> Occurrence {
         let todayKey = key(today)
         let routineDoneCount = (scenario == .daily) ? items.count : 2
         for (order, item) in items.enumerated() {
@@ -201,28 +307,92 @@ enum UITestHarness {
             )
         }
 
-        let tasks: [(title: String, done: Bool, bumps: Int)] = [
-            ("Read 20 pages", true, 0),
-            ("Send the hut emails", false, 0),
-            ("Buy an alarm clock", false, 2),
-            ("Plan the week", false, 0),
+        let tasks: [(title: String, done: Bool)] = [
+            ("Read 20 pages", true),
+            ("Send the hut emails", false),
+            ("Plan the week", false),
         ]
         for (order, task) in tasks.enumerated() {
-            let firstAdded = calendar.date(byAdding: .day, value: -task.bumps, to: today) ?? today
             context.insert(
                 Occurrence(
                     list: .day,
                     dayKey: todayKey,
                     title: task.title,
-                    sortOrder: order,
+                    sortOrder: order < 2 ? order : 4,
                     state: task.done ? .done : .open,
                     completedAt: task.done ? at(hour: 9, minute: 30, on: today, calendar: calendar) : nil,
                     createdAt: at(hour: 7, minute: order, on: today, calendar: calendar),
-                    bumpLimit: .defaultForNewOneOffs,
-                    bumpCount: task.bumps,
-                    firstAddedDayKey: key(firstAdded)
+                    bumpLimit: .defaultForNewOneOffs
                 )
             )
+        }
+        let alarmClock = seedAlarmClockChain(today: today, context: context, calendar: calendar)
+
+        // Bumped today: today's row is "Bumped to tomorrow", tomorrow's copy is open.
+        let dentist = Occurrence(
+            list: .day,
+            dayKey: todayKey,
+            title: "Call the dentist",
+            sortOrder: 2,
+            state: .bumped,
+            completedAt: at(hour: 7, minute: 45, on: today, calendar: calendar),
+            createdAt: at(hour: 7, minute: 5, on: today, calendar: calendar)
+        )
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: today) ?? today
+        let dentistTomorrow = Occurrence(
+            list: .day,
+            dayKey: key(tomorrow),
+            title: "Call the dentist",
+            sortOrder: 0,
+            createdAt: at(hour: 7, minute: 45, on: today, calendar: calendar),
+            bumpedFromID: dentist.id,
+            bumpCount: 1,
+            firstAddedDayKey: todayKey,
+            firstAddedTitle: "Call the dentist"
+        )
+        dentist.bumpedToID = dentistTomorrow.id
+        context.insert(dentist)
+        context.insert(dentistTomorrow)
+
+        // Added today, so they have no history to judge.
+        let dayItems = [
+            Item(list: .day, title: "Check Now.md", sortOrder: 0, repeatRule: .daily, startDayKey: todayKey, createdAt: now),
+            Item(
+                list: .day,
+                title: "Gym",
+                sortOrder: 1,
+                repeatRule: .weekly(on: [
+                    calendar.component(.weekday, from: today),
+                    calendar.component(.weekday, from: calendar.date(byAdding: .day, value: 3, to: today) ?? today),
+                ]),
+                startDayKey: todayKey,
+                createdAt: now
+            ),
+        ]
+        let eveningItems = [
+            Item(list: .evening, title: "Tidy the kitchen", sortOrder: 0, repeatRule: .daily, startDayKey: todayKey, createdAt: now),
+            Item(list: .evening, title: "Lay out tomorrow's clothes", sortOrder: 1, repeatRule: .daily, startDayKey: todayKey, createdAt: now),
+            Item(list: .evening, title: "Read in bed", sortOrder: 2, repeatRule: .daily, startDayKey: todayKey, createdAt: now),
+        ]
+        for item in dayItems + eveningItems {
+            context.insert(item)
+        }
+        // The evening rows exist whatever today's weekday: tidy done, clothes skipped, reading open.
+        let eveningStates: [OccurrenceState] = [.done, .skipped, .open]
+        for (item, state) in zip(eveningItems, eveningStates) {
+            let row = ListService.makeOccurrence(for: item, scheduledOn: todayKey, on: todayKey, now: now, calendar: calendar)
+            row.state = state
+            row.completedAt = state == .done ? now : nil
+            context.insert(row)
+        }
+        return alarmClock
+    }
+
+    private static func contextualList(for list: ListKind) -> HomeModel.ContextualList {
+        switch list {
+        case .morning: return .morning
+        case .day: return .daily
+        case .evening: return .evening
         }
     }
 
