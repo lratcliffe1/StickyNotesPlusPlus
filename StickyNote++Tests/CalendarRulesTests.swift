@@ -141,6 +141,23 @@ final class CalendarRulesTests: XCTestCase {
         XCTAssertTrue(CalendarRules.plannedDays(rowDayKeys: [], schedules: [], from: "2026-10-31", through: "2026-10-01", calendar: munich).isEmpty)
     }
 
+    /// A daily item would put a dot on every future day: only one-offs and other repeats count.
+    func testEveryDayItemsGiveNoDot() {
+        let daily = ListRules.ItemSchedule(itemID: UUID(), rule: .daily, startDayKey: "2026-10-01", endDayKey: nil)
+        let everyDay = ListRules.ItemSchedule(itemID: UUID(), rule: .everyNDays(1), startDayKey: "2026-10-01", endDayKey: nil)
+        let everyOtherDay = ListRules.ItemSchedule(itemID: UUID(), rule: .everyNDays(2), startDayKey: "2026-10-12", endDayKey: nil)
+        let weekdays = ListRules.ItemSchedule(itemID: UUID(), rule: .weekdays, startDayKey: "2026-10-01", endDayKey: nil)
+
+        XCTAssertTrue(CalendarRules.plannedDays(rowDayKeys: [], schedules: [daily, everyDay], from: "2026-10-12", through: "2026-10-18",
+                                                calendar: munich).isEmpty)
+        XCTAssertEqual(CalendarRules.plannedDays(rowDayKeys: ["2026-10-13"], schedules: [daily], from: "2026-10-12", through: "2026-10-18",
+                                                 calendar: munich), ["2026-10-13"], "a one-off still does")
+        XCTAssertEqual(CalendarRules.plannedDays(rowDayKeys: [], schedules: [daily, everyOtherDay], from: "2026-10-12", through: "2026-10-18",
+                                                 calendar: munich), ["2026-10-12", "2026-10-14", "2026-10-16", "2026-10-18"])
+        XCTAssertEqual(CalendarRules.plannedDays(rowDayKeys: [], schedules: [weekdays], from: "2026-10-16", through: "2026-10-19",
+                                                 calendar: munich), ["2026-10-16", "2026-10-19"], "not the weekend")
+    }
+
     // MARK: - What a range must fetch
 
     func testFetchStartLooksBackTheLongestRepeatPeriod() {
@@ -222,6 +239,85 @@ final class CalendarRulesTests: XCTestCase {
             XCTAssertFalse(windowed.isEmpty)
         }
         XCTAssertNotNil(whole["2026-10-04"], "a miss from a September occurrence lands in October")
+    }
+
+    /// The same equivalence over two lists and a year and a half: a weekly item's bump chains (one
+    /// crossing into August, one left open across into October), an item deleted mid-period, a
+    /// yearly and an every-2-months item, and a morning deadline (a late finish is a miss).
+    func testWindowedDayLooksMatchTheWholeHistoryWithChainsEndsAndDeadlines() {
+        let math = DayMath(calendar: munich)
+        let today = "2026-10-20"
+        let yearly = ListRules.ItemSchedule(itemID: UUID(), rule: .yearly, startDayKey: "2025-03-05", endDayKey: nil)
+        let bimonthly = ListRules.ItemSchedule(itemID: UUID(), rule: .everyNMonths(2), startDayKey: "2025-04-10", endDayKey: nil)
+        let ended = ListRules.ItemSchedule(itemID: UUID(), rule: .weekly(on: [2]), startDayKey: "2025-03-03", endDayKey: "2026-09-16")
+        let wednesdays = ListRules.ItemSchedule(itemID: UUID(), rule: .weekly(on: [4]), startDayKey: "2025-03-05", endDayKey: nil)
+        let routine = ListRules.ItemSchedule(itemID: UUID(), rule: .daily, startDayKey: "2025-03-01", endDayKey: nil)
+        let daySchedules = [yearly, bimonthly, ended, wednesdays]
+        let chainStarts: Set<String> = ["2026-07-29", "2026-09-30"]
+
+        var dayRows: [FactRow] = []
+        var morningRows: [FactRow] = []
+        var day = "2025-03-01"
+        var index = 0
+        while day <= today {
+            let dayOfMonth = DayMath.parse(day)?.day ?? 1
+            index += 1
+            if dayOfMonth % 6 != 0 {
+                let late = dayOfMonth % 4 == 0
+                morningRows.append(FactRow(dayKey: day, itemID: routine.itemID, completedAt: TestCalendars.date(day, late ? 10 : 8),
+                                           state: dayOfMonth % 9 == 0 ? .open : .done, scheduledDayKey: day, periodEndDayKey: day))
+                for (offset, schedule) in daySchedules.enumerated()
+                where schedule.isActive(on: day) && schedule.rule.occurs(on: day, startDayKey: schedule.startDayKey, math: math)
+                    && !(schedule.itemID == wednesdays.itemID && chainStarts.contains(day)) {
+                    dayRows.append(FactRow(
+                        dayKey: day, itemID: schedule.itemID, state: (index + offset) % 3 == 0 ? .open : .done,
+                        scheduledDayKey: day,
+                        periodEndDayKey: schedule.rule.periodEnd(for: day, startDayKey: schedule.startDayKey, calendar: munich)
+                    ))
+                }
+                dayRows.append(FactRow(dayKey: day, state: dayOfMonth % 7 == 0 ? .skipped : .done))
+            }
+            day = math.adding(days: 1, to: day)
+        }
+        // Wednesday 29 July bumped to Saturday 1 August and done there; Wednesday 30 September
+        // bumped twice and left open on Friday 2 October, a miss on Sunday 4 October.
+        func chain(_ days: [String], last: OccurrenceState) {
+            let scheduled = days[0]
+            let periodEnd = wednesdays.rule.periodEnd(for: scheduled, startDayKey: wednesdays.startDayKey, calendar: munich)
+            for (position, key) in days.enumerated() {
+                dayRows.append(FactRow(dayKey: key, itemID: wednesdays.itemID, state: position == days.count - 1 ? last : .bumped,
+                                       scheduledDayKey: scheduled, periodEndDayKey: periodEnd))
+            }
+        }
+        chain(["2026-07-29", "2026-07-30", "2026-07-31", "2026-08-01"], last: .done)
+        chain(["2026-09-30", "2026-10-01", "2026-10-02"], last: .open)
+
+        let allSchedules = daySchedules + [routine]
+        let lists: [(name: String, rows: [FactRow], schedules: [ListRules.ItemSchedule], deadline: (String) -> Date?)] = [
+            ("day", dayRows, daySchedules, { _ in nil }),
+            ("morning", morningRows, [routine], { TestCalendars.date($0, 9) }),
+        ]
+        let windows = [("2025-12-01", "2025-12-31"), ("2026-08-01", "2026-08-31"), ("2026-09-14", "2026-09-27"), ("2026-10-01", today)]
+        var wholeLooks: [String: [String: ListRules.DayLook]] = [:]
+        for list in lists {
+            let whole = ListRules.dayLooks(occurrences: list.rows, schedules: list.schedules, missesBefore: today,
+                                           calendar: munich, deadline: list.deadline)
+            wholeLooks[list.name] = whole
+            for (start, end) in windows {
+                // As ListService does: the fetch looks back by every list's items, not just this one's.
+                let fetchStart = CalendarRules.fetchStart(for: start, schedules: allSchedules, calendar: munich)
+                let fetched = list.rows.filter { $0.dayKey >= fetchStart && $0.dayKey <= end }
+                let windowed = ListRules.dayLooks(occurrences: fetched, schedules: list.schedules, missesBefore: today,
+                                                  calendar: munich, window: fetchStart...end, deadline: list.deadline)
+                    .filter { $0.key >= start }
+                XCTAssertEqual(windowed, whole.filter { $0.key >= start && $0.key <= end }, "\(list.name) \(start)…\(end)")
+                XCTAssertFalse(windowed.isEmpty, "\(list.name) \(start)…\(end)")
+            }
+        }
+        XCTAssertEqual(wholeLooks["day"]?["2026-10-04"]?.status, .missed, "the open end of a chain is a miss on its period end")
+        XCTAssertEqual(wholeLooks["day"]?["2026-08-01"]?.status, .complete, "a chain finished across the month boundary")
+        XCTAssertEqual(wholeLooks["morning"]?["2026-10-08"]?.status, .missed, "finished at 10:00, after 09:00")
+        XCTAssertEqual(wholeLooks["morning"]?["2026-10-08"]?.completion.value, 1)
     }
 
     // MARK: - Accessibility

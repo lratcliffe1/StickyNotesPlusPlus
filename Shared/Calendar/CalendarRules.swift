@@ -118,8 +118,14 @@ enum CalendarRules {
         schedule.isActive(on: dayKey) && schedule.rule.occurs(on: dayKey, startDayKey: schedule.startDayKey, math: math)
     }
 
-    /// Days from `startKey` through `endKey` with something planned: a row exists (a one-off added
-    /// ahead, or a bumped copy), or a recurring item falls due.
+    /// Whether a rule falls due every day. Its days carry no news, so they get no future-day dot.
+    static func isEveryDay(_ rule: RepeatRule) -> Bool {
+        rule.kind == .daily || (rule.kind == .everyNDays && rule.interval == 1)
+    }
+
+    /// Days from `startKey` through `endKey` with something planned worth a dot: a row exists (a
+    /// one-off added ahead, or a copy bumped in), or a recurring item that isn't every-day falls due
+    /// (a daily item would put a dot on every day, so it doesn't count).
     static func plannedDays(
         rowDayKeys: Set<String>,
         schedules: [ListRules.ItemSchedule],
@@ -129,10 +135,11 @@ enum CalendarRules {
     ) -> Set<String> {
         guard startKey <= endKey else { return [] }
         let math = DayMath(calendar: calendar)
+        let telling = schedules.filter { !isEveryDay($0.rule) }
         var planned = Set(rowDayKeys.filter { $0 >= startKey && $0 <= endKey })
         var day = startKey
         while day <= endKey {
-            if !planned.contains(day), schedules.contains(where: { isDue($0, on: day, math: math) }) {
+            if !planned.contains(day), telling.contains(where: { isDue($0, on: day, math: math) }) {
                 planned.insert(day)
             }
             day = math.adding(days: 1, to: day)
@@ -177,14 +184,20 @@ enum CalendarRules {
 
     /// "Monday 12 October" in the calendar's locale.
     static func spokenDate(_ dayKey: String, calendar: Calendar) -> String {
+        formatted(dayKey, template: "EEEEdMMMM", calendar: calendar)
+    }
+
+    /// "October 2026": a month's title in the calendar's locale.
+    static func monthTitle(_ month: Month, calendar: Calendar) -> String {
+        formatted(month.firstDayKey, template: "MMMMyyyy", calendar: calendar)
+    }
+
+    /// A day key formatted from a localized template, at noon on that day.
+    static func formatted(_ dayKey: String, template: String, calendar: Calendar) -> String {
         let math = DayMath(calendar: calendar)
         guard let date = math.noon(dayKey) else { return dayKey }
-        let formatter = DateFormatter()
-        formatter.calendar = math.calendar
-        formatter.timeZone = math.calendar.timeZone
-        formatter.locale = calendar.locale ?? .current
-        formatter.setLocalizedDateFormatFromTemplate("EEEEdMMMM")
-        return formatter.string(from: date)
+        return FormatterCache.shared.formatter(template: template, calendar: math.calendar, locale: calendar.locale ?? .current)
+            .string(from: date)
     }
 
     static func listName(_ list: ListKind) -> String {
@@ -209,6 +222,29 @@ enum CalendarRules {
             }
             return "missed"
         }
+    }
+}
+
+/// Date formatters are costly to make and the calendar formats every day cell on every render:
+/// one per template, locale and time zone, made once.
+final class FormatterCache {
+    static let shared = FormatterCache()
+
+    private var formatters: [String: DateFormatter] = [:]
+    private let lock = NSLock()
+
+    func formatter(template: String, calendar: Calendar, locale: Locale) -> DateFormatter {
+        let key = "\(template)|\(locale.identifier)|\(calendar.timeZone.identifier)|\(calendar.identifier)"
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = formatters[key] { return cached }
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.timeZone = calendar.timeZone
+        formatter.locale = locale
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        formatters[key] = formatter
+        return formatter
     }
 }
 
