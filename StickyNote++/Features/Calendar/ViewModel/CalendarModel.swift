@@ -5,8 +5,8 @@ import os
 
 /// What the calendar reads, one month at a time (step 4). Nothing is fetched for a month until it
 /// scrolls into view; each month is then fetched once (a day-key range, `ListService.dayLooks` and
-/// `ListService.plannedDayKeys`) and kept while the calendar is open. Read-only: tapping a day hands
-/// it back to Home.
+/// `ListService.plannedDayKeys`) and kept until `reload` (foreground, a new day). Read-only: tapping
+/// a day hands it back to Home.
 @MainActor
 final class CalendarModel: ObservableObject {
     /// One month's days, as the calendar draws them.
@@ -18,27 +18,35 @@ final class CalendarModel: ObservableObject {
         var plannedDays: Set<String> = []
     }
 
-    let todayKey: String
     let calendar: Calendar
+    @Published private(set) var todayKey: String
     /// The calendar's months: from the first entry's month (or the current one, if earlier) through
     /// the next 12 months.
-    let months: [CalendarRules.Month]
+    @Published private(set) var months: [CalendarRules.Month] = []
     /// The lists in use (a day's circle has a segment for each) and the first entry's day (days
     /// before it are plain).
-    let lists: [ListKind]
-    let firstEntryDayKey: String?
+    @Published private(set) var lists: [ListKind] = []
+    @Published private(set) var firstEntryDayKey: String?
     @Published private(set) var loaded: [String: MonthData] = [:]
+    /// Bumped by each `reload`, so the months on screen fetch again.
+    @Published private(set) var generation = 0
 
-    private let items: [Item]
-    private let history: DayRulesHistory
+    private let defaults: UserDefaults
+    private var items: [Item] = []
+    private var history = DayRulesHistory()
 
     init(now: Date, defaults: UserDefaults, context: ModelContext, calendar: Calendar = .current) {
         self.calendar = calendar
-        let todayKey = HomeModel.dayKey(for: now, calendar: calendar)
-        self.todayKey = todayKey
-        var lists: [ListKind] = []
-        var firstEntryDayKey: String?
-        var items: [Item] = []
+        self.defaults = defaults
+        todayKey = HomeModel.dayKey(for: now, calendar: calendar)
+        reload(now: now, context: context)
+    }
+
+    /// Reads everything again and forgets the fetched months (they refetch as they show): on
+    /// opening, on returning to the foreground (the widget may have written) and when the day
+    /// changes, so "today" and the months never go stale while the calendar is open.
+    func reload(now: Date, context: ModelContext) {
+        todayKey = HomeModel.dayKey(for: now, calendar: calendar)
         do {
             lists = try ListService.listsInUse(context: context)
             firstEntryDayKey = try ListService.firstEntryDayKey(context: context)
@@ -46,12 +54,11 @@ final class CalendarModel: ObservableObject {
         } catch {
             AppLogger.persistence.error("Calendar setup failed: \(error.localizedDescription, privacy: .public)")
         }
-        self.lists = lists
-        self.firstEntryDayKey = firstEntryDayKey
-        self.items = items
         // Each day is judged by its own stored rules; today by the settings if it has none yet.
         history = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey)
         months = CalendarRules.months(firstEntryDayKey: firstEntryDayKey, todayKey: todayKey)
+        loaded = [:]
+        generation += 1
     }
 
     var currentMonth: CalendarRules.Month? {

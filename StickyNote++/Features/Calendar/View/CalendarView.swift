@@ -1,3 +1,4 @@
+import Combine
 import SwiftData
 import SwiftUI
 
@@ -8,10 +9,13 @@ import SwiftUI
 /// Tapping a day opens it on Home. Each month is fetched only once it scrolls into view.
 struct CalendarView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @StateObject private var model: CalendarModel
     @ScaledMetric(relativeTo: .footnote) private var scaledDiameter: CGFloat = 36
 
     let selectedDay: Date
+    /// Home's clock (the screenshot harness fixes it).
+    let now: () -> Date
     let onSelectDay: (Date) -> Void
     /// The month shown first, as months after the current one (the screenshot harness's
     /// `-uiCalendarMonth`); 0 in the app.
@@ -20,14 +24,15 @@ struct CalendarView: View {
     @MainActor
     init(
         selectedDay: Date,
-        now: Date,
+        now: @escaping () -> Date,
         defaults: UserDefaults,
         context: ModelContext,
         initialMonthOffset: Int = 0,
         onSelectDay: @escaping (Date) -> Void
     ) {
-        _model = StateObject(wrappedValue: CalendarModel(now: now, defaults: defaults, context: context))
+        _model = StateObject(wrappedValue: CalendarModel(now: now(), defaults: defaults, context: context))
         self.selectedDay = selectedDay
+        self.now = now
         self.initialMonthOffset = initialMonthOffset
         self.onSelectDay = onSelectDay
     }
@@ -49,7 +54,8 @@ struct CalendarView: View {
                             onSelect: select
                         )
                         .id(month.id)
-                        .onAppear {
+                        // On appearing, and again after each reload while on screen.
+                        .task(id: model.generation) { @MainActor in
                             model.load(month, context: modelContext)
                         }
                     }
@@ -67,6 +73,19 @@ struct CalendarView: View {
                     }
                 }
             }
+        }
+        // Back from the background (the widget may have written) or a new day: read again.
+        // Deferred a turn so Home's own foreground sync (it refreshes the shared context) runs first.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            DispatchQueue.main.async { model.reload(now: now(), context: modelContext) }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
+                .merge(with: NotificationCenter.default.publisher(for: UIApplication.significantTimeChangeNotification))
+                .receive(on: DispatchQueue.main)
+        ) { _ in
+            model.reload(now: now(), context: modelContext)
         }
         .background(AppTheme.pageBackground.ignoresSafeArea())
         .navigationTitle("Calendar")
@@ -144,14 +163,7 @@ private struct CalendarMonthSection: View {
     }
 
     private var title: String {
-        let math = DayMath(calendar: calendar)
-        guard let date = math.noon(month.firstDayKey) else { return month.id }
-        let formatter = DateFormatter()
-        formatter.calendar = math.calendar
-        formatter.timeZone = math.calendar.timeZone
-        formatter.locale = calendar.locale ?? .current
-        formatter.setLocalizedDateFormatFromTemplate("MMMMyyyy")
-        return formatter.string(from: date)
+        CalendarRules.monthTitle(month, calendar: calendar)
     }
 
     private func dayCell(_ dayKey: String) -> some View {
@@ -257,7 +269,7 @@ private struct CalendarDayCell: View {
     return NavigationStack {
         CalendarView(
             selectedDay: Date(),
-            now: Date(),
+            now: { Date() },
             defaults: .standard,
             context: container.mainContext,
             onSelectDay: { _ in }
