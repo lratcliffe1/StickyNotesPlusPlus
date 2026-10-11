@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// What can go wrong talking to GitHub, already sorted into what the status line says.
 enum VaultError: Error, Equatable {
