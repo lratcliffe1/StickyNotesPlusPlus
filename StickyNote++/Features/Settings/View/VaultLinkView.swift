@@ -182,8 +182,11 @@ struct VaultLinkView: View {
             }
 
             if vault.hasToken {
-                Button("Remove token", role: .destructive) {
+                // A trash shape as well as the red, so it reads as destructive in greyscale.
+                Button(role: .destructive) {
                     isConfirmingRemoval = true
+                } label: {
+                    Label("Remove token", systemImage: "trash")
                 }
             }
         } header: {
