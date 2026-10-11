@@ -10,7 +10,7 @@ protocol HomeRepository {
     func streakState(
         for list: ListKind,
         through anchorKey: String,
-        morningMode: HomeModel.MorningMode,
+        history: DayRulesHistory,
         context: ModelContext
     ) throws -> HomeModel.StreakState
     /// How each day through `endKey` looks for a list (same rules as the streak).
@@ -18,7 +18,7 @@ protocol HomeRepository {
         for list: ListKind,
         through endKey: String,
         todayKey: String,
-        morningMode: HomeModel.MorningMode,
+        history: DayRulesHistory,
         context: ModelContext
     ) throws -> [String: ListRules.DayLook]
     /// Days from `startKey` through `endKey` with a bump on any list (the ↻ mark).
@@ -46,20 +46,20 @@ struct SwiftDataHomeRepository: HomeRepository {
     func streakState(
         for list: ListKind,
         through anchorKey: String,
-        morningMode: HomeModel.MorningMode,
+        history: DayRulesHistory,
         context: ModelContext
     ) throws -> HomeModel.StreakState {
-        try ListService.streakState(for: list, through: anchorKey, morningMode: morningMode, context: context, calendar: .current)
+        try ListService.streakState(for: list, through: anchorKey, history: history, context: context, calendar: .current)
     }
 
     func dayLooks(
         for list: ListKind,
         through endKey: String,
         todayKey: String,
-        morningMode: HomeModel.MorningMode,
+        history: DayRulesHistory,
         context: ModelContext
     ) throws -> [String: ListRules.DayLook] {
-        try ListService.dayLooks(for: list, through: endKey, todayKey: todayKey, morningMode: morningMode, context: context, calendar: .current)
+        try ListService.dayLooks(for: list, through: endKey, todayKey: todayKey, history: history, context: context, calendar: .current)
     }
 
     func bumpedDayKeys(from startKey: String, through endKey: String, context: ModelContext) throws -> Set<String> {

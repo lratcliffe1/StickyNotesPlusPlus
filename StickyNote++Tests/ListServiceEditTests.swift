@@ -153,9 +153,9 @@ final class ListServiceEditTests: XCTestCase {
             try ListService.complete(try rows(on: key)[0], at: TestCalendars.date(key, 8), context: context)
         }
         try ensure("2026-10-12")
-        let cutoff = HomeModel.MorningMode.cutoff(time: DateComponents(hour: 9, minute: 0))
+        let history = DayRulesHistory() // nothing stored: every day keeps the old 09:00 cutoff
         func streak() throws -> HomeModel.StreakState {
-            try ListService.streakState(for: .morning, through: "2026-10-12", morningMode: cutoff, context: context, calendar: munich)
+            try ListService.streakState(for: .morning, through: "2026-10-12", history: history, context: context, calendar: munich)
         }
         let before = try streak()
 

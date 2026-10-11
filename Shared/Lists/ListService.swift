@@ -18,12 +18,26 @@ enum ListService {
         calendar: Calendar = .current,
         defaults: UserDefaults = SharedPersistence.sharedDefaults
     ) throws {
+        recordTodaysRules(now: now, calendar: calendar, defaults: defaults)
         try V2Backfill.runIfNeeded(context: context, defaults: defaults, now: now, calendar: calendar)
         try ensureOccurrences(on: dayKey(for: now, calendar: calendar), context: context, now: now, calendar: calendar)
     }
 
     static func dayKey(for date: Date, calendar: Calendar = .current) -> String {
         HomeModel.dayKey(for: date, calendar: calendar)
+    }
+
+    // MARK: - Each day's rules
+
+    /// Stores today's flip-time rules from the settings, unless today already has them: each day
+    /// keeps the rules it had when first read (DECISIONS.md, "Each day keeps the cutoff it had").
+    static func recordTodaysRules(now: Date = Date(), calendar: Calendar = .current, defaults: UserDefaults) {
+        DayRulesStore.record(AppSettings.currentRules(in: defaults), for: dayKey(for: now, calendar: calendar), in: defaults)
+    }
+
+    /// After a settings change: today takes the new rules too (today isn't over); past days keep theirs.
+    static func applySettingsToToday(now: Date = Date(), calendar: Calendar = .current, defaults: UserDefaults) {
+        DayRulesStore.overwrite(AppSettings.currentRules(in: defaults), for: dayKey(for: now, calendar: calendar), in: defaults)
     }
 
     /// Creates the occurrences of every item due on `dayKey` that aren't there yet. Safe to call
@@ -150,12 +164,12 @@ enum ListService {
         return all.filter { $0.isActive(on: dayKey) }
     }
 
-    /// One list's streak through `anchorKey` (DECISIONS.md, "streak rules"). The morning list keeps
-    /// its cutoff; the day and evening lists count until midnight.
+    /// One list's streak through `anchorKey` (DECISIONS.md, "streak rules"). The morning list is
+    /// judged by each day's own deadline (`history`); the day and evening lists count until midnight.
     static func streakState(
         for list: ListKind,
         through anchorKey: String,
-        morningMode: HomeModel.MorningMode,
+        history: DayRulesHistory,
         context: ModelContext,
         calendar: Calendar = .current
     ) throws -> HomeModel.StreakState {
@@ -163,7 +177,7 @@ enum ListService {
         let schedules = try self.schedules(for: list, context: context)
         return ListRules.streakState(
             through: anchorKey, occurrences: rows, schedules: schedules, calendar: calendar,
-            deadline: deadline(for: list, morningMode: morningMode, calendar: calendar)
+            deadline: deadline(for: list, history: history, calendar: calendar)
         )
     }
 
@@ -173,7 +187,7 @@ enum ListService {
         for list: ListKind,
         through endKey: String,
         todayKey: String,
-        morningMode: HomeModel.MorningMode,
+        history: DayRulesHistory,
         context: ModelContext,
         calendar: Calendar = .current
     ) throws -> [String: ListRules.DayLook] {
@@ -182,15 +196,17 @@ enum ListService {
             schedules: try schedules(for: list, context: context),
             missesBefore: todayKey,
             calendar: calendar,
-            deadline: deadline(for: list, morningMode: morningMode, calendar: calendar)
+            deadline: deadline(for: list, history: history, calendar: calendar)
         )
     }
 
-    /// The morning list's cutoff for a day; the other lists count until midnight (nil).
-    static func deadline(for list: ListKind, morningMode: HomeModel.MorningMode, calendar: Calendar) -> (String) -> Date? {
+    /// A list's streak deadline for a day: the morning's comes from that day's own rules (its set
+    /// time, or 12:00 with no set time; 09:00 before this build); the day and evening lists count
+    /// until midnight (nil).
+    static func deadline(for list: ListKind, history: DayRulesHistory, calendar: Calendar) -> (String) -> Date? {
         { key in
             guard list == .morning, let day = HomeModel.date(fromDayKey: key, calendar: calendar) else { return nil }
-            return HomeModel.morningDeadline(for: day, mode: morningMode, calendar: calendar)
+            return history.rules(for: key).morningDeadline(on: day, calendar: calendar)
         }
     }
 
