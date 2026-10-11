@@ -61,6 +61,7 @@ struct BumpSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Bump", action: bump)
+                        .fontWeight(.semibold)
                         .disabled(bumpedTitle == nil)
                 }
             }

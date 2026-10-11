@@ -75,12 +75,12 @@ extension HomeViewModel {
         }
     }
 
-    /// Bumps this week up to today (the real today, whichever day is on screen).
-    func bumpCountThisWeek(context: ModelContext) -> Int {
+    /// Bump actions on days from `startKey` through `endKey`, all lists.
+    func bumpCount(from startKey: String, through endKey: String, context: ModelContext) -> Int {
         do {
-            return try repository.bumpsThisWeek(todayKey: HomeModel.dayKey(for: now), context: context)
+            return try repository.bumpCount(from: startKey, through: endKey, context: context)
         } catch {
-            AppLogger.persistence.error("Bumps this week failed: \(error.localizedDescription, privacy: .public)")
+            AppLogger.persistence.error("Bump count failed: \(error.localizedDescription, privacy: .public)")
             return 0
         }
     }

@@ -65,7 +65,7 @@ struct HomeStickyNoteCard: View {
                 .stroke(AppTheme.cardBorder, lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.1), radius: 18, y: 8)
-        .sheet(item: $vm.activeSheet) { sheet in
+        .sheet(item: $vm.activeSheet, onDismiss: { vm.revertUnsetDeadlineChoice() }) { sheet in
             sheetContent(sheet)
         }
         .confirmationDialog(
@@ -264,22 +264,26 @@ struct HomeStickyNoteCard: View {
             }
         }
 
-        Button {
-            if let itemID = occurrence.itemID {
-                vm.activeSheet = .editItem(itemID)
-            } else {
-                vm.activeSheet = .editOneOff(occurrence.id)
+        // A row whose item has ended (deleted, or replaced by a repeat change) has no Edit… or
+        // Delete: the old item isn't the one to change, and its replacement can't be told apart.
+        if vm.canEditOrDelete(occurrence) {
+            Button {
+                if let itemID = occurrence.itemID {
+                    vm.activeSheet = .editItem(itemID)
+                } else {
+                    vm.activeSheet = .editOneOff(occurrence.id)
+                }
+            } label: {
+                Label("Edit…", systemImage: "pencil")
             }
-        } label: {
-            Label("Edit…", systemImage: "pencil")
-        }
 
-        Divider()
+            Divider()
 
-        Button(role: .destructive) {
-            pendingDeletion = DeletionRequest(occurrence)
-        } label: {
-            Label("Delete", systemImage: "trash")
+            Button(role: .destructive) {
+                pendingDeletion = DeletionRequest(occurrence)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 
@@ -420,7 +424,7 @@ struct HomeStickyNoteCard: View {
             }
         case let .editItem(itemID):
             if let item = try? ListService.item(id: itemID, context: modelContext) {
-                ItemEditorView(mode: .edit(item), now: vm.now) {
+                ItemEditorView(mode: .edit(item), now: { vm.now }) {
                     vm.itemsDidChange(context: modelContext)
                 }
             } else {

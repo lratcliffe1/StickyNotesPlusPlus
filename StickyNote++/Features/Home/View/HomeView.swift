@@ -12,16 +12,21 @@ struct HomeView: View {
     @State private var isShowingCalendar = false
     @State private var isShowingSettings = false
     @State private var isShowingAddDailyTask = false
-    @State private var isShowingEditLists = false
     @State private var didRunLaunch = false
+#if DEBUG
+    @State private var isShowingEditLists = false
+#endif
     @State private var dayTransitionDirection: DayTransitionDirection = .next
     @State private var isTaskRowSwipeActive = false
 
     private let onOpenCalendar: () -> Void
     private let refreshOnAppear: Bool
     private let initialDestination: HomeInitialDestination
-    private let editListsLaunch: EditListsLaunch?
-    private let initialSheet: HomeSheet?
+#if DEBUG
+    /// Screenshot harness only.
+    private var editListsLaunch: EditListsLaunch?
+    private var initialSheet: HomeSheet?
+#endif
     private let calendarTransitionSourceID = "home-calendar-header"
 
     @MainActor
@@ -29,17 +34,28 @@ struct HomeView: View {
         viewModel: HomeViewModel? = nil,
         refreshOnAppear: Bool = true,
         initialDestination: HomeInitialDestination = .home,
-        editListsLaunch: EditListsLaunch? = nil,
-        initialSheet: HomeSheet? = nil,
         onOpenCalendar: @escaping () -> Void = {}
     ) {
         _vm = StateObject(wrappedValue: viewModel ?? HomeViewModel())
         self.refreshOnAppear = refreshOnAppear
         self.initialDestination = initialDestination
-        self.editListsLaunch = editListsLaunch
-        self.initialSheet = initialSheet
         self.onOpenCalendar = onOpenCalendar
     }
+
+#if DEBUG
+    /// Screenshot harness only: Home plus Edit Lists or a sheet opened at launch.
+    @MainActor
+    init(
+        viewModel: HomeViewModel,
+        initialDestination: HomeInitialDestination,
+        editListsLaunch: EditListsLaunch?,
+        initialSheet: HomeSheet?
+    ) {
+        self.init(viewModel: viewModel, initialDestination: initialDestination)
+        self.editListsLaunch = editListsLaunch
+        self.initialSheet = initialSheet
+    }
+#endif
 
     var body: some View {
         NavigationStack {
@@ -88,6 +104,7 @@ struct HomeView: View {
                 case .settings:
                     isShowingSettings = true
                 }
+#if DEBUG
                 if editListsLaunch != nil {
                     isShowingEditLists = true
                 }
@@ -95,6 +112,7 @@ struct HomeView: View {
                     try? await Task.sleep(for: .milliseconds(400))
                     vm.activeSheet = initialSheet
                 }
+#endif
             }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
@@ -127,21 +145,19 @@ struct HomeView: View {
                 calendarDestination
             }
             .navigationDestination(isPresented: $isShowingSettings) {
-                SettingsView(defaults: vm.defaults, now: vm.now) {
+                SettingsView(defaults: vm.defaults, now: { vm.now }) {
                     // Re-read straight away: Edit Lists may have deleted rows Home still holds.
                     vm.refresh(context: modelContext)
                 }
             }
+#if DEBUG
             .navigationDestination(isPresented: $isShowingEditLists) {
-                EditListsView(
-                    initialList: editListsLaunch?.list ?? .morning,
-                    now: vm.now,
-                    autoOpenItemTitle: editListsLaunch?.openItemTitle,
-                    autoShowsRepeat: editListsLaunch?.showsRepeat ?? false
-                ) {
+                EditListsView(initialList: editListsLaunch?.list ?? .morning, now: { vm.now }) {
                     vm.refresh(context: modelContext)
                 }
+                .autoOpening(itemTitled: editListsLaunch?.openItemTitle, showsRepeat: editListsLaunch?.showsRepeat ?? false)
             }
+#endif
             .navigationDestination(isPresented: $isShowingAddDailyTask) {
                 AddDailyTaskView()
             }
@@ -231,7 +247,7 @@ struct HomeView: View {
                 isDailyTaskStreakFrozen: vm.isDailyTaskStreakFrozen,
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
-                bumpsThisWeek: vm.bumpsThisWeek,
+                bumpsInSevenDays: vm.bumpsInSevenDays,
                 onTap: openCalendar
             )
             .frame(maxWidth: .infinity)
@@ -244,7 +260,7 @@ struct HomeView: View {
                 isDailyTaskStreakFrozen: vm.isDailyTaskStreakFrozen,
                 sevenDayProgress: vm.sevenDayProgress,
                 selectedDay: vm.selectedDay,
-                bumpsThisWeek: vm.bumpsThisWeek,
+                bumpsInSevenDays: vm.bumpsInSevenDays,
                 onTap: openCalendar
             )
             .frame(maxWidth: .infinity)
@@ -358,6 +374,15 @@ struct HomeView: View {
     }
 
     private func handleDeepLink(_ url: URL) {
+        // The widget's bump button with Retype to bump on: open today's bump sheet for that row.
+        if let id = BumpDeepLink.occurrenceID(from: url) {
+            isShowingCalendar = false
+            isShowingSettings = false
+            isShowingAddDailyTask = false
+            vm.goToToday(context: modelContext)
+            vm.openBumpSheet(for: id, context: modelContext)
+            return
+        }
         guard isAddDailyTaskDeepLink(url) else { return }
         isShowingAddDailyTask = true
     }
@@ -380,6 +405,7 @@ enum HomeInitialDestination: String {
     case settings
 }
 
+#if DEBUG
 /// Edit Lists pushed when Home first appears, on a given list (screenshot harness only).
 struct EditListsLaunch {
     let list: ListKind
@@ -387,6 +413,7 @@ struct EditListsLaunch {
     var openItemTitle: String?
     var showsRepeat = false
 }
+#endif
 
 private enum DayTransitionDirection {
     case previous

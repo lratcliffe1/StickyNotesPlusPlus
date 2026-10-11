@@ -43,9 +43,8 @@ extension HomeViewModel {
         // The same day looks the streak uses (ListRules.dayLooks); a day absent from them is neutral.
         let morningLooks = dayLooks(for: .morning, through: endKey, context: context)
         let dailyLooks = dayLooks(for: .day, through: endKey, context: context)
-        let bumpedDays = bumpedDayKeys(
-            from: HomeModel.dayKey(for: startDay, calendar: calendar), through: endKey, context: context
-        )
+        let startKey = HomeModel.dayKey(for: startDay, calendar: calendar)
+        let bumpedDays = bumpedDayKeys(from: startKey, through: endKey, context: context)
 
         sevenDayProgress = (0..<progressWindowDays).compactMap { offset in
             guard let dayRaw = calendar.date(byAdding: .day, value: offset, to: startDay) else { return nil }
@@ -58,7 +57,8 @@ extension HomeViewModel {
                 hasBump: bumpedDays.contains(key)
             )
         }
-        bumpsThisWeek = bumpCountThisWeek(context: context)
+        // The same seven days the ring draws, so the count matches the ↻ marks on show.
+        bumpsInSevenDays = bumpCount(from: startKey, through: endKey, context: context)
     }
 
     private struct ListStreaks {

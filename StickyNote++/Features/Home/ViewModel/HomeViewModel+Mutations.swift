@@ -100,7 +100,7 @@ extension HomeViewModel {
     func skip(_ occurrence: Occurrence, context: ModelContext) {
         guard canComplete(day: selectedDay), occurrence.isRepeating else { return }
         write("Skip", context: context) {
-            _ = try ListService.skip(occurrence, context: context)
+            _ = try ListService.skip(occurrence, todayKey: HomeModel.dayKey(for: now), context: context)
         }
         finishMutation(context: context)
     }
@@ -108,7 +108,7 @@ extension HomeViewModel {
     func unskip(_ occurrence: Occurrence, context: ModelContext) {
         guard canComplete(day: selectedDay) else { return }
         write("Undo skip", context: context) {
-            _ = try ListService.unskip(occurrence, context: context)
+            _ = try ListService.unskip(occurrence, todayKey: HomeModel.dayKey(for: now), context: context)
         }
         finishMutation(context: context)
     }
@@ -124,7 +124,7 @@ extension HomeViewModel {
                     try ListService.deleteItem(item, todayKey: todayKey, context: context)
                 }
             } else {
-                _ = try ListService.deleteOneOff(occurrence, context: context)
+                _ = try ListService.deleteOneOff(occurrence, todayKey: todayKey, context: context)
             }
         }
         finishMutation(context: context)
@@ -140,7 +140,10 @@ extension HomeViewModel {
     ) {
         guard canManage(day: selectedDay) else { return }
         write("Edit one-off", context: context) {
-            _ = try ListService.editOneOff(occurrence, title: title, bumpLimit: bumpLimit, deadlineDayKey: deadlineDayKey, context: context)
+            _ = try ListService.editOneOff(
+                occurrence, title: title, bumpLimit: bumpLimit, deadlineDayKey: deadlineDayKey,
+                todayKey: HomeModel.dayKey(for: now), context: context
+            )
         }
         finishMutation(context: context)
     }

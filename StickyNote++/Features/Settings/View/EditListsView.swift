@@ -18,11 +18,14 @@ struct EditListsView: View {
         }
     }
 
-    let now: Date
-    /// Screenshot harness only: open this item's editor (and its repeat picker) on appear.
-    var autoOpenItemTitle: String?
-    var autoShowsRepeat = false
+    /// The current time, read at each change (not when the screen opened).
+    let now: () -> Date
     var onChange: () -> Void = {}
+#if DEBUG
+    /// Screenshot harness only: open this item's editor (and its repeat picker) on appear.
+    private var autoOpenItemTitle: String?
+    private var autoShowsRepeat = false
+#endif
 
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Item.sortOrder) private var allItems: [Item]
@@ -33,24 +36,30 @@ struct EditListsView: View {
 
     init(
         initialList: ListKind = .morning,
-        now: Date = Date(),
-        autoOpenItemTitle: String? = nil,
-        autoShowsRepeat: Bool = false,
+        now: @escaping () -> Date = { Date() },
         onChange: @escaping () -> Void = {}
     ) {
         _list = State(initialValue: initialList)
         self.now = now
-        self.autoOpenItemTitle = autoOpenItemTitle
-        self.autoShowsRepeat = autoShowsRepeat
         self.onChange = onChange
     }
+
+#if DEBUG
+    /// Screenshot harness only.
+    func autoOpening(itemTitled title: String?, showsRepeat: Bool) -> EditListsView {
+        var copy = self
+        copy.autoOpenItemTitle = title
+        copy.autoShowsRepeat = showsRepeat
+        return copy
+    }
+#endif
 
     private var items: [Item] {
         allItems.filter { $0.list == list && $0.endDayKey == nil }
     }
 
     private var todayKey: String {
-        HomeModel.dayKey(for: now)
+        HomeModel.dayKey(for: now())
     }
 
     var body: some View {
@@ -118,12 +127,7 @@ struct EditListsView: View {
             case let .add(list):
                 ItemEditorView(mode: .add(list), now: now, onSaved: onChange)
             case let .edit(item):
-                ItemEditorView(
-                    mode: .edit(item),
-                    now: now,
-                    showsRepeatOnAppear: autoShowsRepeat && item.title == autoOpenItemTitle,
-                    onSaved: onChange
-                )
+                editor(for: item)
             }
         }
         .confirmationDialog(
@@ -138,6 +142,7 @@ struct EditListsView: View {
         } message: { _ in
             Text("Earlier days keep it.")
         }
+#if DEBUG
         .task {
             guard !didAutoOpen, let title = autoOpenItemTitle else { return }
             didAutoOpen = true
@@ -146,6 +151,17 @@ struct EditListsView: View {
                 editor = .edit(item)
             }
         }
+#endif
+    }
+
+    private func editor(for item: Item) -> ItemEditorView {
+        let view = ItemEditorView(mode: .edit(item), now: now, onSaved: onChange)
+#if DEBUG
+        if autoShowsRepeat, item.title == autoOpenItemTitle {
+            return view.showingRepeatOnAppear()
+        }
+#endif
+        return view
     }
 
     private var listName: String {
@@ -173,7 +189,7 @@ struct EditListsView: View {
 
     private func delete(_ item: Item) {
         perform("Delete item") {
-            try ListService.deleteItem(item, todayKey: todayKey, context: modelContext)
+            _ = try ListService.deleteItem(item, todayKey: todayKey, context: modelContext)
         }
     }
 

@@ -17,10 +17,13 @@ struct ItemEditorView: View {
     }
 
     let mode: Mode
-    let now: Date
-    /// Opens straight onto the repeat picker (the screenshot harness).
-    var showsRepeatOnAppear = false
+    /// The current time, read when saving (so a sheet left open past midnight uses the new day).
+    let now: () -> Date
     var onSaved: () -> Void = {}
+#if DEBUG
+    /// Screenshot harness only: open straight onto the repeat picker.
+    private var showsRepeatOnAppear = false
+#endif
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -31,10 +34,9 @@ struct ItemEditorView: View {
     @State private var path: [Route] = []
     @State private var isConfirmingDelete = false
 
-    init(mode: Mode, now: Date, showsRepeatOnAppear: Bool = false, onSaved: @escaping () -> Void = {}) {
+    init(mode: Mode, now: @escaping () -> Date, onSaved: @escaping () -> Void = {}) {
         self.mode = mode
         self.now = now
-        self.showsRepeatOnAppear = showsRepeatOnAppear
         self.onSaved = onSaved
         switch mode {
         case .add:
@@ -57,7 +59,7 @@ struct ItemEditorView: View {
     }
 
     private var todayKey: String {
-        HomeModel.dayKey(for: now)
+        HomeModel.dayKey(for: now())
     }
 
     private var startDayKey: String {
@@ -102,8 +104,10 @@ struct ItemEditorView: View {
 
                 if item != nil {
                     Section {
-                        Button("Delete Item", role: .destructive) {
+                        Button(role: .destructive) {
                             isConfirmingDelete = true
+                        } label: {
+                            Label("Delete Item", systemImage: "trash")
                         }
                     } footer: {
                         Text("It stops from today on. Earlier days keep it.")
@@ -121,6 +125,7 @@ struct ItemEditorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(item == nil ? "Add" : "Save", action: save)
+                        .fontWeight(.semibold)
                         .disabled(trimmedTitle.isEmpty)
                 }
             }
@@ -133,13 +138,24 @@ struct ItemEditorView: View {
             } message: {
                 Text("Earlier days keep it.")
             }
+#if DEBUG
             .onAppear {
                 if showsRepeatOnAppear, path.isEmpty {
                     path = [.repeatPicker]
                 }
             }
+#endif
         }
     }
+
+#if DEBUG
+    /// Screenshot harness only.
+    func showingRepeatOnAppear() -> ItemEditorView {
+        var copy = self
+        copy.showsRepeatOnAppear = true
+        return copy
+    }
+#endif
 
     /// The limit to save. Daily repeats can't be bumped, so their limit is kept as it was.
     private var bumpLimit: BumpLimit {
@@ -155,12 +171,12 @@ struct ItemEditorView: View {
             case let .add(list):
                 _ = try ListService.addItem(
                     list: list, title: trimmedTitle, rule: rule, defaultBumpLimit: bumpLimit,
-                    now: now, context: modelContext
+                    now: now(), context: modelContext
                 )
             case let .edit(item):
                 _ = try ListService.updateItem(
                     item, title: trimmedTitle, rule: rule, bumpLimit: bumpLimit,
-                    now: now, context: modelContext
+                    now: now(), context: modelContext
                 )
             }
         }
@@ -169,7 +185,7 @@ struct ItemEditorView: View {
     private func delete() {
         guard let item else { return }
         perform("Delete item") {
-            try ListService.deleteItem(item, todayKey: todayKey, context: modelContext)
+            _ = try ListService.deleteItem(item, todayKey: todayKey, context: modelContext)
         }
     }
 

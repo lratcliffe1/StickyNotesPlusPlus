@@ -4,13 +4,13 @@ import SwiftUI
 /// Settings hub: Edit Lists, adding a task on another day, and Retype to bump.
 /// (Step 3 turns this into the full grouped list from DECISIONS.md.)
 struct SettingsView: View {
-    let now: Date
+    let now: () -> Date
     var onListsChanged: () -> Void = {}
     @AppStorage private var retypeToBump: Bool
 
     init(
         defaults: UserDefaults = SharedPersistence.sharedDefaults,
-        now: Date = Date(),
+        now: @escaping () -> Date = { Date() },
         onListsChanged: @escaping () -> Void = {}
     ) {
         self.now = now
@@ -44,12 +44,16 @@ struct SettingsView: View {
                 Toggle(isOn: $retypeToBump) {
                     Label("Retype to Bump", systemImage: "keyboard")
                 }
+                // The widget's bump button follows this setting.
+                .onChange(of: retypeToBump) { _, _ in
+                    TaskWidgetReloader.reloadTopTasksWidget()
+                }
             } header: {
                 Text("Bumping")
             } footer: {
                 Text(retypeToBump
-                     ? "On: to bump a task to tomorrow you type it again (you can change it)."
-                     : "Off: the bump sheet fills in the title; you just confirm.")
+                     ? "On: to bump a task to tomorrow you type it again (you can change it). The widget's bump button opens the app to do it."
+                     : "Off: the bump sheet fills in the title; you just confirm. The widget bumps in one tap.")
             }
         }
         .navigationTitle("Settings")

@@ -86,10 +86,12 @@ struct AddTaskOptionsMenu: View {
                 case .endOfWeek:
                     vm.newTaskOptions.limitChoice = .endOfWeek
                 case .untilDeadline:
-                    vm.newTaskOptions.limitChoice = .untilDeadline
                     if vm.newTaskOptions.deadlineDayKey == nil {
+                        // Restored if the date sheet is cancelled (`revertUnsetDeadlineChoice`).
+                        vm.optionsBeforeDeadlinePick = vm.newTaskOptions
                         vm.activeSheet = .deadline
                     }
+                    vm.newTaskOptions.limitChoice = .untilDeadline
                 case .unlimited:
                     vm.newTaskOptions.limitChoice = .unlimited
                 }

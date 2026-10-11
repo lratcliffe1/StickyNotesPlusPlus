@@ -8,8 +8,8 @@ struct HomeHeaderCard: View {
     let isDailyTaskStreakFrozen: Bool
     let sevenDayProgress: [HomeModel.DayProgress]
     let selectedDay: Date
-    /// "N bumps this week" under the streaks; hidden at 0.
-    var bumpsThisWeek: Int = 0
+    /// "N bumps in 7 days" under the streaks (the ring's days); hidden at 0.
+    var bumpsInSevenDays: Int = 0
     let onTap: () -> Void
 
     private let calendar = Calendar.current
@@ -63,7 +63,7 @@ struct HomeHeaderCard: View {
                 }
                 .frame(height: 60)
 
-                if bumpsThisWeek > 0 {
+                if bumpsInSevenDays > 0 {
                     Label(bumpsText, systemImage: "arrow.clockwise")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -77,11 +77,11 @@ struct HomeHeaderCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Open calendar")
-        .accessibilityValue(bumpsThisWeek > 0 ? bumpsText : "")
+        .accessibilityValue(bumpsInSevenDays > 0 ? bumpsText : "")
     }
 
     private var bumpsText: String {
-        "\(bumpsThisWeek) \(bumpsThisWeek == 1 ? "bump" : "bumps") this week"
+        "\(bumpsInSevenDays) \(bumpsInSevenDays == 1 ? "bump" : "bumps") in 7 days"
     }
 
     private func headerMetrics(for width: CGFloat) -> HeaderMetrics {

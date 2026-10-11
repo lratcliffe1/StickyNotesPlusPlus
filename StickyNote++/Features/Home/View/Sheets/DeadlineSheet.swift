@@ -33,9 +33,11 @@ struct DeadlineSheet: View {
 
                 if deadlineDayKey != nil {
                     Section {
-                        Button("Remove Deadline", role: .destructive) {
+                        Button(role: .destructive) {
                             onDone(nil)
                             dismiss()
+                        } label: {
+                            Label("Remove Deadline", systemImage: "trash")
                         }
                     }
                 }
@@ -51,6 +53,7 @@ struct DeadlineSheet: View {
                         onDone(HomeModel.dayKey(for: date))
                         dismiss()
                     }
+                    .fontWeight(.semibold)
                 }
             }
         }

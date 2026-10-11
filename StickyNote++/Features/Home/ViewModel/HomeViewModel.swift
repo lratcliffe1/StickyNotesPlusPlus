@@ -38,8 +38,14 @@ final class HomeViewModel: ObservableObject {
     @Published var eveningStreakCount: Int = 0
     @Published var isEveningStreakFrozen: Bool = false
     @Published var sevenDayProgress: [HomeModel.DayProgress] = []
-    /// Bump actions this week up to today, all lists ("N bumps this week"; hidden at 0).
-    @Published var bumpsThisWeek: Int = 0
+    /// Bump actions on the ring's seven days, all lists ("N bumps in 7 days"; hidden at 0).
+    @Published var bumpsInSevenDays: Int = 0
+    /// Items behind today's rows that have ended (deleted or replaced by a repeat change): their
+    /// rows get no Edit… or Delete.
+    @Published var endedItemIDs: Set<UUID> = []
+    /// The add menu's options from before "Until Deadline" was picked with no deadline, restored
+    /// if the deadline sheet is cancelled.
+    var optionsBeforeDeadlinePick: OneOffOptions?
     @Published var isNeverMissTwiceMorningRisk: Bool = false
     @Published var isNeverMissTwiceDailyRisk: Bool = false
     /// When Home next needs a refresh on its own (cutoff or midnight). HomeView sleeps until it.
@@ -104,6 +110,7 @@ final class HomeViewModel: ObservableObject {
         morningEntries = fetchOccurrences(on: dayKey, list: .morning, context: context)
         dailyTasks = fetchOccurrences(on: dayKey, list: .day, context: context)
         eveningEntries = fetchOccurrences(on: dayKey, list: .evening, context: context)
+        endedItemIDs = (try? ListService.endedItemIDs(among: morningEntries + dailyTasks + eveningEntries, context: context)) ?? []
 
         recalculateDerivedState(context: context)
         nextClockBoundary = HomeModel.nextClockBoundary(after: now, mode: morningMode, calendar: calendar)
@@ -242,6 +249,34 @@ final class HomeViewModel: ObservableObject {
     /// Retype to bump (Settings → Bumping), on by default.
     var retypeToBump: Bool {
         AppSettings.retypeToBump(in: defaults)
+    }
+
+    /// Whether Edit… and Delete apply to this row: one-offs always; a recurring row only while its
+    /// item hasn't ended.
+    func canEditOrDelete(_ occurrence: Occurrence) -> Bool {
+        guard let itemID = occurrence.itemID else { return true }
+        return !endedItemIDs.contains(itemID)
+    }
+
+    /// After the deadline sheet closes: if "Until Deadline" was picked but no deadline was set,
+    /// the bump limit goes back to what it was.
+    func revertUnsetDeadlineChoice() {
+        defer { optionsBeforeDeadlinePick = nil }
+        guard newTaskOptions.limitChoice == .untilDeadline, newTaskOptions.deadlineDayKey == nil else { return }
+        let previous = optionsBeforeDeadlinePick ?? OneOffOptions()
+        newTaskOptions.limitChoice = previous.limitChoice
+        newTaskOptions.days = previous.days
+    }
+
+    /// Opens the bump sheet for one of today's rows (the widget's bump with Retype to bump on),
+    /// if it can still be bumped.
+    func openBumpSheet(for id: UUID, context: ModelContext) {
+        guard
+            let occurrence = occurrence(id: id, context: context),
+            occurrence.dayKey == HomeModel.dayKey(for: now),
+            canBump(occurrence)
+        else { return }
+        activeSheet = .bump(id)
     }
 
     /// A row on screen, or any occurrence in the store.

@@ -76,6 +76,7 @@ struct OneOffEditorView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save", action: save)
+                        .fontWeight(.semibold)
                         .disabled(trimmedTitle.isEmpty)
                 }
             }
