@@ -28,7 +28,8 @@ struct EditListsView: View {
 #endif
 
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \Item.sortOrder) private var allItems: [Item]
+    @Query(sort: [SortDescriptor(\Item.sortOrder), SortDescriptor(\Item.createdAt), SortDescriptor(\Item.startDayKey)])
+    private var allItems: [Item]
     @State private var list: ListKind
     @State private var editor: EditorTarget?
     @State private var pendingDelete: Item?

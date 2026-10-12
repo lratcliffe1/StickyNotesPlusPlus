@@ -110,4 +110,10 @@ final class Occurrence {
     }
 }
 
-extension Occurrence: OccurrenceFacts {}
+extension Occurrence: OccurrenceFacts {
+    /// A one-off whose id follows the `vault-task:` scheme (`VaultTaskID`): imported from
+    /// `tasks.json`. Item rows have name-based ids too (`OccurrenceID`), hence the one-off check.
+    var isImported: Bool {
+        itemID == nil && VaultTaskID.isNameBased(id)
+    }
+}

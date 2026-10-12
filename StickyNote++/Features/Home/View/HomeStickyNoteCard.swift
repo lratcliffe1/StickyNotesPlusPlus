@@ -352,6 +352,10 @@ struct HomeStickyNoteCard: View {
         if occurrence.state == .bumped {
             return "Bumped to tomorrow"
         }
+        if vm.isBonus(occurrence) {
+            // Added after the morning's cutoff: shown and tickable, never counted (fix round 1).
+            return "Added after the cutoff · doesn't count"
+        }
         if occurrence.bumpLimit == .cantBump, !occurrence.isRepeating {
             return "Must happen today"
         }
@@ -375,7 +379,8 @@ struct HomeStickyNoteCard: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .accessibilityLabel("Skipped")
-        } else if !occurrence.isRepeating, occurrence.state == .open {
+        } else if !occurrence.isRepeating, occurrence.state == .open || occurrence.state == .done {
+            // "Must do" and "Due …" stay once ticked (fix round 1); "No bumps left" is open only.
             if occurrence.bumpLimit == .cantBump {
                 Text("Must do")
                     .font(.caption2.weight(.semibold))
@@ -384,7 +389,7 @@ struct HomeStickyNoteCard: View {
                 Text("Due \(BumpCost.format(deadline))")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
-            } else if !vm.isReadOnly, !vm.isFutureDay, !vm.canBump(occurrence) {
+            } else if occurrence.state == .open, !vm.isReadOnly, !vm.isFutureDay, !vm.canBump(occurrence) {
                 // Its bump limit is used up (bumps, deadline or end of week).
                 Text("No bumps left")
                     .font(.caption2.weight(.semibold))

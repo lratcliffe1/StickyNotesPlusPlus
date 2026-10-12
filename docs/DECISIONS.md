@@ -2,6 +2,20 @@
 
 **What this is for:** product rules Liam has decided, dated, newest first. Code and tests follow these. When a rule changes, add a new entry that names the one it replaces; never edit an old entry. **What must NOT go in here:** plans and status (→ `ROADMAP.md`).
 
+## 2026-10-12: fix round 1 (Liam's phone feedback)
+
+Liam's own decisions, from using the step 2b–6 build on his phone. Not provisional.
+
+- **Morning items added after the cutoff are a bonus.** A morning row whose thing was added after that day's morning deadline shows on Home as normal and can be ticked, but never counts: not towards the morning's verdict, its %, the streak, the 7-day ring, the calendar or `habits/`. A morning with only bonus rows is neutral. Only the morning has a deadline before midnight, so the day and evening lists are unaffected. This refines the step 5 entry "A list done late": it now applies only to the rows that count, so finishing the routine on time and then adding and ticking another item keeps the morning done. "Added" means when Liam created the thing, never when the day's row appeared (rows for repeating items are created when the app first reads the day, so opening the app at 13:00 doesn't turn the routine into bonus rows):
+  - a one-off counts from its own creation time; a row bumped in from an earlier day is never a bonus;
+  - **a row imported from the vault (`tasks.json`) is never a bonus**: Liam planned it there, so when the app happened to sync says nothing about when it was added (recognised by its `vault-task:` id);
+  - a repeating row is a bonus only on the day its item started, when the item was created that same day after the deadline (an item created on an earlier day can't be a late add today). A bonus row of a less-than-daily item never counts later either: left open, it costs no miss at its period end;
+  - **editing a repeat** ends the old item and makes a replacement; the replacement keeps the old item's creation time, so editing an undone routine item after the cutoff can't dodge the miss. (As built: replacements made before this build carry their edit time, so on the day of such an edit after the cutoff, the replacement's row is now a bonus.)
+  - A bonus row says so under its title: "Added after the cutoff · doesn't count".
+- **Arcs fill by the share done.** A partly done segment fills from its start along the arc by the share done, with the solid edge where the fill stops; any share above 0 shows at least a sliver (10% of the arc), and a decided miss is never drawn full: it fills at most 85%, so a late finish at 100% keeps a visible gap beside the day's ×. Today's open lists fill by their share. Done is full, as before; missed (nothing done), not yet and nothing due are unchanged. **Replaces** the step 5 entry "Half-filled is always exactly half". VoiceOver's words are unchanged.
+- **"Must do" and "Due …" stay on a ticked task** (one-offs, not skipped or bumped). "No bumps left" still shows only while the task is open.
+- **Shipping:** one file in iCloud Drive, `StickyNotes.ipa`, overwritten by each build; the build's branch and sha go in the commit or PR, not the filename.
+
 ## 2026-10-11 (overnight, step 6): vault link, provisional calls
 
 Taken while building step 6 with Liam asleep (see the working rules in the evening entry below). The file formats and the rules the app follows are in `VAULT-API.md`. Each is *provisional: Liam to confirm*.

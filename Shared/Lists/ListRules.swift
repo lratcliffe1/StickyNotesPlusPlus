@@ -15,6 +15,22 @@ protocol OccurrenceFacts {
     var scheduledDayKey: String? { get }
     /// Repeating occurrences: the last day they can still be done or bumped to.
     var periodEndDayKey: String? { get }
+    /// A bumped copy: the row it was bumped from (nil once that row is deleted). Defaults to nil.
+    var bumpedFromID: UUID? { get }
+    /// How many times the chain was bumped before this row (a bumped copy is at least 1). Defaults to 0.
+    var bumpCount: Int { get }
+    /// Imported from the vault's `tasks.json` (planned there, never a late addition in the app).
+    /// Defaults to false.
+    var isImported: Bool { get }
+}
+
+extension OccurrenceFacts {
+    var bumpedFromID: UUID? { nil }
+    var bumpCount: Int { 0 }
+    var isImported: Bool { false }
+
+    /// Moved here from an earlier day by a bump.
+    var wasBumpedIn: Bool { bumpedFromID != nil || bumpCount > 0 }
 }
 
 /// How one day counts towards one list's streak.
@@ -49,6 +65,75 @@ enum ListRules {
             return .missed
         }
         return .complete
+    }
+
+    // MARK: - Bonus rows (fix round 1)
+
+    /// A morning row added after that day's morning deadline is a bonus (DECISIONS.md, 2026-10-12):
+    /// it shows and can be ticked, but never counts towards the morning's verdict, its %, the
+    /// streak, the ring, the calendar or the habits file. Only the morning has a deadline before
+    /// midnight, so a nil `deadline` (the day and evening lists) is never a bonus.
+    ///
+    /// "Added" is when Liam created the thing, never when the day's row was materialised (rows for
+    /// repeating items are created when the app first reads the day, so opening the app late can't
+    /// turn the routine into bonus rows):
+    /// - a one-off: its own `createdAt`. A row bumped in from an earlier day is never a bonus, and
+    ///   nor is one imported from the vault (`isImported`): Liam planned it there, so when the app
+    ///   happened to sync says nothing about when it was added.
+    /// - a repeating row: its item's `createdAt` (`ItemSchedule.createdAt`), and only on the day the
+    ///   item started, when it was created that same day. An item from an earlier day can't be a
+    ///   late add today; a backfilled item (created after its start day) never is. A repeat change's
+    ///   replacement item keeps its predecessor's `createdAt` (`ListService.updateItem`), so editing
+    ///   an undone routine item after the cutoff can't dodge a miss. An item with no schedule (or no
+    ///   `createdAt`) is never a bonus.
+    static func isBonus<T: OccurrenceFacts>(
+        _ row: T,
+        schedules: [UUID: ItemSchedule],
+        deadline: Date?,
+        calendar: Calendar = .current
+    ) -> Bool {
+        guard let deadline else { return false }
+        if let itemID = row.itemID {
+            guard let schedule = schedules[itemID], let added = schedule.createdAt else { return false }
+            return schedule.startDayKey == row.dayKey
+                && HomeModel.dayKey(for: added, calendar: calendar) == row.dayKey
+                && added > deadline
+        }
+        guard !row.wasBumpedIn, !row.isImported else { return false }
+        return row.createdAt > deadline
+    }
+
+    /// The rows that count: `rows` without the bonus ones (`isBonus`), each judged by its own day's
+    /// deadline. Apply it before `completion` and `dayStatus` wherever a morning is judged.
+    static func countedRows<T: OccurrenceFacts>(
+        _ rows: [T],
+        schedules: [ItemSchedule],
+        calendar: Calendar = .current,
+        deadline: (String) -> Date?
+    ) -> [T] {
+        let byItem = scheduleIndex(schedules)
+        var deadlines: [String: Date?] = [:]
+        var counted: [T] = []
+        for row in rows {
+            let cutoff = cachedDeadline(row.dayKey, &deadlines, deadline)
+            if !isBonus(row, schedules: byItem, deadline: cutoff, calendar: calendar) {
+                counted.append(row)
+            }
+        }
+        return counted
+    }
+
+    /// `deadline(key)`, read once per day.
+    private static func cachedDeadline(_ key: String, _ cache: inout [String: Date?], _ deadline: (String) -> Date?) -> Date? {
+        if let cached = cache[key] { return cached }
+        let value = deadline(key)
+        cache[key] = .some(value)
+        return value
+    }
+
+    /// Schedules by item id (the first one wins if an id repeats).
+    static func scheduleIndex(_ schedules: [ItemSchedule]) -> [UUID: ItemSchedule] {
+        Dictionary(schedules.map { ($0.itemID, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     // MARK: - Streaks
@@ -116,6 +201,9 @@ enum ListRules {
     ///
     /// - A day's own rows count as before: skipped ones drop out, bumped ones count as done, and with a
     ///   `deadline` (the morning cutoff) a late finish makes the day a miss.
+    /// - Bonus rows (`isBonus`: added after the morning's deadline) don't count at all, not even as
+    ///   a deferred repeat's later miss; a day with only bonus rows is neutral. They still mark the
+    ///   day as opened.
     /// - An open repeating occurrence whose period runs past its own day (less often than daily) isn't
     ///   counted on its day: it can still be done later. If it's still open, it is a miss on its period
     ///   end, once that day is before `missesBefore`.
@@ -141,6 +229,8 @@ enum ListRules {
         for schedule in schedules {
             if let end = schedule.endDayKey { endByItem[schedule.itemID] = end }
         }
+        let scheduleByItem = scheduleIndex(schedules)
+        var deadlines: [String: Date?] = [:]
 
         var counted: [String: [T]] = [:]
         var openedDays: Set<String> = []
@@ -150,6 +240,11 @@ enum ListRules {
             openedDays.insert(occurrence.dayKey)
             if let itemID = occurrence.itemID {
                 materialised.insert(materialisedKey(itemID, occurrence.scheduledDayKey ?? occurrence.dayKey))
+            }
+            // A bonus row never counts: not on its day, and not as a miss at its period end.
+            if isBonus(occurrence, schedules: scheduleByItem, deadline: cachedDeadline(occurrence.dayKey, &deadlines, deadline),
+                       calendar: calendar) {
+                continue
             }
             if isDeferred(occurrence) {
                 if let periodEnd = occurrence.periodEndDayKey, periodEnd < cutoffKey,
@@ -176,7 +271,7 @@ enum ListRules {
             guard total > 0 else { continue }
             let done = rows.filter { $0.state.countsAsDone }.count
             let completion = HomeModel.CompletionState(value: Double(done) / Double(total), isNeutral: false)
-            let status: DayStatus = missed > 0 ? .missed : dayStatus(rows, deadline: deadline(key))
+            let status: DayStatus = missed > 0 ? .missed : dayStatus(rows, deadline: cachedDeadline(key, &deadlines, deadline))
             looks[key] = DayLook(status: status, completion: completion)
         }
         return looks
@@ -210,6 +305,9 @@ enum ListRules {
         let startDayKey: String
         /// The first day the item no longer exists on.
         let endDayKey: String?
+        /// When Liam added the item (a repeat change's replacement keeps its predecessor's): what
+        /// the bonus rule reads (`isBonus`). Nil: never a bonus.
+        var createdAt: Date? = nil
 
         func isActive(on dayKey: String) -> Bool {
             guard dayKey >= startDayKey else { return false }

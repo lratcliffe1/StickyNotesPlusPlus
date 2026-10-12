@@ -143,7 +143,7 @@ final class DayRulesStoreTests: XCTestCase {
     func testFinishedMorningKeepsItsTimeWhenTheSettingMovesEarlier() throws {
         let context = try StoreTestSupport.makeContext()
         context.insert(Occurrence(list: .morning, dayKey: "2026-10-12", title: "Water", state: .done,
-                                  completedAt: TestCalendars.date("2026-10-12", 8, 30)))
+                                  completedAt: TestCalendars.date("2026-10-12", 8, 30), createdAt: TestCalendars.date("2026-10-12", 6)))
         try context.save()
         DayRulesStore.record(setNine, for: "2026-10-12", in: defaults)
         defaults.set(8 * 60, forKey: AppSettings.morningCutoffMinutesKey)
@@ -287,7 +287,8 @@ final class DayRulesStoreTests: XCTestCase {
     func testMorningStreakJudgesEachDayByItsOwnRules() throws {
         let context = try StoreTestSupport.makeContext()
         for key in ["2026-10-10", "2026-10-11", "2026-10-12"] {
-            context.insert(Occurrence(list: .morning, dayKey: key, title: "Water", state: .done, completedAt: TestCalendars.date(key, 10, 30)))
+            context.insert(Occurrence(list: .morning, dayKey: key, title: "Water", state: .done, completedAt: TestCalendars.date(key, 10, 30),
+                                      createdAt: TestCalendars.date(key, 6)))
         }
         try context.save()
         let history = DayRulesHistory(stored: ["2026-10-11": doneOrSkipped])

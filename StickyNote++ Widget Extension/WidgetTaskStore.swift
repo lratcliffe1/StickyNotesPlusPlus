@@ -74,6 +74,11 @@ enum WidgetTaskStore {
             try ListService.prepare(context: context, now: now, calendar: calendar, defaults: store)
 
             let morning = try ListService.occurrences(on: todayKey, list: .morning, context: context)
+            // Without bonus rows (added after the morning's cutoff), as on Home.
+            let countedMorning = try ListService.countedRows(
+                morning, history: DayRulesStore.resolvedHistory(in: store, todayKey: todayKey),
+                context: context, calendar: calendar
+            )
             // The evening is only read once it could show.
             let eveningStarted = rules.eveningStart(on: now, calendar: calendar).map { now >= $0 } ?? false
             let evening = try eveningStarted
@@ -83,7 +88,7 @@ enum WidgetTaskStore {
                 for: today,
                 now: now,
                 rules: rules,
-                morning: ListRules.completion(morning),
+                morning: ListRules.completion(countedMorning),
                 eveningIsEmpty: evening.isEmpty,
                 calendar: calendar
             ))

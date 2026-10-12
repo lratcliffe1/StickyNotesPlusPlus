@@ -43,6 +43,9 @@ final class HomeViewModel: ObservableObject {
     /// Items behind today's rows that have ended (deleted or replaced by a repeat change): their
     /// rows get no Edit… or Delete.
     @Published var endedItemIDs: Set<UUID> = []
+    /// Morning rows on screen added after that morning's deadline: bonus rows, shown and tickable
+    /// but never counted (`ListRules.isBonus`; DECISIONS.md, 2026-10-12).
+    @Published var bonusRowIDs: Set<UUID> = []
     /// The add menu's options from before "Until Deadline" was picked with no deadline, restored
     /// if the deadline sheet is cancelled.
     var optionsBeforeDeadlinePick: OneOffOptions?
@@ -109,6 +112,9 @@ final class HomeViewModel: ObservableObject {
         dailyTasks = fetchOccurrences(on: dayKey, list: .day, context: context)
         eveningEntries = fetchOccurrences(on: dayKey, list: .evening, context: context)
         endedItemIDs = (try? ListService.endedItemIDs(among: morningEntries + dailyTasks + eveningEntries, context: context)) ?? []
+        bonusRowIDs = (try? ListService.bonusRowIDs(
+            among: morningEntries, history: dayRulesHistory, context: context, calendar: calendar
+        )) ?? []
         plannedItems = isFutureDay ? fetchPlannedItems(on: dayKey, context: context) : []
 
         isEveningInUse = (try? repository.isInUse(.evening, context: context)) ?? false
@@ -234,14 +240,30 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    var activeListProgress: Double {
-        activeListProgressIsNeutral ? 0 : ListRules.completion(activeEntries).value
+    /// The rows of the list on screen that count: without the morning's bonus rows.
+    var countedActiveEntries: [Occurrence] {
+        counted(activeEntries)
     }
 
-    /// Nothing counted on the list (empty, or all skipped): no fill and "—", never 100%. A future
-    /// day is neutral too: nothing can be done on it yet, so it shows "—", not "0%" (step 5).
+    /// `rows` without the bonus rows (`bonusRowIDs`).
+    func counted(_ rows: [Occurrence]) -> [Occurrence] {
+        bonusRowIDs.isEmpty ? rows : rows.filter { !bonusRowIDs.contains($0.id) }
+    }
+
+    /// Added after the morning's cutoff: shown and tickable, never counted.
+    func isBonus(_ occurrence: Occurrence) -> Bool {
+        bonusRowIDs.contains(occurrence.id)
+    }
+
+    var activeListProgress: Double {
+        activeListProgressIsNeutral ? 0 : ListRules.completion(countedActiveEntries).value
+    }
+
+    /// Nothing counted on the list (empty, all skipped, or only bonus rows): no fill and "—", never
+    /// 100%. A future day is neutral too: nothing can be done on it yet, so it shows "—", not "0%"
+    /// (step 5).
     var activeListProgressIsNeutral: Bool {
-        isFutureDay || ListRules.completion(activeEntries).isNeutral
+        isFutureDay || ListRules.completion(countedActiveEntries).isNeutral
     }
 
     /// "40%", or "—" when there's nothing to count.
@@ -381,8 +403,10 @@ final class HomeViewModel: ObservableObject {
         dayRulesHistory.rules(for: HomeModel.dayKey(for: now))
     }
 
+    /// The morning's completion without its bonus rows: a late addition never holds the morning
+    /// open or makes it look unfinished.
     var morningCompletionState: HomeModel.CompletionState {
-        ListRules.completion(morningEntries)
+        ListRules.completion(counted(morningEntries))
     }
 
     var dailyCompletionState: HomeModel.CompletionState {

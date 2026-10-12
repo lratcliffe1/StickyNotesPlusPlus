@@ -17,7 +17,8 @@ final class CalendarFetchTests: XCTestCase {
 
     @discardableResult
     private func insertItem(_ title: String, list: ListKind, rule: RepeatRule, start: String) -> Item {
-        let item = Item(list: list, title: title, sortOrder: 0, repeatRule: rule, startDayKey: start)
+        let item = Item(list: list, title: title, sortOrder: 0, repeatRule: rule, startDayKey: start,
+                        createdAt: TestCalendars.addedLongBefore())
         context.insert(item)
         return item
     }
@@ -27,7 +28,8 @@ final class CalendarFetchTests: XCTestCase {
         XCTAssertNil(try ListService.firstEntryDayKey(context: context))
 
         insertItem("Read in bed", list: .evening, rule: .daily, start: "2026-10-05")
-        context.insert(Occurrence(list: .morning, dayKey: "2026-10-03", title: "Early one-off"))
+        context.insert(Occurrence(list: .morning, dayKey: "2026-10-03", title: "Early one-off",
+                                  createdAt: TestCalendars.date("2026-10-03", 6)))
         insertItem("Gym", list: .day, rule: .weekly(on: [2]), start: "2026-10-12")
         try context.save()
 

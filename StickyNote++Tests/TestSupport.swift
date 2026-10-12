@@ -21,6 +21,16 @@ enum TestCalendars {
         return calendar
     }
 
+    private static var addedTicks = 0
+
+    /// An item's `createdAt` long before any test day (1 Jan 2025), a second later on each call, so
+    /// items made one after another keep their creation order (it was `Date()`), and none reads as
+    /// added after a morning's cutoff (`ListRules.isBonus`) whatever day the tests run on.
+    static func addedLongBefore() -> Date {
+        addedTicks += 1
+        return date("2025-01-01").addingTimeInterval(TimeInterval(addedTicks))
+    }
+
     static func date(_ dayKey: String, _ hour: Int = 0, _ minute: Int = 0, calendar: Calendar = munich) -> Date {
         let ymd = DayMath.parse(dayKey) ?? DayMath.YMD(year: 1970, month: 1, day: 1)
         return calendar.date(from: DateComponents(year: ymd.year, month: ymd.month, day: ymd.day, hour: hour, minute: minute)) ?? Date()
@@ -39,4 +49,7 @@ struct FactRow: OccurrenceFacts {
     var bumpLimit: BumpLimit = .unlimited
     var scheduledDayKey: String? = nil
     var periodEndDayKey: String? = nil
+    var bumpedFromID: UUID? = nil
+    var bumpCount: Int = 0
+    var isImported: Bool = false
 }

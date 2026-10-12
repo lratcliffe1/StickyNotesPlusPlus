@@ -6,7 +6,15 @@ import os
 /// widget importing the same task for the same day land on the same row (`Occurrence.id` is
 /// unique), a past day's row is never reused, and a task back in the file for a later day gets a
 /// new row.
+///
+/// The bonus rule (`ListRules.isBonus`) recognises an imported row by this: a one-off with a
+/// name-based (version 5) id. Every other one-off gets a random (version 4) `UUID()`; keep it so.
 enum VaultTaskID {
+    /// Whether `id` has the name-based (version 5) layout these ids use.
+    static func isNameBased(_ id: UUID) -> Bool {
+        id.uuid.6 & 0xF0 == 0x50
+    }
+
     /// A name-based UUID of `"vault-task:<id>:<dayKey>"`: the version 5 layout, hashed with
     /// SHA-256 like `OccurrenceID` (the name space is the prefix).
     static func occurrenceID(for taskID: String, dayKey: String) -> UUID {

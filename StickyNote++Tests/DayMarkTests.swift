@@ -25,7 +25,7 @@ final class DayMarkTests: XCTestCase {
     }
 
     /// The step 4 review: a morning finished after its cutoff is `.missed` at 100%. Status comes
-    /// first, so it's a miss (half-filled, ×), never the filled "done".
+    /// first, so it's a miss (partly filled, ×), never the filled "done".
     func testEverythingDoneAfterTheCutoffIsAMissNotDone() {
         XCTAssertEqual(DayMark.mark(for: look(.missed, 1), isOpen: false), .partlyDone)
         XCTAssertEqual(DayMark.mark(for: look(.missed, 1), isOpen: true), .partlyDone, "a late finish is already decided")
@@ -71,11 +71,56 @@ final class DayMarkTests: XCTestCase {
 
     func testEachMarksFill() {
         XCTAssertEqual(DayMark.done.fill, .full)
-        XCTAssertEqual(DayMark.partlyDone.fill, .half)
-        XCTAssertEqual(DayMark.inProgress.fill, .half)
+        XCTAssertEqual(DayMark.partlyDone.fill, .partial)
+        XCTAssertEqual(DayMark.inProgress.fill, .partial)
         XCTAssertEqual(DayMark.missed.fill, .empty)
         XCTAssertEqual(DayMark.notYet.fill, .empty)
         XCTAssertEqual(DayMark.nothingDue.fill, .dashed)
+    }
+
+    // MARK: - How far a segment fills (fix round 1)
+
+    func testNothingDoneFillsNothing() {
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 0), isOpen: false), 0, "missed")
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 0), isOpen: true), 0, "not yet")
+        XCTAssertEqual(DayMark.fillFraction(for: nil, isOpen: false), 0, "nothing due")
+        XCTAssertEqual(DayMark.fillFraction(for: look(.neutral, 0), isOpen: true), 0, "nothing due")
+    }
+
+    func testDoneFillsTheWholeArc() {
+        XCTAssertEqual(DayMark.fillFraction(for: look(.complete, 1), isOpen: false), 1)
+        XCTAssertEqual(DayMark.fillFraction(for: look(.complete, 1), isOpen: true), 1)
+    }
+
+    func testATinyShareStillShowsASliver() {
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 0.05), isOpen: true), DayMark.minimumFill)
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 0.05), isOpen: false), DayMark.minimumFill)
+        XCTAssertEqual(DayMark.minimumFill, 0.1)
+    }
+
+    func testAShareInTheMiddleFillsByTheShare() {
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 1.0 / 6), isOpen: false), 1.0 / 6, accuracy: 1e-9)
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 4.0 / 6), isOpen: false), 4.0 / 6, accuracy: 1e-9)
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 4.0 / 6), isOpen: true), 4.0 / 6, accuracy: 1e-9)
+    }
+
+    /// A decided miss is never drawn full: a late finish at 100% keeps a gap beside its ×. Today's
+    /// open list isn't a miss, so it fills by its share.
+    func testAMissIsCappedBelowFull() {
+        XCTAssertEqual(DayMark.missCap, 0.85)
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 1), isOpen: false), 0.85, "all done after the cutoff")
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 1), isOpen: true), 0.85, "a late finish is already decided")
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 0.9), isOpen: false), 0.85)
+        XCTAssertEqual(DayMark.fillFraction(for: look(.missed, 0.9), isOpen: true), 0.9, accuracy: 1e-9, "still open today")
+        XCTAssertLessThan(DayMark.fillFraction(for: look(.missed, 1), isOpen: false),
+                          DayMark.fillFraction(for: look(.complete, 1), isOpen: false))
+    }
+
+    func testASegmentFillsByItsOwnListsOpenness() {
+        let nearly = look(.missed, 0.9)
+        let open: Set<ListKind> = [.day, .evening]
+        XCTAssertEqual(DayMark.fillFraction(for: DaySegment(list: .morning, look: nearly), openLists: open), 0.85)
+        XCTAssertEqual(DayMark.fillFraction(for: DaySegment(list: .day, look: nearly), openLists: open), 0.9, accuracy: 1e-9)
     }
 
     func testOnlyDecidedMissesAreMisses() {
