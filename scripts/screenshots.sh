@@ -42,7 +42,11 @@ mkdir -p "$OUT"
 # 29–32 are the greyscale shapes (step 5), one list, one state a day: done, partly done, missed,
 # nothing due, done with a bump (↻) twice, today nothing done yet; Home has the "↻2" row. 33–34 are
 # the morning list alone at 10:30, past its 09:00 set time: done, done late, partly done, missed,
-# all skipped, done, and today done late (half-filled with ×).
+# all skipped, done, and today done late (85% filled with ×). 35–36 are arcs filled by the share
+# done (fix round 1): 1 of 6, 4 of 6, 1 of 20 (the sliver), done, 9 of 10 (a miss, capped at 85%),
+# nothing done, today 4 of 6 so far; Home has a ticked "Must do" and a ticked "Due …". 37 is the
+# morning list at 14:00 with "Vitamins", added at 10:00 after the 09:00 cutoff and ticked: a bonus
+# row, so the morning stays done (filled, ✓).
 # 40–44 are the vault link (-uiVault: a fake GitHub and an in-memory token, never the network or
 # the Keychain).
 SHOTS=(
@@ -80,6 +84,9 @@ SHOTS=(
   "32-states-calendar-dark|states|calendar|dark||-AppleLocale en_GB"
   "33-states-morning-late|statesMorning|home|light|morning"
   "34-states-morning-calendar|statesMorning|calendar|light||-AppleLocale en_GB"
+  "35-fills-home|fills|home|light|"
+  "36-fills-calendar|fills|calendar|light||-AppleLocale en_GB"
+  "37-home-morning-bonus|daily|home|light|morning"
   "40-home-vault-tasks|empty|home|light||-uiVault updated"
   "41-home-daily-vault-tasks|daily|home|light||-uiVault updated"
   "42-vault-link-not-set-up|daily|vaultLink|light|"

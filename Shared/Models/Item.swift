@@ -23,6 +23,9 @@ final class Item {
     /// Copied onto each occurrence. Repeating occurrences are also held to their period end.
     var defaultBumpLimitRaw: String
     var defaultBumpLimitDays: Int
+    /// When Liam added the item. A repeat change's replacement keeps its predecessor's
+    /// (`ListService.updateItem`), so this is when the thing was first added: the bonus rule reads
+    /// it (`ListRules.isBonus`).
     var createdAt: Date
 
     init(
@@ -69,7 +72,7 @@ final class Item {
     }
 
     var schedule: ListRules.ItemSchedule {
-        ListRules.ItemSchedule(itemID: id, rule: repeatRule, startDayKey: startDayKey, endDayKey: endDayKey)
+        ListRules.ItemSchedule(itemID: id, rule: repeatRule, startDayKey: startDayKey, endDayKey: endDayKey, createdAt: createdAt)
     }
 
     /// Whether the item exists on `dayKey` (whether it falls due there is the repeat rule's call).

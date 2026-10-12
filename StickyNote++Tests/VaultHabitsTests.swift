@@ -125,7 +125,8 @@ final class VaultHabitsTests: XCTestCase {
         let now = TestCalendars.date("2026-10-14", 22)
 
         // Morning: a daily item from the 12th, done by 07:00 except on the 13th (10:00: after the 09:00 cutoff).
-        let water = Item(list: .morning, title: "Water", sortOrder: 0, repeatRule: .daily, startDayKey: "2026-10-12")
+        let water = Item(list: .morning, title: "Water", sortOrder: 0, repeatRule: .daily, startDayKey: "2026-10-12",
+                         createdAt: TestCalendars.date("2026-10-12", 6))
         context.insert(water)
         for (day, hour) in [("2026-10-12", 7), ("2026-10-13", 10), ("2026-10-14", 7)] {
             context.insert(Occurrence(

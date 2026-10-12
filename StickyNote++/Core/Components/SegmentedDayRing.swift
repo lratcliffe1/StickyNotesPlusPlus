@@ -6,14 +6,15 @@ import SwiftUI
 ///
 /// One ring split into equal arcs, one per list in use that day, clockwise from 12 o'clock in
 /// morning → day → evening order; a single list is a full ring (provisional). Each arc takes its
-/// list's `DayMark` shape (step 5, greyscale): filled, half-filled with a solid edge, an empty
-/// outline, or a dashed outline. Colours stay, darker than a plain hue so they keep their contrast
+/// list's `DayMark` shape (step 5, greyscale): filled, partly filled from the arc's start by the
+/// share done (`DayMark.fillFraction`: at least a sliver, a miss at most 85%) with a solid edge
+/// where the fill stops (fix round 1), an empty outline, or a dashed outline. Colours stay, darker than a plain hue so they keep their contrast
 /// in greyscale. With `showsGlyph` the day's ✓ or × sits in the middle (the 7-day ring); the
 /// calendar puts its date there and adds a `DayGlyphBadge` on one-list days instead.
 struct SegmentedDayRing: View {
     let segments: [DaySegment]
     /// The lists still undecided (today's, before their streak deadline: `DayMark.openListsToday`;
-    /// empty on a past day): half-filled or a plain outline, never a miss.
+    /// empty on a past day): partly filled or a plain outline, never a miss.
     let openLists: Set<ListKind>
     /// The ring's thickness.
     let lineWidth: CGFloat
@@ -54,19 +55,20 @@ struct SegmentedDayRing: View {
         let mark = DayMark.mark(for: segment, openLists: openLists)
         let whole = RingArc(start: start, end: end, thickness: lineWidth)
         let ink = Self.fillColor(segment.look?.completion.value ?? 0)
-        // Exactly half, whatever the share done, with a solid edge where the fill stops.
-        let half = RingArc(start: start, end: start + (end - start) / 2, thickness: lineWidth)
+        // From the arc's start by the share done, with a solid edge where the fill stops.
+        let fraction = DayMark.fillFraction(for: segment, openLists: openLists)
+        let part = RingArc(start: start, end: start + (end - start) * fraction, thickness: lineWidth)
         switch mark.fill {
         case .full:
             ZStack {
                 whole.fill(ink)
                 whole.stroke(Self.outline, lineWidth: 0.75)
             }
-        case .half:
+        case .partial:
             ZStack {
                 whole.fill(Self.track)
-                half.fill(ink)
-                half.stroke(Self.outline, lineWidth: 1)
+                part.fill(ink)
+                part.stroke(Self.outline, lineWidth: 1)
                 whole.stroke(Self.outline, lineWidth: 1)
             }
         case .empty:

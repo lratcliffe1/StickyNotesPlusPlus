@@ -338,7 +338,11 @@ extension ListService {
         var lists: [ListKind: VaultHabits.ListInput] = [:]
         var streaks: [ListKind: Int] = [:]
         for list in ListKind.allCases {
-            let rows = try occurrences(from: startKey, through: targetKey, list: list, context: context)
+            // Bonus rows (added after the morning's cutoff) never count, here as everywhere.
+            let rows = try countedRows(
+                try occurrences(from: startKey, through: targetKey, list: list, context: context),
+                history: history, context: context, calendar: calendar
+            )
             lists[list] = VaultHabits.ListInput(
                 rowsByDay: Dictionary(grouping: rows.map { VaultHabits.RowFacts($0) }, by: \.dayKey),
                 looks: looks[list] ?? [:]

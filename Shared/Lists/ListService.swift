@@ -53,7 +53,14 @@ enum ListService {
     ) throws -> Bool {
         let todayKey = dayKey(for: now, calendar: calendar)
         let old = original ?? todaysRules(now: now, calendar: calendar, defaults: defaults)
-        let morningComplete = ListRules.completion(try occurrences(on: todayKey, list: .morning, context: context)).isComplete
+        // Bonus rows don't count (judged by today's morning as it was when Settings opened). While
+        // the morning is undecided no row can be a bonus yet, so this never changes the outcome.
+        var history = DayRulesStore.resolvedHistory(in: defaults, todayKey: todayKey)
+        history.stored[todayKey] = old
+        let morningRows = try countedRows(
+            try occurrences(on: todayKey, list: .morning, context: context), history: history, context: context, calendar: calendar
+        )
+        let morningComplete = ListRules.completion(morningRows).isComplete
         let change = DayRules.todayAfterChange(
             old: old, new: AppSettings.currentRules(in: defaults), now: now,
             morningComplete: morningComplete, calendar: calendar
@@ -324,6 +331,40 @@ enum ListService {
             CalendarRules.isDue(item.schedule, on: dayKey, math: math)
                 && !materialised.contains(ListRules.materialisedKey(item.id, dayKey))
         }
+    }
+
+    // MARK: - Bonus rows (fix round 1)
+
+    /// Of these rows (any lists, any days), the ones added after their morning's deadline: bonus
+    /// rows that show and can be ticked but never count (`ListRules.isBonus`). Each row is judged
+    /// by its own day's rules in `history`. Reads the items behind the repeating rows.
+    static func bonusRowIDs(
+        among rows: [Occurrence],
+        history: DayRulesHistory,
+        context: ModelContext,
+        calendar: Calendar = .current
+    ) throws -> Set<UUID> {
+        let morning = rows.filter { $0.list == .morning }
+        guard !morning.isEmpty else { return [] }
+        let counted = Set(try countedRows(morning, history: history, context: context, calendar: calendar).map(\.id))
+        return Set(morning.map(\.id)).subtracting(counted)
+    }
+
+    /// `rows` without their bonus rows (`ListRules.countedRows`), each list judged by its own
+    /// deadline (only the morning has one, so the other lists pass through whole).
+    static func countedRows(
+        _ rows: [Occurrence],
+        history: DayRulesHistory,
+        context: ModelContext,
+        calendar: Calendar = .current
+    ) throws -> [Occurrence] {
+        guard rows.contains(where: { $0.list == .morning }) else { return rows }
+        let schedules = try self.schedules(for: .morning, context: context)
+        let morningDeadline = deadline(for: .morning, history: history, calendar: calendar)
+        let countedMorning = Set(ListRules.countedRows(
+            rows.filter { $0.list == .morning }, schedules: schedules, calendar: calendar, deadline: morningDeadline
+        ).map(\.id))
+        return rows.filter { $0.list != .morning || countedMorning.contains($0.id) }
     }
 
     /// A list's streak deadline for a day: the morning's comes from that day's own rules (its set
@@ -767,6 +808,8 @@ enum ListService {
     ///   scheduled rows are removed (copies bumped in stay where they are), and if the new rule
     ///   falls due today, today's occurrence is created for the new item.
     /// A new title is applied from today in a split too, so a done row today takes it as well.
+    /// The replacement keeps the old item's `createdAt` (when Liam first added the thing), so it is
+    /// never a late addition (`ListRules.isBonus`).
     /// An item that has ended (deleted, or already replaced) is refused: returns nil, nothing changes.
     /// Returns the item in effect afterwards: the new one after a split.
     @discardableResult
@@ -820,7 +863,10 @@ enum ListService {
             repeatRule: rule,
             startDayKey: splitDay,
             defaultBumpLimit: limit,
-            createdAt: now
+            // The thing was added when its predecessor was, not at this edit: an edit after the
+            // morning's cutoff must not turn an undone routine item into a bonus that can't be
+            // missed (DECISIONS.md, 2026-10-12; `ListRules.isBonus`).
+            createdAt: item.createdAt
         )
         context.insert(replacement)
         if splitDay == today, rule.occurs(on: today, startDayKey: today, calendar: calendar) {

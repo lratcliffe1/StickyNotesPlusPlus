@@ -29,7 +29,8 @@ final class ListServiceTests: XCTestCase {
         end: String? = nil,
         sortOrder: Int = 0
     ) -> Item {
-        let item = Item(list: list, title: title, sortOrder: sortOrder, repeatRule: rule, startDayKey: start, endDayKey: end)
+        let item = Item(list: list, title: title, sortOrder: sortOrder, repeatRule: rule, startDayKey: start, endDayKey: end,
+                        createdAt: TestCalendars.addedLongBefore())
         context.insert(item)
         return item
     }
@@ -114,7 +115,8 @@ final class ListServiceTests: XCTestCase {
         let (app, widget, directory) = try onDiskContainers()
         defer { try? FileManager.default.removeItem(at: directory) }
         let appContext = ModelContext(app)
-        appContext.insert(Item(list: .morning, title: "Water", sortOrder: 0, repeatRule: .daily, startDayKey: "2026-10-01"))
+        appContext.insert(Item(list: .morning, title: "Water", sortOrder: 0, repeatRule: .daily, startDayKey: "2026-10-01",
+                              createdAt: TestCalendars.addedLongBefore()))
         try appContext.save()
         _ = try ListService.ensureOccurrences(on: "2026-10-14", context: appContext, now: noon("2026-10-14"), calendar: munich)
         let row = try XCTUnwrap(ListService.occurrences(on: "2026-10-14", list: .morning, context: appContext).first)
@@ -133,7 +135,8 @@ final class ListServiceTests: XCTestCase {
         let (app, widget, directory) = try onDiskContainers()
         defer { try? FileManager.default.removeItem(at: directory) }
         let setup = ModelContext(app)
-        setup.insert(Item(list: .morning, title: "Water", sortOrder: 0, repeatRule: .daily, startDayKey: "2026-10-01"))
+        setup.insert(Item(list: .morning, title: "Water", sortOrder: 0, repeatRule: .daily, startDayKey: "2026-10-01",
+                              createdAt: TestCalendars.addedLongBefore()))
         try setup.save()
 
         let appContext = ModelContext(app)
@@ -430,7 +433,8 @@ final class ListServiceTests: XCTestCase {
     func testEachListHasItsOwnStreak() throws {
         let history = DayRulesHistory() // nothing stored: every day keeps the old 09:00 cutoff
         for key in ["2026-10-10", "2026-10-11"] {
-            context.insert(Occurrence(list: .morning, dayKey: key, title: "Water", state: .done, completedAt: TestCalendars.date(key, 8)))
+            context.insert(Occurrence(list: .morning, dayKey: key, title: "Water", state: .done, completedAt: TestCalendars.date(key, 8),
+                                      createdAt: TestCalendars.date(key, 6)))
         }
         context.insert(Occurrence(list: .evening, dayKey: "2026-10-10", title: "Read", state: .open))
         context.insert(Occurrence(list: .evening, dayKey: "2026-10-11", title: "Read", state: .done, completedAt: TestCalendars.date("2026-10-11", 22)))
@@ -448,7 +452,8 @@ final class ListServiceTests: XCTestCase {
     func testUnopenedMorningWithItemsDueIsAMiss() throws {
         let history = DayRulesHistory() // nothing stored: every day keeps the old 09:00 cutoff
         insertItem("Water", start: "2026-10-10")
-        context.insert(Occurrence(list: .morning, dayKey: "2026-10-10", title: "Water", state: .done, completedAt: TestCalendars.date("2026-10-10", 8)))
+        context.insert(Occurrence(list: .morning, dayKey: "2026-10-10", title: "Water", state: .done, completedAt: TestCalendars.date("2026-10-10", 8),
+                                  createdAt: TestCalendars.date("2026-10-10", 6)))
         try context.save()
 
         XCTAssertEqual(try ListService.unopenedMissDays(for: .morning, before: "2026-10-12", context: context, calendar: munich), ["2026-10-11"])
@@ -477,7 +482,8 @@ final class ListServiceTests: XCTestCase {
 
     func testMorningCutoffAppliesOnlyToTheMorningList() throws {
         let history = DayRulesHistory() // nothing stored: every day keeps the old 09:00 cutoff
-        context.insert(Occurrence(list: .morning, dayKey: "2026-10-11", title: "Water", state: .done, completedAt: TestCalendars.date("2026-10-11", 10)))
+        context.insert(Occurrence(list: .morning, dayKey: "2026-10-11", title: "Water", state: .done, completedAt: TestCalendars.date("2026-10-11", 10),
+                                  createdAt: TestCalendars.date("2026-10-11", 6)))
         context.insert(Occurrence(list: .day, dayKey: "2026-10-11", title: "Post", state: .done, completedAt: TestCalendars.date("2026-10-11", 23, 30)))
         try context.save()
 

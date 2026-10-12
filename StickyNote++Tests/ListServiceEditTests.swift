@@ -30,7 +30,8 @@ final class ListServiceEditTests: XCTestCase {
         limit: BumpLimit = .unlimited,
         sortOrder: Int = 0
     ) throws -> Item {
-        let item = Item(list: list, title: title, sortOrder: sortOrder, repeatRule: rule, startDayKey: start, defaultBumpLimit: limit)
+        let item = Item(list: list, title: title, sortOrder: sortOrder, repeatRule: rule, startDayKey: start, defaultBumpLimit: limit,
+                        createdAt: TestCalendars.addedLongBefore())
         context.insert(item)
         try context.save()
         return item
@@ -252,7 +253,8 @@ final class ListServiceEditTests: XCTestCase {
         XCTAssertFalse(try ListService.deleteItem(water, todayKey: "2026-10-20", context: context))
         XCTAssertEqual(water.endDayKey, "2026-10-12")
 
-        let ended = Item(list: .morning, title: "Old", sortOrder: 1, repeatRule: .daily, startDayKey: "2026-09-01", endDayKey: "2026-09-10")
+        let ended = Item(list: .morning, title: "Old", sortOrder: 1, repeatRule: .daily, startDayKey: "2026-09-01", endDayKey: "2026-09-10",
+                         createdAt: TestCalendars.addedLongBefore())
         context.insert(ended)
         try context.save()
         XCTAssertFalse(try ListService.deleteItem(ended, todayKey: "2026-10-12", context: context))
