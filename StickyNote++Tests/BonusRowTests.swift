@@ -108,6 +108,33 @@ final class BonusRowTests: XCTestCase {
         XCTAssertEqual(look([bumped], [])?.status, .missed, "an open bumped-in row is still a miss")
     }
 
+    /// A weekly item added on Monday after the cutoff: its row runs to Sunday (deferred while
+    /// open). As a bonus it never counts: left open it costs no miss on Sunday, ticked it earns
+    /// nothing on Monday. The same item added before the cutoff is judged as before.
+    func testALateAddedWeeklyItemNeverCountsAtItsPeriodEnd() {
+        let monday = "2026-10-12"
+        let plan = UUID()
+        func looks(addedAt hour: Int, _ state: OccurrenceState) -> [String: ListRules.DayLook] {
+            let schedules = [ListRules.ItemSchedule(itemID: plan, rule: .weekly(on: [2]), startDayKey: monday, endDayKey: nil,
+                                                    createdAt: at(hour, on: monday))]
+            let row = FactRow(dayKey: monday, itemID: plan, createdAt: at(hour, on: monday),
+                              completedAt: state == .done ? at(hour, 5, on: monday) : nil, state: state,
+                              scheduledDayKey: monday, periodEndDayKey: "2026-10-18")
+            return ListRules.dayLooks(occurrences: [row], schedules: schedules, missesBefore: "2026-10-20",
+                                      calendar: munich, deadline: nine)
+        }
+        XCTAssertTrue(looks(addedAt: 10, .open).isEmpty, "no miss on Sunday the 18th")
+        XCTAssertTrue(looks(addedAt: 10, .done).isEmpty, "no credit on Monday")
+        XCTAssertEqual(looks(addedAt: 8, .open)["2026-10-18"]?.status, .missed, "added in time: still due by Sunday")
+    }
+
+    /// Rows imported from the vault were planned there: never a bonus, whenever the app synced.
+    func testAnImportedRowIsNeverABonus() {
+        let imported = FactRow(dayKey: day, createdAt: at(13), state: .open, isImported: true)
+        XCTAssertFalse(ListRules.isBonus(imported, schedules: [:], deadline: nine(day), calendar: munich))
+        XCTAssertEqual(look([imported], [])?.status, .missed)
+    }
+
     func testNoDeadlineMeansNoBonus() {
         let late = FactRow(dayKey: day, createdAt: at(23), state: .done)
         XCTAssertFalse(ListRules.isBonus(late, schedules: [:], deadline: nil, calendar: munich))
@@ -199,6 +226,35 @@ final class BonusRowTests: XCTestCase {
         let all = try ListService.occurrences(from: day, through: day, context: context)
         let counted = try ListService.countedRows(all, history: DayRulesHistory(), context: context, calendar: munich)
         XCTAssertEqual(counted.map(\.title), ["Post"])
+    }
+
+    /// A morning task from `tasks.json`, first imported at 13:00: an imported row (its id is from
+    /// the `vault-task:` scheme), so it counts like any other row, here as a miss.
+    func testAMorningTaskImportedAfterTheCutoffCounts() throws {
+        let (defaults, suiteName) = StoreTestSupport.makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        try ListService.reconcileVaultTasks(
+            [VaultTask(id: "vitamins", title: "Order vitamins", list: .morning, dayKey: day, deadlineDayKey: nil, bumpLimit: .upToDays(3))],
+            now: at(13), calendar: munich, context: context, defaults: defaults
+        )
+        let row = try XCTUnwrap(try rows().first)
+        XCTAssertEqual(row.id, VaultTaskID.occurrenceID(for: "vitamins", dayKey: day))
+        XCTAssertTrue(row.isImported)
+        XCTAssertTrue(try ListService.bonusRowIDs(among: [row], history: DayRulesHistory(), context: context, calendar: munich).isEmpty)
+        XCTAssertEqual(try morningLook()?.status, .missed)
+
+        let typed = try XCTUnwrap(ListService.addOneOff(list: .morning, dayKey: day, title: "Typed in", now: at(13), context: context))
+        XCTAssertFalse(typed.isImported, "a one-off made in the app has a random id")
+        XCTAssertEqual(try ListService.bonusRowIDs(among: try rows(), history: DayRulesHistory(), context: context, calendar: munich),
+                       [typed.id])
+    }
+
+    func testOnlyVaultIDsReadAsImported() {
+        XCTAssertTrue(VaultTaskID.isNameBased(VaultTaskID.occurrenceID(for: "deel", dayKey: day)))
+        XCTAssertFalse(VaultTaskID.isNameBased(UUID()))
+        let itemRow = Occurrence(id: OccurrenceID.forItem(UUID(), scheduledDayKey: day), itemID: UUID(), list: .morning,
+                                 dayKey: day, title: "Water")
+        XCTAssertFalse(itemRow.isImported, "item rows are name-based too, but aren't one-offs")
     }
 
     /// The habits file counts only the rows that count.

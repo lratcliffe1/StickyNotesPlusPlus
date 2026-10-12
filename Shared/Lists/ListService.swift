@@ -101,7 +101,7 @@ enum ListService {
         now: Date = Date(),
         calendar: Calendar = .current
     ) throws -> Bool {
-        let items = try context.fetch(FetchDescriptor<Item>(sortBy: [SortDescriptor(\.sortOrder)]))
+        let items = try context.fetch(FetchDescriptor<Item>(sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.createdAt), SortDescriptor(\.startDayKey)]))
         let key = dayKey
         let existing = try context.fetch(FetchDescriptor<Occurrence>(predicate: #Predicate { $0.dayKey == key }))
         var didChange = false
@@ -203,7 +203,9 @@ enum ListService {
         let raw = list.rawValue
         let descriptor = FetchDescriptor<Item>(
             predicate: #Predicate { $0.listRaw == raw },
-            sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.createdAt)]
+            // A repeat change's replacement shares its predecessor's order and `createdAt`; the
+            // start day keeps the sort stable.
+            sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.createdAt), SortDescriptor(\.startDayKey)]
         )
         let all = try context.fetch(descriptor)
         guard let dayKey else { return all }
@@ -242,7 +244,7 @@ enum ListService {
 
     /// Every list's items (ended ones too), in their set order.
     static func allItems(context: ModelContext) throws -> [Item] {
-        try context.fetch(FetchDescriptor<Item>(sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.createdAt)]))
+        try context.fetch(FetchDescriptor<Item>(sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.createdAt), SortDescriptor(\.startDayKey)]))
     }
 
     /// The lists in use (`isInUse`), in morning → day → evening order: a day's circle has a

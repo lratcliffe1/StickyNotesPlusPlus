@@ -19,11 +19,15 @@ protocol OccurrenceFacts {
     var bumpedFromID: UUID? { get }
     /// How many times the chain was bumped before this row (a bumped copy is at least 1). Defaults to 0.
     var bumpCount: Int { get }
+    /// Imported from the vault's `tasks.json` (planned there, never a late addition in the app).
+    /// Defaults to false.
+    var isImported: Bool { get }
 }
 
 extension OccurrenceFacts {
     var bumpedFromID: UUID? { nil }
     var bumpCount: Int { 0 }
+    var isImported: Bool { false }
 
     /// Moved here from an earlier day by a bump.
     var wasBumpedIn: Bool { bumpedFromID != nil || bumpCount > 0 }
@@ -73,7 +77,9 @@ enum ListRules {
     /// "Added" is when Liam created the thing, never when the day's row was materialised (rows for
     /// repeating items are created when the app first reads the day, so opening the app late can't
     /// turn the routine into bonus rows):
-    /// - a one-off: its own `createdAt`. A row bumped in from an earlier day is never a bonus.
+    /// - a one-off: its own `createdAt`. A row bumped in from an earlier day is never a bonus, and
+    ///   nor is one imported from the vault (`isImported`): Liam planned it there, so when the app
+    ///   happened to sync says nothing about when it was added.
     /// - a repeating row: its item's `createdAt` (`ItemSchedule.createdAt`), and only on the day the
     ///   item started, when it was created that same day. An item from an earlier day can't be a
     ///   late add today; a backfilled item (created after its start day) never is. A repeat change's
@@ -93,7 +99,7 @@ enum ListRules {
                 && HomeModel.dayKey(for: added, calendar: calendar) == row.dayKey
                 && added > deadline
         }
-        guard !row.wasBumpedIn else { return false }
+        guard !row.wasBumpedIn, !row.isImported else { return false }
         return row.createdAt > deadline
     }
 
@@ -195,8 +201,9 @@ enum ListRules {
     ///
     /// - A day's own rows count as before: skipped ones drop out, bumped ones count as done, and with a
     ///   `deadline` (the morning cutoff) a late finish makes the day a miss.
-    /// - Bonus rows (`isBonus`: added after the morning's deadline) don't count at all; a day with
-    ///   only bonus rows is neutral. They still mark the day as opened.
+    /// - Bonus rows (`isBonus`: added after the morning's deadline) don't count at all, not even as
+    ///   a deferred repeat's later miss; a day with only bonus rows is neutral. They still mark the
+    ///   day as opened.
     /// - An open repeating occurrence whose period runs past its own day (less often than daily) isn't
     ///   counted on its day: it can still be done later. If it's still open, it is a miss on its period
     ///   end, once that day is before `missesBefore`.
@@ -234,6 +241,11 @@ enum ListRules {
             if let itemID = occurrence.itemID {
                 materialised.insert(materialisedKey(itemID, occurrence.scheduledDayKey ?? occurrence.dayKey))
             }
+            // A bonus row never counts: not on its day, and not as a miss at its period end.
+            if isBonus(occurrence, schedules: scheduleByItem, deadline: cachedDeadline(occurrence.dayKey, &deadlines, deadline),
+                       calendar: calendar) {
+                continue
+            }
             if isDeferred(occurrence) {
                 if let periodEnd = occurrence.periodEndDayKey, periodEnd < cutoffKey,
                    !endsOnOrBefore(endByItem[occurrence.itemID ?? UUID()], periodEnd) {
@@ -241,9 +253,7 @@ enum ListRules {
                 }
                 continue
             }
-            if occurrence.state != .skipped,
-               !isBonus(occurrence, schedules: scheduleByItem, deadline: cachedDeadline(occurrence.dayKey, &deadlines, deadline),
-                       calendar: calendar) {
+            if occurrence.state != .skipped {
                 counted[occurrence.dayKey, default: []].append(occurrence)
             }
         }

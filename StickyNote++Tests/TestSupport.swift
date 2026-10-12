@@ -51,4 +51,5 @@ struct FactRow: OccurrenceFacts {
     var periodEndDayKey: String? = nil
     var bumpedFromID: UUID? = nil
     var bumpCount: Int = 0
+    var isImported: Bool = false
 }
