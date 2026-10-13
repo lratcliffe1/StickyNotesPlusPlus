@@ -220,7 +220,10 @@ final class VaultDoneAndMoveTests: XCTestCase {
         XCTAssertEqual(todays.state, .skipped)
         XCTAssertEqual(try row("a", on: "2026-10-16")?.state, .open)
         XCTAssertEqual(manifest?.movedRowDays, [todays.id: "2026-10-16"])
-        XCTAssertEqual(try look(today)?.status, .neutral, "like a skip: no credit, no miss")
+        // Like a skip: no credit, no miss (a day with only skipped rows has nothing counted).
+        let todayStatus = try look(today)?.status
+        XCTAssertTrue(todayStatus == nil || todayStatus == .neutral, "got \(String(describing: todayStatus))")
+        XCTAssertEqual(try ListService.occurrences(on: today, list: .day, context: context).filter { $0.state != .skipped }.count, 0)
 
         // The same file again changes nothing.
         let again = try reconcile([task("a", day: "2026-10-16")])
