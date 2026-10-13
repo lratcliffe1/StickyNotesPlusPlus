@@ -149,7 +149,8 @@ final class VaultDoneAndMoveTests: XCTestCase {
         XCTAssertEqual(try allRows().count, 1)
         XCTAssertEqual(try row("a")?.completedAt, TestCalendars.date(today, 10, 40))
         XCTAssertEqual(stored?.entries["a"]?.doneApplied, [today])
-        XCTAssertEqual(stored?.entries["a"]?.tickedByVault, [today: try XCTUnwrap(try row("a")).id])
+        let tickedID = try XCTUnwrap(try row("a")).id
+        XCTAssertEqual(stored?.entries["a"]?.tickedByVault, [today: tickedID])
     }
 
     func testADoneTaskIsNeverRemovedByTheGoneFromFileRule() throws {
@@ -169,9 +170,9 @@ final class VaultDoneAndMoveTests: XCTestCase {
         let proposed = try ListService.vaultTasksDone(from: today, through: today, context: context, defaults: defaults)
         XCTAssertEqual(proposed[today]?.map(\.id), ["app"], "the vault's tick is already deleted from Now.md")
 
-        let look = try XCTUnwrap(try look(today))
-        XCTAssertEqual(look.status, .complete)
-        XCTAssertEqual(look.completion.value, 1, "both count as done")
+        let todaysLook = try XCTUnwrap(try look(today))
+        XCTAssertEqual(todaysLook.status, .complete)
+        XCTAssertEqual(todaysLook.completion.value, 1, "both count as done")
         XCTAssertEqual(
             try ListService.streakState(for: .day, through: today, history: DayRulesHistory(), context: context, calendar: munich).count,
             1
@@ -245,7 +246,8 @@ final class VaultDoneAndMoveTests: XCTestCase {
 
         let todays = try ListService.occurrences(on: today, list: .day, context: context)
         XCTAssertEqual(todays.count, 1, "one row per task per day")
-        XCTAssertEqual(todays.first?.id, try row("a")?.id, "the moved row, un-skipped")
+        let movedRowID = try row("a")?.id
+        XCTAssertEqual(todays.first?.id, movedRowID, "the moved row, un-skipped")
         XCTAssertEqual(todays.first?.state, .open)
         XCTAssertEqual(todays.first?.title, "Chase (today after all)")
         XCTAssertNil(try row("a", on: "2026-10-16"))
@@ -289,7 +291,8 @@ final class VaultDoneAndMoveTests: XCTestCase {
 
     func testAManifestFromBeforeFixRoundTwoStillReads() throws {
         let id = UUID()
-        let old = #"{"entries":{"a":{"fingerprint":"a|day|-|upToDays|3","rows":{"2026-10-14":"\#(id.uuidString)"},"settledOn":"2026-10-14"}}}"#
+        let old = "{\"entries\":{\"a\":{\"fingerprint\":\"a|day|-|upToDays|3\",\"rows\":{\"2026-10-14\":\"" + id.uuidString
+            + "\"},\"settledOn\":\"2026-10-14\"}}}"
         defaults.set(Data(old.utf8), forKey: VaultManifest.storageKey)
         let entry = try XCTUnwrap(manifest?.entries["a"])
         XCTAssertEqual(entry.rows, [today: id])

@@ -113,16 +113,16 @@ final class VaultTasksFileTests: XCTestCase {
 
     // MARK: - done (fix round 2)
 
-    private func done(_ json: String, file: StaticString = #filePath, line: UInt = #line) -> (tasks: [VaultTask], done: [VaultDone]) {
-        guard case let .tasks(tasks, done) = decode(json) else {
+    private func decodedDone(_ json: String, file: StaticString = #filePath, line: UInt = #line) -> (tasks: [VaultTask], done: [VaultDone]) {
+        guard case let .tasks(tasks, entries) = decode(json) else {
             XCTFail("expected tasks, got \(decode(json))", file: file, line: line)
             return ([], [])
         }
-        return (tasks, done)
+        return (tasks, entries)
     }
 
     func testDecodesTheDoneExample() {
-        let decoded = done("""
+        let decoded = decodedDone("""
         { "version": 1, "tasks": [], "done": [
           { "id": "niall-entleiher-name", "dayKey": "2026-10-12", "doneAt": "2026-10-12T10:40:00+02:00" }
         ] }
@@ -133,7 +133,7 @@ final class VaultTasksFileTests: XCTestCase {
     }
 
     func testAnInvalidDoneEntryIsIgnoredOnItsOwnWhileTasksStillRead() {
-        let decoded = done("""
+        let decoded = decodedDone("""
         { "version": 1,
           "tasks": [ { "id": "listed", "title": "Listed", "dayKey": "2026-10-14" } ],
           "done": [
@@ -162,7 +162,7 @@ final class VaultTasksFileTests: XCTestCase {
             #"{ "version": 1, "tasks": [], "done": null }"#,
             #"{ "version": 1, "tasks": [] }"#,
         ] {
-            XCTAssertEqual(done(json).done, [], json)
+            XCTAssertEqual(decodedDone(json).done, [], json)
         }
     }
 
