@@ -18,11 +18,19 @@ extension ListService {
         var untouched: [String] = []
         /// Imported, then deleted in the app: left deleted.
         var deletedInApp: [String] = []
+        /// A `done` entry ticked the task's row on its day, or added it done there (done before
+        /// its day; fix round 2).
+        var ticked: [String] = []
+        /// Moved from today to a later day: today's open row was left skipped, shown as "Moved to
+        /// <day>" (fix round 2).
+        var moved: [String] = []
         /// The manifest couldn't be read and was rebuilt from the store (deletions in the app are
         /// forgotten, so such a task may come back once).
         var manifestRebuilt = false
 
-        var changedStore: Bool { !(added.isEmpty && updated.isEmpty && removed.isEmpty) }
+        var changedStore: Bool {
+            !(added.isEmpty && updated.isEmpty && removed.isEmpty && ticked.isEmpty && moved.isEmpty)
+        }
     }
 
     /// Brings imported one-offs in line with `tasks.json` (`docs/VAULT-API.md`). One row per task
@@ -41,10 +49,15 @@ extension ListService {
     ///   its own future. An OPEN row left
     ///   on a past day doesn't settle the task: it stays as that day's miss, and today gets a row.
     /// - When T has a row, any other open, never-bumped row of the task on today or later is removed
-    ///   (the task moved).
-    /// A task gone from the file loses its open, never-bumped rows on today or later; everything
-    /// else stays, and the task is forgotten 62 days after it left. An existing row is never
-    /// inserted again (fetched by id first), so a tick can't be reset.
+    ///   (the task moved), except today's: moved from today to a later day, today's row is left
+    ///   skipped and remembered as moved (`movedTo`), "Moved to <day>" on Home. If the file brings
+    ///   the task back to today, that row is un-skipped and is the task's row again.
+    /// Then each `done` entry (`applyVaultDone`): its task's open row on that day is ticked at
+    /// `doneAt`, even on a past day; or, with no row that day, a done row is added there. Once per
+    /// task and day (`doneApplied`).
+    /// A task gone from the file (and not under `done`) loses its open, never-bumped rows on today
+    /// or later; everything else stays, and the task is forgotten 62 days after it left. An
+    /// existing row is never inserted again (fetched by id first), so a tick can't be reset.
     ///
     /// An unreadable manifest is rebuilt from the store first (`rebuildVaultManifest`).
     /// Saves once, then writes the manifest (never before the save). Callers that may race another
@@ -53,6 +66,7 @@ extension ListService {
     @discardableResult
     static func reconcileVaultTasks(
         _ tasks: [VaultTask],
+        done: [VaultDone] = [],
         now: Date = Date(),
         calendar: Calendar = .current,
         context: ModelContext,
@@ -66,12 +80,17 @@ extension ListService {
         if let stored {
             manifest = stored
         } else {
-            manifest = try rebuildVaultManifest(taskIDs: tasks.map(\.id), todayKey: todayKey, calendar: calendar, context: context)
+            manifest = try rebuildVaultManifest(
+                taskIDs: tasks.map(\.id) + done.map(\.id), todayKey: todayKey, calendar: calendar, context: context
+            )
             result.manifestRebuilt = true
         }
 
         let wanted = Set(tasks.map(\.id))
-        let forgetBefore = DayMath(calendar: calendar).adding(days: -62, to: todayKey)
+        let math = DayMath(calendar: calendar)
+        let forgetBefore = math.adding(days: -62, to: todayKey)
+        // `done` covers today and the 6 days before (the contract); anything else is ignored.
+        let doneFrom = math.adding(days: -6, to: todayKey)
         for task in tasks {
             var entry = manifest.entries[task.id] ?? VaultManifest.Entry()
             let target = max(task.dayKey, todayKey)
@@ -108,11 +127,8 @@ extension ListService {
                     known.append((day, try occurrence(id: id, context: context)))
                 }
             }
-            entry.settledOn = (known
-                .filter { $0.row.map { !isOpenAndNeverBumped($0) } ?? true }
-                .map(\.day) + [entry.settledOnTrimmed].compactMap { $0 })
-                .max()
-            let settled = entry.settledOn.map { $0 >= (entry.scheduledFor ?? "") } ?? false
+            entry.settledOn = settledDay(known, trimmed: entry.settledOnTrimmed)
+            let settled = isSettled(entry)
 
             var hasTargetRow = false
             if let row = try occurrence(id: targetID, context: context) {
@@ -122,6 +138,13 @@ extension ListService {
                     if fileChanged, try applyVaultFields(of: task, to: row, context: context) {
                         result.updated.append(task.id)
                     }
+                } else if target == todayKey, entry.isMovedRow(row), row.bumpedToID == nil,
+                          markUnskipped(row, todayKey: todayKey) {
+                    // Moved later, then back to today: today's moved row is the task's row again
+                    // (one row per task per day), open, with the file's fields.
+                    entry.movedTo?[target] = nil
+                    _ = try applyVaultFields(of: task, to: row, context: context)
+                    result.updated.append(task.id)
                 } else {
                     result.untouched.append(task.id)
                 }
@@ -146,6 +169,15 @@ extension ListService {
                 // The task moved: its other open, never-bumped rows on today or later go.
                 for (day, row) in known where day >= todayKey && day != target {
                     guard let row, isOpenAndNeverBumped(row), row.dayKey >= todayKey else { continue }
+                    if day == todayKey, target > todayKey, markSkipped(row, todayKey: todayKey) {
+                        // Moved from today to a later day: today's row stays, skipped (no credit,
+                        // no miss), as "Moved to <day>"; the live task is the new row.
+                        var moves = entry.movedTo ?? [:]
+                        moves[todayKey] = target
+                        entry.movedTo = moves
+                        result.moved.append(task.id)
+                        continue
+                    }
                     context.delete(row)
                     entry.rows[day] = nil
                     if !result.removed.contains(task.id) { result.removed.append(task.id) }
@@ -155,12 +187,26 @@ extension ListService {
             manifest.entries[task.id] = entry
         }
 
+        // Done in a Claude session: ticked, not removed. Before the gone-from-file rule below,
+        // which never removes a done task's rows.
+        var doneIDs = Set<String>()
+        for item in done where !wanted.contains(item.id) && item.dayKey >= doneFrom && item.dayKey <= todayKey {
+            doneIDs.insert(item.id)
+            // The app never knew the task: nothing to tick.
+            guard var entry = manifest.entries[item.id] else { continue }
+            // Applied once: idempotent, and a vault tick un-ticked in the app stays un-ticked.
+            guard !(entry.doneApplied ?? []).contains(item.dayKey) else { continue }
+            try applyVaultDone(item, to: &entry, todayKey: todayKey, calendar: calendar, context: context, result: &result)
+            entry.doneApplied = ((entry.doneApplied ?? []) + [item.dayKey]).sorted()
+            manifest.entries[item.id] = entry
+        }
+
         for (taskID, original) in manifest.entries where !wanted.contains(taskID) {
             var entry = original
             if entry.absentSince == nil {
                 entry.absentSince = todayKey
             }
-            for (day, id) in original.rows {
+            for (day, id) in original.rows where !doneIDs.contains(taskID) {
                 guard let row = try occurrence(id: id, context: context) else { continue }
                 if row.dayKey >= todayKey, isOpenAndNeverBumped(row) {
                     context.delete(row)
@@ -176,11 +222,143 @@ extension ListService {
             }
         }
 
+        // Fix round 2's bookkeeping lasts as long as `done` can name the day (applied) or the rows
+        // do (ticked, moved).
+        for (taskID, entry) in manifest.entries {
+            var pruned = entry
+            pruned.doneApplied = nonEmpty(entry.doneApplied?.filter { $0 >= doneFrom })
+            pruned.tickedByVault = nonEmpty(entry.tickedByVault?.filter { $0.key >= forgetBefore })
+            pruned.movedTo = nonEmpty(entry.movedTo?.filter { $0.key >= forgetBefore })
+            if pruned != entry {
+                manifest.entries[taskID] = pruned
+            }
+        }
+
         try saveVaultChanges(context: context)
         if manifest != stored {
             manifest.save(to: defaults)
         }
         return result
+    }
+
+    /// One `done` entry (a task finished in a Claude session, already deleted from Now.md), for a
+    /// task the manifest knows, on day D (today or the 6 days before):
+    /// - an open row of the task on D (a bumped copy too, or today's "moved" row) is ticked at
+    ///   `doneAt`, through `complete`'s rule: the one change the import makes to a past day, since
+    ///   it is a real completion stamped inside that day;
+    /// - a row on D already done, skipped or bumped is left alone (ticks and bumps win);
+    /// - a row on D deleted in the app stays deleted;
+    /// - no row on D, and the task isn't settled: a done row is added on D (done before its day,
+    ///   or on a day the app never opened), copied from its next open row, or its latest one;
+    /// then its open, never-bumped rows after D, from today on, are removed (it's done).
+    /// A row the vault ticked is recorded in `tickedByVault`.
+    private static func applyVaultDone(
+        _ item: VaultDone,
+        to entry: inout VaultManifest.Entry,
+        todayKey: String,
+        calendar: Calendar,
+        context: ModelContext,
+        result: inout VaultReconcileResult
+    ) throws {
+        let day = item.dayKey
+        let rows = try vaultRows(of: entry, context: context)
+        let onDay = rows.filter { $0.dayKey == day }
+        var ticked: UUID?
+        if let row = onDay.first(where: { $0.state == .open || entry.isMovedRow($0) }) {
+            if markDone(row, at: item.doneAt, calendar: calendar) {
+                ticked = row.id
+                entry.movedTo?[row.dayKey] = nil
+            } else {
+                result.untouched.append(item.id)
+            }
+        } else if !onDay.isEmpty {
+            result.untouched.append(item.id)
+        } else if entry.rows[day] != nil {
+            result.deletedInApp.append(item.id)
+        } else if try !isSettledNow(entry, context: context),
+                  let template = rows.filter({ $0.dayKey > day && isOpenAndNeverBumped($0) }).min(by: { $0.dayKey < $1.dayKey })
+                    ?? rows.max(by: { $0.dayKey < $1.dayKey }) {
+            let id = VaultTaskID.occurrenceID(for: item.id, dayKey: day)
+            if try occurrence(id: id, context: context) == nil {
+                context.insert(Occurrence(
+                    id: id,
+                    list: template.list,
+                    dayKey: day,
+                    title: template.title,
+                    sortOrder: try vaultNextSortOrder(on: day, list: template.list, context: context),
+                    state: .done,
+                    completedAt: item.doneAt,
+                    createdAt: min(template.createdAt, item.doneAt),
+                    bumpLimit: template.bumpLimit,
+                    deadlineDayKey: template.deadlineDayKey
+                ))
+                ticked = id
+            } else {
+                result.untouched.append(item.id)
+            }
+            entry.rows[day] = id
+        } else {
+            result.untouched.append(item.id)
+        }
+        if let ticked {
+            var byDay = entry.tickedByVault ?? [:]
+            byDay[day] = ticked
+            entry.tickedByVault = byDay
+            result.ticked.append(item.id)
+        }
+
+        // Done: its later open, never-bumped rows (today on) go, as a task gone from the file.
+        for (rowDay, id) in entry.rows where rowDay > day && rowDay >= todayKey {
+            guard let row = try occurrence(id: id, context: context), isOpenAndNeverBumped(row) else { continue }
+            context.delete(row)
+            entry.rows[rowDay] = nil
+            if !result.removed.contains(item.id) { result.removed.append(item.id) }
+        }
+    }
+
+    /// Every row of a task: its imported rows and the copies bumped from them.
+    private static func vaultRows(of entry: VaultManifest.Entry, context: ModelContext) throws -> [Occurrence] {
+        var seen = Set<UUID>()
+        var rows: [Occurrence] = []
+        for start in entry.rows.keys.sorted().compactMap({ entry.rows[$0] }) {
+            var next: UUID? = start
+            var steps = 0
+            while let id = next, steps < 60, seen.insert(id).inserted, let row = try occurrence(id: id, context: context) {
+                rows.append(row)
+                next = row.bumpedToID
+                steps += 1
+            }
+        }
+        return rows
+    }
+
+    /// The day the task settled: its latest done, skipped or bumped row, or row deleted in the app
+    /// (`row` nil), or the latest such day among trimmed rows.
+    private static func settledDay(_ known: [(day: String, row: Occurrence?)], trimmed: String?) -> String? {
+        (known.filter { $0.row.map { !isOpenAndNeverBumped($0) } ?? true }.map(\.day) + [trimmed].compactMap { $0 }).max()
+    }
+
+    /// `isSettled`, from the rows as they are now (a task under `done` isn't in the file, so its
+    /// `settledOn` is from its last import).
+    private static func isSettledNow(_ entry: VaultManifest.Entry, context: ModelContext) throws -> Bool {
+        var current = entry
+        var known: [(day: String, row: Occurrence?)] = []
+        for day in entry.rows.keys.sorted() {
+            if let id = entry.rows[day] {
+                known.append((day, try occurrence(id: id, context: context)))
+            }
+        }
+        current.settledOn = settledDay(known, trimmed: entry.settledOnTrimmed)
+        return isSettled(current)
+    }
+
+    /// Settled on or after its latest scheduling: no new row is added.
+    private static func isSettled(_ entry: VaultManifest.Entry) -> Bool {
+        entry.settledOn.map { $0 >= (entry.scheduledFor ?? "") } ?? false
+    }
+
+    private static func nonEmpty<C: Collection>(_ collection: C?) -> C? {
+        collection.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// Rebuilds the manifest from the store when it can't be read: per-day ids are computable, so
@@ -280,7 +458,8 @@ extension ListService {
     }
 
     /// Imported tasks ticked on days from `startKey` through `endKey`, by day. A task bumped and
-    /// then done counts on the day it was done.
+    /// then done counts on the day it was done. Rows the vault ticked for a `done` entry are left
+    /// out: they are already deleted from Now.md.
     static func vaultTasksDone(
         from startKey: String,
         through endKey: String,
@@ -290,13 +469,16 @@ extension ListService {
         var byDay: [String: [VaultHabits.DoneTask]] = [:]
         var seen = Set<UUID>()
         var countedTaskDays = Set<String>()
-        for (taskID, entry) in (VaultManifest.load(from: defaults) ?? VaultManifest()).entries {
+        let manifest = VaultManifest.load(from: defaults) ?? VaultManifest()
+        // Ticked by the vault for a `done` entry: already deleted from Now.md, so not proposed.
+        let tickedByVault = manifest.tickedByVaultIDs
+        for (taskID, entry) in manifest.entries {
             for start in entry.rows.values {
                 var next: UUID? = start
                 var steps = 0
                 while let id = next, steps < 60, seen.insert(id).inserted, let row = try occurrence(id: id, context: context) {
                     // Once per task per day, however many of its rows reach that day's tick.
-                    if row.state == .done, row.dayKey >= startKey, row.dayKey <= endKey,
+                    if row.state == .done, !tickedByVault.contains(row.id), row.dayKey >= startKey, row.dayKey <= endKey,
                        countedTaskDays.insert("\(taskID)|\(row.dayKey)").inserted {
                         byDay[row.dayKey, default: []].append(
                             VaultHabits.DoneTask(id: taskID, title: row.title, doneAt: row.completedAt)

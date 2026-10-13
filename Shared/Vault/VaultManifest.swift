@@ -1,4 +1,5 @@
 import CryptoKit
+import SwiftData
 import Foundation
 import os
 
@@ -53,15 +54,36 @@ struct VaultManifest: Codable, Equatable {
         /// The first day the task was seen missing from the file (nil while it is listed). An entry
         /// is forgotten 62 days after that, never while the task is listed.
         var absentSince: String?
+        /// Fix round 2. The days whose `done` entry has been applied (`tasks.json`'s `done`), so
+        /// the same entry arriving on every fetch for a week changes nothing after the first time,
+        /// and a vault tick un-ticked in the app isn't ticked again. Kept for 7 days. Optional, so a
+        /// manifest written before fix round 2 still reads.
+        var doneApplied: [String]?
+        /// Fix round 2. `dayKey` → the row the vault ticked (or added done) for a `done` entry. Such
+        /// rows count as done everywhere, but are left out of `vaultTasksDone`: they are already
+        /// deleted from Now.md.
+        var tickedByVault: [String: UUID]?
+        /// Fix round 2. `dayKey` → the later day the file moved the task to, for today's open row
+        /// left skipped when the task moved: Home shows it as "Moved to <day>", with no actions.
+        var movedTo: [String: String]?
 
         init(rows: [String: UUID] = [:], fingerprint: String? = nil, settledOn: String? = nil,
-             settledOnTrimmed: String? = nil, scheduledFor: String? = nil, absentSince: String? = nil) {
+             settledOnTrimmed: String? = nil, scheduledFor: String? = nil, absentSince: String? = nil,
+             doneApplied: [String]? = nil, tickedByVault: [String: UUID]? = nil, movedTo: [String: String]? = nil) {
             self.rows = rows
             self.fingerprint = fingerprint
             self.settledOn = settledOn
             self.settledOnTrimmed = settledOnTrimmed
             self.scheduledFor = scheduledFor
             self.absentSince = absentSince
+            self.doneApplied = doneApplied
+            self.tickedByVault = tickedByVault
+            self.movedTo = movedTo
+        }
+
+        /// The row on `dayKey` is today's row left behind when the task moved later.
+        func isMovedRow(_ row: Occurrence) -> Bool {
+            movedTo?[row.dayKey] != nil && rows[row.dayKey] == row.id && row.state == .skipped
         }
     }
 
@@ -94,5 +116,22 @@ struct VaultManifest: Codable, Equatable {
     /// Every row id the manifest knows.
     var allRowIDs: [UUID] {
         entries.values.flatMap { $0.rows.values }
+    }
+
+    /// Rows left behind when their task moved later (`Entry.movedTo`): row id → the day it moved
+    /// to. Home reads it to show "Moved to <day>". Only rows still skipped are moved rows.
+    var movedRowDays: [UUID: String] {
+        var days: [UUID: String] = [:]
+        for entry in entries.values {
+            for (day, to) in entry.movedTo ?? [:] {
+                if let id = entry.rows[day] { days[id] = to }
+            }
+        }
+        return days
+    }
+
+    /// Every row the vault ticked for a `done` entry.
+    var tickedByVaultIDs: Set<UUID> {
+        Set(entries.values.flatMap { ($0.tickedByVault ?? [:]).values })
     }
 }
