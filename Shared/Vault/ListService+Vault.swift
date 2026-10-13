@@ -232,9 +232,9 @@ extension ListService {
         for (taskID, entry) in manifest.entries {
             var pruned = entry
             try refreshTodaysMove(&pruned, todayKey: todayKey, context: context)
-            pruned.doneApplied = nonEmpty(entry.doneApplied?.filter { $0 >= doneFrom })
-            pruned.tickedByVault = nonEmpty(entry.tickedByVault?.filter { $0.key >= forgetBefore })
-            pruned.movedTo = nonEmpty(entry.movedTo?.filter { $0.key >= forgetBefore })
+            pruned.doneApplied = nonEmpty(pruned.doneApplied?.filter { $0 >= doneFrom })
+            pruned.tickedByVault = nonEmpty(pruned.tickedByVault?.filter { $0.key >= forgetBefore })
+            pruned.movedTo = nonEmpty(pruned.movedTo?.filter { $0.key >= forgetBefore })
             if pruned != entry {
                 manifest.entries[taskID] = pruned
             }
