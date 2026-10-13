@@ -7,7 +7,7 @@ import SwiftUI
 /// Includes completion, bumping, add/reorder, and post-mutation refresh/reload coordination.
 extension HomeViewModel {
     func toggleMorningEntry(_ entry: Occurrence, context: ModelContext) {
-        guard canComplete(day: selectedDay) else { return }
+        guard canComplete(day: selectedDay), movedTo(entry) == nil else { return }
 
         write("Toggle morning item", context: context) {
             if entry.isCompleted {
@@ -27,7 +27,7 @@ extension HomeViewModel {
 
     /// Ticks or unticks a task. Unticking a bumped task un-bumps it (removes tomorrow's copy).
     func toggleDailyTask(_ task: Occurrence, context: ModelContext) {
-        guard canComplete(day: selectedDay) else { return }
+        guard canComplete(day: selectedDay), movedTo(task) == nil else { return }
 
         write("Toggle daily task", context: context) {
             if task.isCompleted {
@@ -107,7 +107,7 @@ extension HomeViewModel {
     }
 
     func unskip(_ occurrence: Occurrence, context: ModelContext) {
-        guard canComplete(day: selectedDay) else { return }
+        guard canComplete(day: selectedDay), movedTo(occurrence) == nil else { return }
         write("Undo skip", context: context) {
             _ = try ListService.unskip(occurrence, todayKey: HomeModel.dayKey(for: now), context: context)
         }

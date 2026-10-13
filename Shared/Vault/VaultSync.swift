@@ -213,7 +213,7 @@ final class VaultSync: ObservableObject {
             AppLogger.vault.error("tasks.json rejected: \(reason, privacy: .public)")
             if role == .app { setStatus(VaultStatus(kind: .badFile, date: now())) }
             return .badFile
-        case let .tasks(tasks):
+        case let .tasks(tasks, done):
             // One reconcile at a time across the app and the widget: the app waits up to 1 s, the
             // widget not at all; either skips if the other is still at it.
             var held: VaultFileLock.Held?
@@ -236,7 +236,9 @@ final class VaultSync: ObservableObject {
             }
             defer { held?.release() }
             do {
-                let result = try ListService.reconcileVaultTasks(tasks, now: now(), calendar: calendar, context: context, defaults: defaults)
+                let result = try ListService.reconcileVaultTasks(
+                    tasks, done: done, now: now(), calendar: calendar, context: context, defaults: defaults
+                )
                 // Only after the store saved: a failed save fetches the whole file again next time.
                 if body != cached {
                     defaults.set(body, forKey: Self.bodyKey)
@@ -247,7 +249,7 @@ final class VaultSync: ObservableObject {
                 setStatus(result.manifestRebuilt
                           ? VaultStatus(kind: .manifestRebuilt, date: now())
                           : VaultStatus(kind: .updated, date: now()))
-                AppLogger.vault.info("Tasks reconciled: +\(result.added.count, privacy: .public) ~\(result.updated.count, privacy: .public) -\(result.removed.count, privacy: .public)")
+                AppLogger.vault.info("Tasks reconciled: +\(result.added.count, privacy: .public) ~\(result.updated.count, privacy: .public) -\(result.removed.count, privacy: .public) ✓\(result.ticked.count, privacy: .public) →\(result.moved.count, privacy: .public)")
                 if result.changedStore {
                     NotificationCenter.default.post(name: Self.tasksDidChange, object: self)
                 }

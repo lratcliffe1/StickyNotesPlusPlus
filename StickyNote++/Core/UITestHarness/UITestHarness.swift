@@ -15,7 +15,7 @@ import os
 /// Home on the day N days from today (e.g. `+3`, a future day with a planned task), and
 /// `-uiCalendarMonth <±N>` opens the calendar N months from the current one. `-uiOnlyLists
 /// <morning,day,evening>` keeps only those lists' seed data (the calendar with one or two segments).
-/// `-uiVault <off|updated|rejected>` sets up the vault link with a fake GitHub and an in-memory token
+/// `-uiVault <off|updated|rejected|session>` sets up the vault link with a fake GitHub and an in-memory token
 /// (`UITestHarness+Vault.swift`).
 /// The app then runs on an in-memory store seeded with fixed sample data (V2 items and occurrences;
 /// the V1 tables stay empty, so the one-time backfill finds nothing), at a fixed time of day,

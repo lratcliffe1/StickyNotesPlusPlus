@@ -411,11 +411,18 @@ enum ListService {
     /// that day's end).
     @discardableResult
     static func complete(_ occurrence: Occurrence, at date: Date, calendar: Calendar = .current, context: ModelContext) throws -> Bool {
+        guard markDone(occurrence, at: date, calendar: calendar) else { return false }
+        try context.save()
+        return true
+    }
+
+    /// `complete`'s rule without the save, for a caller that saves once at the end (the vault
+    /// import ticking a task done in a Claude session).
+    static func markDone(_ occurrence: Occurrence, at date: Date, calendar: Calendar = .current) -> Bool {
         guard occurrence.state == .open || occurrence.state == .skipped else { return false }
         guard occurrence.dayKey <= dayKey(for: date, calendar: calendar) else { return false }
         occurrence.state = .done
         occurrence.completedAt = date
-        try context.save()
         return true
     }
 
@@ -446,20 +453,33 @@ enum ListService {
     /// day can't be settled in advance).
     @discardableResult
     static func skip(_ occurrence: Occurrence, todayKey: String, context: ModelContext) throws -> Bool {
+        guard markSkipped(occurrence, todayKey: todayKey) else { return false }
+        try context.save()
+        return true
+    }
+
+    /// `skip`'s rule without the save (the vault import leaving today's row of a task moved to a
+    /// later day as "Moved to <day>").
+    static func markSkipped(_ occurrence: Occurrence, todayKey: String) -> Bool {
         guard occurrence.state == .open, occurrence.dayKey == todayKey else { return false }
         occurrence.state = .skipped
         occurrence.completedAt = nil
-        try context.save()
         return true
     }
 
     /// Undoes a skip: the occurrence is open again and counts towards its day. Today only.
     @discardableResult
     static func unskip(_ occurrence: Occurrence, todayKey: String, context: ModelContext) throws -> Bool {
+        guard markUnskipped(occurrence, todayKey: todayKey) else { return false }
+        try context.save()
+        return true
+    }
+
+    /// `unskip`'s rule without the save (the vault import, when a moved task comes back to today).
+    static func markUnskipped(_ occurrence: Occurrence, todayKey: String) -> Bool {
         guard occurrence.state == .skipped, occurrence.dayKey == todayKey else { return false }
         occurrence.state = .open
         occurrence.completedAt = nil
-        try context.save()
         return true
     }
 
@@ -941,7 +961,7 @@ enum ListService {
     }
 
     /// Clears the links pointing at a row that is about to be deleted.
-    private static func unlinkBeforeDelete(_ row: Occurrence, context: ModelContext) throws {
+    static func unlinkBeforeDelete(_ row: Occurrence, context: ModelContext) throws {
         if let fromID = row.bumpedFromID, let source = try occurrence(id: fromID, context: context), source.bumpedToID == row.id {
             source.bumpedToID = nil
         }

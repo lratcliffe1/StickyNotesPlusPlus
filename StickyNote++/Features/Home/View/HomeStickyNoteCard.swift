@@ -255,7 +255,8 @@ struct HomeStickyNoteCard: View {
             title: occurrence.title,
             subtitle: subtitle(for: occurrence),
             isCompleted: occurrence.isCompleted,
-            canEdit: canEdit,
+            // A row the vault moved to a later day is history: the live task is the new row.
+            canEdit: canEdit && vm.movedTo(occurrence) == nil,
             strikeColor: strikeColor,
             isDimmed: occurrence.state == .skipped,
             onHorizontalSwipeActivityChange: onTaskRowSwipeActiveChange,
@@ -346,6 +347,11 @@ struct HomeStickyNoteCard: View {
     // MARK: - Row text
 
     private func subtitle(for occurrence: Occurrence) -> String? {
+        if let movedTo = vm.movedTo(occurrence) {
+            // Moved to a later day in Now.md: neutral like a skip (fix round 2). "" once the task
+            // has no later row (it left Now.md, or that row went).
+            return movedTo.isEmpty ? "No longer planned" : "Moved to \(BumpCost.format(movedTo))"
+        }
         if occurrence.state == .skipped {
             return "Skipped today"
         }
@@ -374,7 +380,13 @@ struct HomeStickyNoteCard: View {
 
     @ViewBuilder
     private func trailingNote(for occurrence: Occurrence) -> some View {
-        if occurrence.state == .skipped {
+        if vm.movedTo(occurrence) != nil {
+            // A status, not a disclosure; the subtitle already says it, so VoiceOver skips it.
+            Image(systemName: "calendar.badge.clock")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        } else if occurrence.state == .skipped {
             Image(systemName: "forward.end")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)

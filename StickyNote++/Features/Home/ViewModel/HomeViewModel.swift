@@ -46,6 +46,10 @@ final class HomeViewModel: ObservableObject {
     /// Morning rows on screen added after that morning's deadline: bonus rows, shown and tickable
     /// but never counted (`ListRules.isBonus`; DECISIONS.md, 2026-10-12).
     @Published var bonusRowIDs: Set<UUID> = []
+    /// Rows left behind when the vault moved their task to a later day: row id → that day
+    /// (`VaultManifest.movedRowDays`; DECISIONS.md, 2026-10-12, fix round 2). Shown as
+    /// "Moved to <day>", with no actions.
+    @Published var movedRowDays: [UUID: String] = [:]
     /// The add menu's options from before "Until Deadline" was picked with no deadline, restored
     /// if the deadline sheet is cancelled.
     var optionsBeforeDeadlinePick: OneOffOptions?
@@ -116,6 +120,7 @@ final class HomeViewModel: ObservableObject {
             among: morningEntries, history: dayRulesHistory, context: context, calendar: calendar
         )) ?? []
         plannedItems = isFutureDay ? fetchPlannedItems(on: dayKey, context: context) : []
+        movedRowDays = VaultManifest.load(from: defaults)?.movedRowDays ?? [:]
 
         isEveningInUse = (try? repository.isInUse(.evening, context: context)) ?? false
         recalculateDerivedState(context: context)
@@ -250,6 +255,14 @@ final class HomeViewModel: ObservableObject {
         bonusRowIDs.isEmpty ? rows : rows.filter { !bonusRowIDs.contains($0.id) }
     }
 
+    /// The day the vault moved this row's task to, if this is the skipped row it left behind:
+    /// history, so it gets no tick, skip, bump or menu. "" when the task is no longer planned (it
+    /// left Now.md, or its later row went).
+    func movedTo(_ occurrence: Occurrence) -> String? {
+        guard occurrence.state == .skipped else { return nil }
+        return movedRowDays[occurrence.id]
+    }
+
     /// Added after the morning's cutoff: shown and tickable, never counted.
     func isBonus(_ occurrence: Occurrence) -> Bool {
         bonusRowIDs.contains(occurrence.id)
@@ -342,7 +355,7 @@ final class HomeViewModel: ObservableObject {
     /// Whether a row gets a long-press menu: not on a past day; on a future day only one-offs
     /// (Edit… and Delete), since nothing can be done, skipped or bumped ahead of its day.
     func hasRowMenu(_ occurrence: Occurrence) -> Bool {
-        guard !isReadOnly else { return false }
+        guard !isReadOnly, movedTo(occurrence) == nil else { return false }
         if isFutureDay { return !occurrence.isRepeating }
         return true
     }

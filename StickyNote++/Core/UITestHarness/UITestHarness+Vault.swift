@@ -9,11 +9,15 @@ import SwiftData
 ///   scenario's time, the status is "Tasks updated <time>", the habits were sent at 21:40 yesterday
 ///   and the token expires in a year. The fake answers every later check the same way.
 /// - `rejected`: a token GitHub refuses (every request answers 401): "Token not accepted".
+/// - `session` (fix round 2): `updated`, then a Claude session's file: "Chase Deel" was done an
+///   hour ago (under `done`, ticked) and "Book TMB huts" moved to the day after tomorrow (today's
+///   row shows "Moved to <day>").
 extension UITestHarness {
     enum VaultState: String {
         case off
         case updated
         case rejected
+        case session
     }
 
     @MainActor
@@ -24,12 +28,14 @@ extension UITestHarness {
         context: ModelContext,
         calendar: Calendar
     ) -> VaultSync {
-        let tasksData = sampleTasks(now: now, calendar: calendar)
+        let tasksData = state == .session
+            ? sessionTasks(now: now, calendar: calendar)
+            : sampleTasks(now: now, calendar: calendar)
         let http = FakeVaultHTTPClient { request in
             switch state {
             case .off, .rejected:
                 return .init(status: 401, body: Data(#"{"message":"Bad credentials"}"#.utf8))
-            case .updated:
+            case .updated, .session:
                 guard let url = request.url?.absoluteString else { return .init(status: 400) }
                 if url.hasSuffix("/tasks.json") {
                     return .init(status: 200, headers: ["ETag": "\"harness\""], body: tasksData)
@@ -51,9 +57,15 @@ extension UITestHarness {
         switch state {
         case .off:
             break
-        case .updated:
-            if case let .tasks(tasks) = VaultTasksFile.decode(tasksData) {
-                _ = try? ListService.reconcileVaultTasks(tasks, now: now, calendar: calendar, context: context, defaults: defaults)
+        case .updated, .session:
+            // `session`: the morning's file first (imported at 08:00), then the session's.
+            let morning = calendar.date(bySettingHour: 8, minute: 0, second: 0, of: now) ?? now
+            for (data, at) in state == .session
+                ? [(sampleTasks(now: now, calendar: calendar), morning), (tasksData, now)]
+                : [(tasksData, now)] {
+                if case let .tasks(tasks, done) = VaultTasksFile.decode(data) {
+                    _ = try? ListService.reconcileVaultTasks(tasks, done: done, now: at, calendar: calendar, context: context, defaults: defaults)
+                }
             }
             defaults.set(tasksData, forKey: VaultSync.bodyKey)
             defaults.set("\"harness\"", forKey: VaultSync.etagKey)
@@ -72,6 +84,35 @@ extension UITestHarness {
         }
         vault.reloadFromDefaults()
         return vault
+    }
+
+    /// `sampleTasks` after a Claude session an hour ago: "Chase Deel" done (under `done`), "Book TMB
+    /// huts" moved to the day after tomorrow.
+    static func sessionTasks(now: Date, calendar: Calendar) -> Data {
+        func day(_ offset: Int) -> String {
+            HomeModel.dayKey(for: calendar.date(byAdding: .day, value: offset, to: now) ?? now, calendar: calendar)
+        }
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = calendar.timeZone
+        formatter.formatOptions = [.withInternetDateTime]
+        let doneAt = formatter.string(from: now.addingTimeInterval(-3600))
+        let json = """
+        {
+          "version": 1,
+          "generatedAt": "2026-10-12T05:00:12Z",
+          "sourceCommit": "harness-session",
+          "tasks": [
+            { "id": "tmb-huts-booking", "title": "Book TMB huts Days 1–5 (opens today)", "list": "day",
+              "dayKey": "\(day(2))", "bumpLimit": { "kind": "cantBump" } },
+            { "id": "passport-photos", "title": "Renew passport photos", "dayKey": "\(day(0))" },
+            { "id": "tax-return-docs", "title": "Send the tax adviser the 2025 documents", "dayKey": "\(day(1))" }
+          ],
+          "done": [
+            { "id": "deel-chase", "dayKey": "\(day(0))", "doneAt": "\(doneAt)" }
+          ]
+        }
+        """
+        return Data(json.utf8)
     }
 
     /// Four Now.md tasks relative to the scenario's day: two today (one that must happen today,

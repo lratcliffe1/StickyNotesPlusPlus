@@ -8,7 +8,7 @@ final class VaultTasksFileTests: XCTestCase {
     }
 
     private func tasks(_ json: String, file: StaticString = #filePath, line: UInt = #line) -> [VaultTask] {
-        guard case let .tasks(tasks) = decode(json) else {
+        guard case let .tasks(tasks, _) = decode(json) else {
             XCTFail("expected tasks, got \(decode(json))", file: file, line: line)
             return []
         }
@@ -109,6 +109,61 @@ final class VaultTasksFileTests: XCTestCase {
         let long = String(repeating: "x", count: 100)
         let decoded = tasks(#"{ "version": 1, "tasks": [ { "id": "a", "title": "  \#(long)  ", "dayKey": "2026-10-14" } ] }"#)
         XCTAssertEqual(decoded.first?.title.count, 80)
+    }
+
+    // MARK: - done (fix round 2)
+
+    private func decodedDone(_ json: String, file: StaticString = #filePath, line: UInt = #line) -> (tasks: [VaultTask], done: [VaultDone]) {
+        guard case let .tasks(tasks, entries) = decode(json) else {
+            XCTFail("expected tasks, got \(decode(json))", file: file, line: line)
+            return ([], [])
+        }
+        return (tasks, entries)
+    }
+
+    func testDecodesTheDoneExample() {
+        let decoded = decodedDone("""
+        { "version": 1, "tasks": [], "done": [
+          { "id": "niall-entleiher-name", "dayKey": "2026-10-12", "doneAt": "2026-10-12T10:40:00+02:00" }
+        ] }
+        """)
+        XCTAssertEqual(decoded.done, [
+            VaultDone(id: "niall-entleiher-name", dayKey: "2026-10-12", doneAt: TestCalendars.date("2026-10-12", 10, 40)),
+        ])
+    }
+
+    func testAnInvalidDoneEntryIsIgnoredOnItsOwnWhileTasksStillRead() {
+        let decoded = decodedDone("""
+        { "version": 1,
+          "tasks": [ { "id": "listed", "title": "Listed", "dayKey": "2026-10-14" } ],
+          "done": [
+            { "id": "Bad ID", "dayKey": "2026-10-14", "doneAt": "2026-10-14T10:00:00+02:00" },
+            { "id": "bad-day", "dayKey": "2026-02-30", "doneAt": "2026-10-14T10:00:00+02:00" },
+            { "id": "bad-time", "dayKey": "2026-10-14", "doneAt": "this morning" },
+            { "id": "no-time", "dayKey": "2026-10-14" },
+            { "id": 7, "dayKey": "2026-10-14", "doneAt": "2026-10-14T10:00:00+02:00" },
+            42,
+            "text",
+            { "id": "listed", "dayKey": "2026-10-14", "doneAt": "2026-10-14T10:00:00+02:00" },
+            { "id": "twice", "dayKey": "2026-10-13", "doneAt": "2026-10-13T09:00:00+02:00" },
+            { "id": "good", "dayKey": "2026-10-14", "doneAt": "2026-10-14T08:00:00Z", "extra": true },
+            { "id": "twice", "dayKey": "2026-10-14", "doneAt": "2026-10-14T09:30:00.250+02:00" }
+          ] }
+        """)
+        XCTAssertEqual(decoded.tasks.map(\.id), ["listed"], "tasks still reconcile")
+        XCTAssertEqual(decoded.done.map(\.id), ["twice", "good"], "an id also in tasks is ignored too")
+        XCTAssertEqual(decoded.done.first?.dayKey, "2026-10-14", "the latest entry per id")
+        XCTAssertEqual(decoded.done.last?.doneAt, TestCalendars.date("2026-10-14", 10, 0))
+    }
+
+    func testAMalformedOrMissingDoneIsNoEntries() {
+        for json in [
+            #"{ "version": 1, "tasks": [], "done": "nonsense" }"#,
+            #"{ "version": 1, "tasks": [], "done": null }"#,
+            #"{ "version": 1, "tasks": [] }"#,
+        ] {
+            XCTAssertEqual(decodedDone(json).done, [], json)
+        }
     }
 
     func testIDRules() {
