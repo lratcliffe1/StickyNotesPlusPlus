@@ -92,6 +92,8 @@ SHOTS=(
   "42-vault-link-not-set-up|daily|vaultLink|light|"
   "43-vault-link-updated|daily|vaultLink|light||-uiVault updated"
   "44-vault-link-token-not-accepted|daily|vaultLink|light||-uiVault rejected"
+  "45-home-vault-session|daily|home|light||-uiVault session"
+  "46-home-vault-session-dark|daily|home|dark||-uiVault session"
 )
 
 for shot in "${SHOTS[@]}"; do

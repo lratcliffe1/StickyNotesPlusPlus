@@ -2,6 +2,14 @@
 
 **What this is for:** product rules Liam has decided, dated, newest first. Code and tests follow these. When a rule changes, add a new entry that names the one it replaces; never edit an old entry. **What must NOT go in here:** plans and status (→ `ROADMAP.md`).
 
+## 2026-10-12: fix round 2 (vault done and moves)
+
+Liam's decisions, signed off for fix round 2. Not provisional. Contract and rules in `VAULT-API.md` ("`done`", "Done in a Claude session", "Moved from today to a later day").
+
+- **Done in a Claude session = ticked in the app.** A task finished in a session (deleted from Now.md and listed under `tasks.json`'s `done`) is ticked on its day at the session's time, so it earns the day's credit and the streak, instead of being removed. This includes yesterday's still-open row ticked by a session late last night: the one exception to "past days are history" (step 6), because it is a real completion stamped inside that day. Done before its day, the future row goes and a done row is added on the day it was done. A row already ticked, skipped or bumped in the app wins and is never retimed. A vault tick Liam un-ticks in the app stays un-ticked. These ticks are not listed in `vaultTasksDone` (they are already deleted from Now.md).
+- **Moved later = "Moved to <day>", neutral like a skip.** A task moved in Now.md from today to a later day keeps today's row, skipped (no credit, no miss), labelled "Moved to Fri 16 Oct", with no actions; the task appears on its new day. Moves between future days, or earlier, stay as before. If it moves back to today, today's moved row becomes the live row again (one row per task per day).
+- **Renames keep the row.** The same id with a new title updates the open row in place (as step 6).
+
 ## 2026-10-12: fix round 1 (Liam's phone feedback)
 
 Liam's own decisions, from using the step 2b–6 build on his phone. Not provisional.
