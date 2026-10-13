@@ -32,6 +32,13 @@ struct VaultDone: Equatable {
 /// entry is only ignored on its own: `tasks` still reconciles.
 enum VaultTasksFile {
     static let supportedVersion = 1
+
+    /// The contract's days (`dayKey`, `done`'s window) are Munich days, wherever the phone is.
+    static var munichCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/Berlin") ?? .current
+        return calendar
+    }
     static let maxTitleLength = 80
     static let maxUpToDays = 14
 

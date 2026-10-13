@@ -348,8 +348,9 @@ struct HomeStickyNoteCard: View {
 
     private func subtitle(for occurrence: Occurrence) -> String? {
         if let movedTo = vm.movedTo(occurrence) {
-            // Moved to a later day in Now.md: neutral like a skip (fix round 2).
-            return "Moved to \(BumpCost.format(movedTo))"
+            // Moved to a later day in Now.md: neutral like a skip (fix round 2). "" once the task
+            // has no later row (it left Now.md, or that row went).
+            return movedTo.isEmpty ? "No longer planned" : "Moved to \(BumpCost.format(movedTo))"
         }
         if occurrence.state == .skipped {
             return "Skipped today"
@@ -380,10 +381,11 @@ struct HomeStickyNoteCard: View {
     @ViewBuilder
     private func trailingNote(for occurrence: Occurrence) -> some View {
         if vm.movedTo(occurrence) != nil {
-            Image(systemName: "arrow.forward")
+            // A status, not a disclosure; the subtitle already says it, so VoiceOver skips it.
+            Image(systemName: "calendar.badge.clock")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .accessibilityLabel("Moved")
+                .accessibilityHidden(true)
         } else if occurrence.state == .skipped {
             Image(systemName: "forward.end")
                 .font(.caption.weight(.semibold))

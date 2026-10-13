@@ -65,6 +65,8 @@ struct VaultManifest: Codable, Equatable {
         var tickedByVault: [String: UUID]?
         /// Fix round 2. `dayKey` → the later day the file moved the task to, for today's open row
         /// left skipped when the task moved: Home shows it as "Moved to <day>", with no actions.
+        /// Kept in step with the task's earliest later row on every reconcile; "" when it has none
+        /// any more ("No longer planned").
         var movedTo: [String: String]?
 
         init(rows: [String: UUID] = [:], fingerprint: String? = nil, settledOn: String? = nil,

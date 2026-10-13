@@ -961,7 +961,7 @@ enum ListService {
     }
 
     /// Clears the links pointing at a row that is about to be deleted.
-    private static func unlinkBeforeDelete(_ row: Occurrence, context: ModelContext) throws {
+    static func unlinkBeforeDelete(_ row: Occurrence, context: ModelContext) throws {
         if let fromID = row.bumpedFromID, let source = try occurrence(id: fromID, context: context), source.bumpedToID == row.id {
             source.bumpedToID = nil
         }

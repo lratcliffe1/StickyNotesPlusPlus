@@ -89,8 +89,11 @@ extension ListService {
         let wanted = Set(tasks.map(\.id))
         let math = DayMath(calendar: calendar)
         let forgetBefore = math.adding(days: -62, to: todayKey)
-        // `done` covers today and the 6 days before (the contract); anything else is ignored.
-        let doneFrom = math.adding(days: -6, to: todayKey)
+        // `done` covers today and the 6 days before, in Munich time (the contract), even when the
+        // phone is elsewhere; anything else is ignored.
+        let munich = VaultTasksFile.munichCalendar
+        let munichToday = dayKey(for: now, calendar: munich)
+        let doneFrom = DayMath(calendar: munich).adding(days: -6, to: munichToday)
         for task in tasks {
             var entry = manifest.entries[task.id] ?? VaultManifest.Entry()
             let target = max(task.dayKey, todayKey)
@@ -190,14 +193,16 @@ extension ListService {
         // Done in a Claude session: ticked, not removed. Before the gone-from-file rule below,
         // which never removes a done task's rows.
         var doneIDs = Set<String>()
-        for item in done where !wanted.contains(item.id) && item.dayKey >= doneFrom && item.dayKey <= todayKey {
+        for item in done where !wanted.contains(item.id) && item.dayKey >= doneFrom && item.dayKey <= munichToday {
             doneIDs.insert(item.id)
             // The app never knew the task: nothing to tick.
             guard var entry = manifest.entries[item.id] else { continue }
             // Applied once: idempotent, and a vault tick un-ticked in the app stays un-ticked.
             guard !(entry.doneApplied ?? []).contains(item.dayKey) else { continue }
-            try applyVaultDone(item, to: &entry, todayKey: todayKey, calendar: calendar, context: context, result: &result)
-            entry.doneApplied = ((entry.doneApplied ?? []) + [item.dayKey]).sorted()
+            // Recorded only once final: a refused tick is tried again next time.
+            if try applyVaultDone(item, to: &entry, todayKey: todayKey, munich: munich, context: context, result: &result) {
+                entry.doneApplied = ((entry.doneApplied ?? []) + [item.dayKey]).sorted()
+            }
             manifest.entries[item.id] = entry
         }
 
@@ -223,9 +228,10 @@ extension ListService {
         }
 
         // Fix round 2's bookkeeping lasts as long as `done` can name the day (applied) or the rows
-        // do (ticked, moved).
+        // do (ticked, moved); today's moved row follows where the task went.
         for (taskID, entry) in manifest.entries {
             var pruned = entry
+            try refreshTodaysMove(&pruned, todayKey: todayKey, context: context)
             pruned.doneApplied = nonEmpty(entry.doneApplied?.filter { $0 >= doneFrom })
             pruned.tickedByVault = nonEmpty(entry.tickedByVault?.filter { $0.key >= forgetBefore })
             pruned.movedTo = nonEmpty(entry.movedTo?.filter { $0.key >= forgetBefore })
@@ -242,42 +248,55 @@ extension ListService {
     }
 
     /// One `done` entry (a task finished in a Claude session, already deleted from Now.md), for a
-    /// task the manifest knows, on day D (today or the 6 days before):
+    /// task the manifest knows, on day D (Munich; today or the 6 days before):
     /// - an open row of the task on D (a bumped copy too, or today's "moved" row) is ticked at
-    ///   `doneAt`, through `complete`'s rule: the one change the import makes to a past day, since
-    ///   it is a real completion stamped inside that day;
-    /// - a row on D already done, skipped or bumped is left alone (ticks and bumps win);
-    /// - a row on D deleted in the app stays deleted;
-    /// - no row on D, and the task isn't settled: a done row is added on D (done before its day,
-    ///   or on a day the app never opened), copied from its next open row, or its latest one;
+    ///   `doneAt`, through `complete`'s rule judged in Munich time: the one change the import makes
+    ///   to a past day, since it is a real completion stamped inside that day;
+    /// - a row on D bumped in the app counts as done already; the open copy it was bumped to (dated
+    ///   after D, today on) is removed, unlinked as when a copy is deleted;
+    /// - a row on D already done or skipped is left alone (ticks win); one deleted in the app stays
+    ///   deleted;
+    /// - no row on D: a done row is added only when D is the app's today, on a list other than the
+    ///   morning, and the task isn't settled (done before its day). Never on a past day (a row
+    ///   would mark the day opened and wipe its misses) nor on the morning (a late add with a late
+    ///   tick would make the morning a miss);
     /// then its open, never-bumped rows after D, from today on, are removed (it's done).
-    /// A row the vault ticked is recorded in `tickedByVault`.
+    /// A row the vault ticked is recorded in `tickedByVault`. Returns whether the outcome is final
+    /// (false only when the tick was refused, so the entry is tried again on the next fetch).
     private static func applyVaultDone(
         _ item: VaultDone,
         to entry: inout VaultManifest.Entry,
         todayKey: String,
-        calendar: Calendar,
+        munich: Calendar,
         context: ModelContext,
         result: inout VaultReconcileResult
-    ) throws {
+    ) throws -> Bool {
         let day = item.dayKey
         let rows = try vaultRows(of: entry, context: context)
         let onDay = rows.filter { $0.dayKey == day }
         var ticked: UUID?
+        var final = true
         if let row = onDay.first(where: { $0.state == .open || entry.isMovedRow($0) }) {
-            if markDone(row, at: item.doneAt, calendar: calendar) {
+            if markDone(row, at: item.doneAt, calendar: munich) {
                 ticked = row.id
                 entry.movedTo?[row.dayKey] = nil
             } else {
+                final = false
                 result.untouched.append(item.id)
             }
         } else if !onDay.isEmpty {
+            // Ticked, skipped or bumped in the app: wins. A bump's open copy is now stale.
+            for bumped in onDay where bumped.state == .bumped {
+                try removeOpenBumpedCopies(after: bumped, todayKey: todayKey, context: context, result: &result, taskID: item.id)
+            }
             result.untouched.append(item.id)
         } else if entry.rows[day] != nil {
             result.deletedInApp.append(item.id)
-        } else if try !isSettledNow(entry, context: context),
+        } else if day == todayKey,
+                  try !isSettledNow(entry, context: context),
                   let template = rows.filter({ $0.dayKey > day && isOpenAndNeverBumped($0) }).min(by: { $0.dayKey < $1.dayKey })
-                    ?? rows.max(by: { $0.dayKey < $1.dayKey }) {
+                    ?? rows.max(by: { $0.dayKey < $1.dayKey }),
+                  template.list != .morning {
             let id = VaultTaskID.occurrenceID(for: item.id, dayKey: day)
             if try occurrence(id: id, context: context) == nil {
                 context.insert(Occurrence(
@@ -314,6 +333,45 @@ extension ListService {
             entry.rows[rowDay] = nil
             if !result.removed.contains(item.id) { result.removed.append(item.id) }
         }
+        return final
+    }
+
+    /// Follows a bumped row's chain and deletes its open copies dated after it, today on, unlinked
+    /// as when a copy is deleted (`unlinkBeforeDelete`): the bumped row keeps its bumped state, so
+    /// its day still counts as done.
+    private static func removeOpenBumpedCopies(
+        after bumped: Occurrence,
+        todayKey: String,
+        context: ModelContext,
+        result: inout VaultReconcileResult,
+        taskID: String
+    ) throws {
+        var next = bumped.bumpedToID
+        var steps = 0
+        while let id = next, steps < 60, let copy = try occurrence(id: id, context: context) {
+            next = copy.bumpedToID
+            steps += 1
+            guard copy.state == .open, copy.dayKey > bumped.dayKey, copy.dayKey >= todayKey else { continue }
+            try unlinkBeforeDelete(copy, context: context)
+            context.delete(copy)
+            if !result.removed.contains(taskID) { result.removed.append(taskID) }
+        }
+    }
+
+    /// Today's moved row says where the task went: the earliest of its rows after today, or "" when
+    /// it has none any more ("No longer planned": it left the file, or its later row was removed or
+    /// deleted). Run on every reconcile, so a second move updates the day.
+    private static func refreshTodaysMove(_ entry: inout VaultManifest.Entry, todayKey: String, context: ModelContext) throws {
+        guard entry.movedTo?[todayKey] != nil, let rowID = entry.rows[todayKey],
+              let row = try occurrence(id: rowID, context: context), entry.isMovedRow(row) else { return }
+        var live = ""
+        for day in entry.rows.keys.sorted() where day > todayKey {
+            if let id = entry.rows[day], try occurrence(id: id, context: context) != nil {
+                live = day
+                break
+            }
+        }
+        entry.movedTo?[todayKey] = live
     }
 
     /// Every row of a task: its imported rows and the copies bumped from them.

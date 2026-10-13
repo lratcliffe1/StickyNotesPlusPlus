@@ -29,8 +29,8 @@ final class VaultDoneAndMoveTests: XCTestCase {
 
     private var now: Date { TestCalendars.date(today, 12) }
 
-    private func task(_ id: String, _ title: String? = nil, day: String = "2026-10-14") -> VaultTask {
-        VaultTask(id: id, title: title ?? id, list: .day, dayKey: day, deadlineDayKey: nil, bumpLimit: .upToDays(3))
+    private func task(_ id: String, _ title: String? = nil, list: ListKind = .day, day: String = "2026-10-14") -> VaultTask {
+        VaultTask(id: id, title: title ?? id, list: list, dayKey: day, deadlineDayKey: nil, bumpLimit: .upToDays(3))
     }
 
     private func done(_ id: String, _ day: String = "2026-10-14", _ hour: Int = 10, _ minute: Int = 40) -> VaultDone {
@@ -38,8 +38,18 @@ final class VaultDoneAndMoveTests: XCTestCase {
     }
 
     @discardableResult
-    private func reconcile(_ tasks: [VaultTask], done: [VaultDone] = [], at date: Date? = nil) throws -> ListService.VaultReconcileResult {
-        try ListService.reconcileVaultTasks(tasks, done: done, now: date ?? now, calendar: munich, context: context, defaults: defaults)
+    private func reconcile(
+        _ tasks: [VaultTask], done: [VaultDone] = [], at date: Date? = nil, calendar: Calendar? = nil
+    ) throws -> ListService.VaultReconcileResult {
+        try ListService.reconcileVaultTasks(
+            tasks, done: done, now: date ?? now, calendar: calendar ?? munich, context: context, defaults: defaults
+        )
+    }
+
+    private var london: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/London") ?? .current
+        return calendar
     }
 
     private func row(_ id: String, on day: String = "2026-10-14") throws -> Occurrence? {
@@ -206,6 +216,95 @@ final class VaultDoneAndMoveTests: XCTestCase {
         XCTAssertTrue(manifest?.movedRowDays.isEmpty ?? false, "no longer a moved row")
     }
 
+    // MARK: - A. Review fixes
+
+    func testNoDoneRowIsAddedOnAPastDay() throws {
+        try reconcile([task("a", day: "2026-10-16")], at: TestCalendars.date(yesterday, 9))
+        let result = try reconcile([], done: [done("a", yesterday, 20, 0)])
+
+        XCTAssertTrue(result.ticked.isEmpty)
+        XCTAssertNil(try row("a", on: yesterday), "a row would mark yesterday opened and wipe its misses")
+        XCTAssertNil(try row("a", on: "2026-10-16"), "the later row still goes: it's done")
+        XCTAssertTrue(try allRows().isEmpty)
+        XCTAssertEqual(manifest?.entries["a"]?.doneApplied, [yesterday], "a deliberate no: final")
+    }
+
+    func testNoDoneRowIsAddedOnTheMorningList() throws {
+        try reconcile([task("m", list: .morning, day: "2026-10-16")])
+        let result = try reconcile([], done: [done("m", today, 11, 0)])
+
+        XCTAssertTrue(result.ticked.isEmpty)
+        XCTAssertNil(try row("m"), "a late add with a late tick would make the morning a miss")
+        XCTAssertNil(try row("m", on: "2026-10-16"))
+    }
+
+    func testABumpedRowDoneInASessionLosesItsOpenCopy() throws {
+        try reconcile([task("a")])
+        let original = try XCTUnwrap(row("a"))
+        let copy = try XCTUnwrap(try ListService.bump(original, now: now, calendar: munich, context: context))
+        XCTAssertEqual(copy.dayKey, "2026-10-15")
+        let copyID = copy.id
+
+        let result = try reconcile([], done: [done("a", today, 15, 0)])
+
+        XCTAssertEqual(result.untouched, ["a"], "the bump wins: it counts as done already")
+        XCTAssertEqual(result.removed, ["a"])
+        XCTAssertNil(try ListService.occurrence(id: copyID, context: context), "the stale copy goes")
+        XCTAssertEqual(original.state, .bumped)
+        XCTAssertNil(original.bumpedToID, "unlinked")
+        XCTAssertEqual(try allRows().count, 1)
+    }
+
+    func testADoneEntryIsJudgedInMunichTimeWhenThePhoneIsInLondon() throws {
+        let londonNoon = TestCalendars.date(today, 12, calendar: london)
+        try reconcile([task("a")], at: londonNoon, calendar: london)
+        // 00:30 in Munich on the 14th is 23:30 on the 13th in London.
+        let doneAt = TestCalendars.date(today, 0, 30)
+        let result = try reconcile([], done: [VaultDone(id: "a", dayKey: today, doneAt: doneAt)], at: londonNoon, calendar: london)
+
+        XCTAssertEqual(result.ticked, ["a"])
+        XCTAssertEqual(try row("a")?.state, .done)
+        XCTAssertEqual(try row("a")?.completedAt, doneAt)
+    }
+
+    func testARefusedTickIsNotRecordedAsApplied() throws {
+        try reconcile([task("a")])
+        // An entry whose doneAt (the 13th in Munich) is before its dayKey: the tick is refused.
+        let refused = VaultDone(id: "a", dayKey: today, doneAt: TestCalendars.date(yesterday, 20))
+        let result = try reconcile([], done: [refused])
+
+        XCTAssertTrue(result.ticked.isEmpty)
+        XCTAssertEqual(try row("a")?.state, .open)
+        XCTAssertNil(manifest?.entries["a"]?.doneApplied, "tried again next time")
+
+        try reconcile([], done: [done("a")])
+        XCTAssertEqual(try row("a")?.state, .done, "a corrected entry still ticks it")
+    }
+
+    func testAnIDInBothTasksAndDoneIsATask() throws {
+        try reconcile([task("a")])
+        let result = try reconcile([task("a")], done: [done("a")])
+        XCTAssertTrue(result.ticked.isEmpty)
+        XCTAssertEqual(try row("a")?.state, .open, "the file still lists it: not done")
+        XCTAssertNil(manifest?.entries["a"]?.doneApplied)
+    }
+
+    func testTheGoneRuleAppliesOnceTheDoneEntryLeavesTheWeek() throws {
+        try reconcile([task("a", day: "2026-10-25")])
+        // As if its done entry for today had been applied with nothing to do.
+        var stored = try XCTUnwrap(manifest)
+        stored.entries["a"]?.doneApplied = [today]
+        stored.save(to: defaults)
+
+        let inTheWeek = try reconcile([], done: [done("a")], at: TestCalendars.date("2026-10-20", 9))
+        XCTAssertTrue(inTheWeek.removed.isEmpty, "a done task's rows aren't removed as gone")
+        XCTAssertNotNil(try row("a", on: "2026-10-25"))
+
+        let afterTheWeek = try reconcile([], done: [done("a")], at: TestCalendars.date("2026-10-21", 9))
+        XCTAssertEqual(afterTheWeek.removed, ["a"], "out of the window: an ordinary task gone from the file")
+        XCTAssertNil(try row("a", on: "2026-10-25"))
+    }
+
     // MARK: - B. Moved later in the vault → "Moved to <day>" on today
 
     func testMovingTodayToFridayLeavesASkippedMovedRowAndAFridayRow() throws {
@@ -272,6 +371,42 @@ final class VaultDoneAndMoveTests: XCTestCase {
         XCTAssertEqual(try row("a", on: yesterday)?.state, .skipped)
         XCTAssertEqual(try row("a")?.state, .open)
         XCTAssertNil(try row("a", on: "2026-10-16"))
+    }
+
+    func testASecondMoveUpdatesTheMovedRowsDay() throws {
+        try reconcile([task("a")])
+        let todays = try XCTUnwrap(row("a"))
+        try reconcile([task("a", day: "2026-10-16")])
+        try reconcile([task("a", day: "2026-10-18")])
+
+        XCTAssertEqual(manifest?.movedRowDays, [todays.id: "2026-10-18"])
+        XCTAssertNil(try row("a", on: "2026-10-16"))
+        XCTAssertEqual(try row("a", on: "2026-10-18")?.state, .open)
+        XCTAssertEqual(todays.state, .skipped)
+    }
+
+    func testAMovedTaskThatLeavesTheFileIsNoLongerPlanned() throws {
+        try reconcile([task("a")])
+        let todays = try XCTUnwrap(row("a"))
+        try reconcile([task("a", day: "2026-10-16")])
+
+        let result = try reconcile([])
+
+        XCTAssertEqual(result.removed, ["a"])
+        XCTAssertNil(try row("a", on: "2026-10-16"))
+        XCTAssertEqual(todays.state, .skipped, "still history, still actionless")
+        XCTAssertEqual(manifest?.movedRowDays, [todays.id: ""], "\"No longer planned\"")
+    }
+
+    func testAMovedTaskWhoseLaterRowIsDeletedInTheAppIsNoLongerPlanned() throws {
+        try reconcile([task("a")])
+        let todays = try XCTUnwrap(row("a"))
+        try reconcile([task("a", day: "2026-10-16")])
+        XCTAssertTrue(try ListService.deleteOneOff(try XCTUnwrap(row("a", on: "2026-10-16")), todayKey: today, context: context))
+
+        try reconcile([task("a", day: "2026-10-16")])
+
+        XCTAssertEqual(manifest?.movedRowDays, [todays.id: ""])
     }
 
     // MARK: - C. Renames

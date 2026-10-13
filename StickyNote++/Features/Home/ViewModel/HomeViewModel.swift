@@ -255,14 +255,15 @@ final class HomeViewModel: ObservableObject {
         bonusRowIDs.isEmpty ? rows : rows.filter { !bonusRowIDs.contains($0.id) }
     }
 
-    /// Added after the morning's cutoff: shown and tickable, never counted.
     /// The day the vault moved this row's task to, if this is the skipped row it left behind:
-    /// history, so it gets no tick, skip, bump or menu.
+    /// history, so it gets no tick, skip, bump or menu. "" when the task is no longer planned (it
+    /// left Now.md, or its later row went).
     func movedTo(_ occurrence: Occurrence) -> String? {
         guard occurrence.state == .skipped else { return nil }
         return movedRowDays[occurrence.id]
     }
 
+    /// Added after the morning's cutoff: shown and tickable, never counted.
     func isBonus(_ occurrence: Occurrence) -> Bool {
         bonusRowIDs.contains(occurrence.id)
     }
