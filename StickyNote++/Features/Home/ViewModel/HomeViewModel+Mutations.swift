@@ -40,8 +40,8 @@ extension HomeViewModel {
     }
 
     /// A forgotten tick on a past day, any list, after retyping the title (fix round 3). Stamped
-    /// by `BackfillRules`: the day and evening at 23:59:59, a counted morning row just before that
-    /// day's deadline.
+    /// by `ListService.completePast`: the day and evening at 23:59:59, a counted morning row just
+    /// before that day's deadline.
     @discardableResult
     func completePastOccurrence(
         _ occurrence: Occurrence,
@@ -50,15 +50,10 @@ extension HomeViewModel {
     ) -> Bool {
         guard canCompletePast(occurrence) else { return false }
         guard BackfillRules.confirms(typedConfirmation, title: occurrence.title) else { return false }
-        guard let stamp = BackfillRules.stamp(
-            list: occurrence.list,
-            dayKey: occurrence.dayKey,
-            rules: dayRulesHistory.rules(for: occurrence.dayKey),
-            isBonus: isBonus(occurrence)
-        ) else { return false }
-
         let didComplete = write("Complete past occurrence", context: context) {
-            try ListService.complete(occurrence, at: stamp, context: context)
+            try ListService.completePast(
+                occurrence, todayKey: HomeModel.dayKey(for: now), history: dayRulesHistory, context: context
+            )
         } ?? false
         finishMutation(context: context)
         return didComplete

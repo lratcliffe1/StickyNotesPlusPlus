@@ -31,12 +31,15 @@ struct PastCompleteSheet: View {
                         .onSubmit(complete)
                         .accessibilityLabel("Type \(occurrence.title) to confirm")
                 } header: {
+                    // Its real case: the match is case-sensitive.
                     Text("Did you do “\(occurrence.title)”?")
+                        .textCase(nil)
                 } footer: {
                     Text(footer)
                 }
             }
-            .navigationTitle("Mark Done for \(dayLabel)")
+            // Just the day: "Mark Done for Yesterday" truncates in an inline title.
+            .navigationTitle(dayLabel)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

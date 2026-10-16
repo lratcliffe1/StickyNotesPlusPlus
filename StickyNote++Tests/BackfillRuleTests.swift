@@ -51,6 +51,16 @@ final class BackfillRuleTests: XCTestCase {
         XCTAssertEqual(munich.dateComponents([.hour, .minute, .second], from: morning), DateComponents(hour: 8, minute: 59, second: 59))
     }
 
+    /// The clocks go forward at 02:00 on 29.3.2026: a 23-hour day, still stamped on itself.
+    func testTheSpringClockChangeKeepsItsWallClockTimes() throws {
+        let dst = "2026-03-29"
+        let evening = try XCTUnwrap(stamp(.evening, on: dst))
+        let morning = try XCTUnwrap(stamp(.morning, on: dst))
+        XCTAssertEqual(HomeModel.dayKey(for: evening, calendar: munich), dst)
+        XCTAssertEqual(munich.dateComponents([.hour, .minute, .second], from: evening), DateComponents(hour: 23, minute: 59, second: 59))
+        XCTAssertEqual(munich.dateComponents([.hour, .minute, .second], from: morning), DateComponents(hour: 8, minute: 59, second: 59))
+    }
+
     /// A 00:00 set time can't be beaten by a second: the stamp stays on its day, at the deadline.
     func testAMidnightDeadlineStampsTheStartOfTheDay() throws {
         let midnight = DayRules(morningEnd: .setTime, morningEndMinutes: 0, eveningStartMinutes: nil)
@@ -71,6 +81,13 @@ final class BackfillRuleTests: XCTestCase {
         XCTAssertFalse(BackfillRules.confirms("read in bed", title: "Read in bed"))
         XCTAssertFalse(BackfillRules.confirms("Read in", title: "Read in bed"))
         XCTAssertFalse(BackfillRules.confirms("", title: "Read in bed"))
+    }
+
+    /// The keyboard's smart punctuation: a curly apostrophe or dash matches a straight one.
+    func testConfirmingTreatsCurlyAndStraightPunctuationAlike() {
+        XCTAssertTrue(BackfillRules.confirms("Lay out tomorrow\u{2019}s clothes", title: "Lay out tomorrow's clothes"))
+        XCTAssertTrue(BackfillRules.confirms("Lay out tomorrow's clothes", title: "Lay out tomorrow\u{2019}s clothes"))
+        XCTAssertTrue(BackfillRules.confirms("Call \u{201C}Mum\u{201D} \u{2014} 10 min", title: "Call \"Mum\" - 10 min"))
     }
 
     // MARK: - What it mends
@@ -119,18 +136,70 @@ final class BackfillRuleTests: XCTestCase {
         XCTAssertEqual(ListRules.dayStatus(rows, deadline: TestCalendars.date(yesterday, 9)), .missed)
     }
 
-    // MARK: - The write
+    // MARK: - The write (`ListService.completePast`, as Home calls it)
 
-    func testCompletingAPastRowAtItsStampSaves() throws {
-        let context = try StoreTestSupport.makeContext()
-        let row = Occurrence(list: .evening, dayKey: yesterday, title: "Read in bed", createdAt: TestCalendars.date(yesterday, 6))
+    /// Yesterday kept a 07:30 set time (stored), though the old 09:00 is the fallback.
+    private let history = DayRulesHistory(stored: [
+        "2026-10-15": DayRules(morningEnd: .setTime, morningEndMinutes: 7 * 60 + 30, eveningStartMinutes: 21 * 60),
+    ])
+
+    private func routineRow(_ title: String, list: ListKind, createdAt: Date, start: String? = nil, context: ModelContext) -> Occurrence {
+        let item = Item(list: list, title: title, sortOrder: 0, repeatRule: .daily, startDayKey: start ?? "2026-10-01", createdAt: createdAt)
+        context.insert(item)
+        let row = ListService.makeOccurrence(for: item, scheduledOn: yesterday, on: yesterday, now: TestCalendars.date(yesterday, 6), calendar: munich)
         context.insert(row)
+        return row
+    }
+
+    private func completePast(_ row: Occurrence, context: ModelContext) throws -> Bool {
+        try ListService.completePast(row, todayKey: today, history: history, calendar: munich, context: context)
+    }
+
+    func testAPastEveningRowIsTickedAtTheEndOfItsDay() throws {
+        let context = try StoreTestSupport.makeContext()
+        let row = routineRow("Read in bed", list: .evening, createdAt: TestCalendars.addedLongBefore(), context: context)
         try context.save()
 
-        let at = try XCTUnwrap(stamp(.evening))
-        XCTAssertTrue(try ListService.complete(row, at: at, calendar: munich, context: context))
+        XCTAssertTrue(try completePast(row, context: context))
         XCTAssertEqual(row.state, .done)
-        XCTAssertEqual(row.completedAt, at)
-        XCTAssertEqual(HomeModel.dayKey(for: at, calendar: munich), yesterday)
+        XCTAssertEqual(row.completedAt, endOfDay(yesterday))
+    }
+
+    /// The day's own stored rules, not today's or the fallback: 07:29:59.
+    func testAPastMorningRowIsTickedJustBeforeThatDaysStoredCutoff() throws {
+        let context = try StoreTestSupport.makeContext()
+        let row = routineRow("Floss", list: .morning, createdAt: TestCalendars.addedLongBefore(), context: context)
+        try context.save()
+
+        XCTAssertTrue(try completePast(row, context: context))
+        XCTAssertEqual(row.completedAt, TestCalendars.date(yesterday, 7, 29).addingTimeInterval(59))
+    }
+
+    /// An item first added yesterday at 10:00, after its cutoff: a bonus row, ticked at 23:59:59.
+    func testAPastBonusRowIsTickedAtTheEndOfItsDay() throws {
+        let context = try StoreTestSupport.makeContext()
+        let row = routineRow("Vitamins", list: .morning, createdAt: TestCalendars.date(yesterday, 10), start: yesterday, context: context)
+        try context.save()
+
+        XCTAssertTrue(try completePast(row, context: context))
+        XCTAssertEqual(row.completedAt, endOfDay(yesterday))
+    }
+
+    func testOnlyOpenRowsBeforeTodayCanBeTicked() throws {
+        let context = try StoreTestSupport.makeContext()
+        let skipped = Occurrence(list: .evening, dayKey: yesterday, title: "Skipped", state: .skipped)
+        let todays = Occurrence(list: .evening, dayKey: today, title: "Today")
+        let done = Occurrence(list: .evening, dayKey: yesterday, title: "Done", state: .done, completedAt: TestCalendars.date(yesterday, 21))
+        for row in [skipped, todays, done] {
+            context.insert(row)
+        }
+        try context.save()
+
+        XCTAssertFalse(try completePast(skipped, context: context))
+        XCTAssertFalse(try completePast(todays, context: context))
+        XCTAssertFalse(try completePast(done, context: context))
+        XCTAssertEqual(skipped.state, .skipped)
+        XCTAssertEqual(todays.state, .open)
+        XCTAssertEqual(done.completedAt, TestCalendars.date(yesterday, 21), "a real tick is never retimed")
     }
 }

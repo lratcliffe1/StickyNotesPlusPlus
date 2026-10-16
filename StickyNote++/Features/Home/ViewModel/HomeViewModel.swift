@@ -369,6 +369,11 @@ final class HomeViewModel: ObservableObject {
         }
         let day = HomeModel.date(fromDayKey: occurrence.dayKey) ?? selectedDay
         let cutoff = dayRulesHistory.rules(for: occurrence.dayKey).morningDeadline(on: day)
+        // A real tick after the cutoff keeps its time, so that morning is late whatever is added.
+        let alreadyLate = counted(morningEntries).contains { ($0.completedAt ?? .distantPast) > cutoff }
+        if alreadyLate {
+            return "Something else was ticked after that morning's cutoff, so the morning still counts as late. \(permanent)"
+        }
         return "It counts as done by \(cutoff.formatted(date: .omitted, time: .shortened)), that morning's cutoff. \(permanent)"
     }
 

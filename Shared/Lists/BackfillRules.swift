@@ -27,8 +27,20 @@ enum BackfillRules {
     }
 
     /// Whether the typed text confirms the tick: the title exactly, ignoring spaces at either end
-    /// (the keyboard's trailing space after a word).
+    /// (the keyboard's trailing space after a word), and with curly and straight apostrophes,
+    /// quotes and dashes alike (the keyboard's smart punctuation can't be turned off per field).
     static func confirms(_ typed: String, title: String) -> Bool {
-        typed.trimmingCharacters(in: .whitespaces) == title
+        plain(typed.trimmingCharacters(in: .whitespaces)) == plain(title)
+    }
+
+    private static func plain(_ text: String) -> String {
+        String(text.map { character -> Character in
+            switch character {
+            case "\u{2018}", "\u{2019}", "\u{201B}": return "'"
+            case "\u{201C}", "\u{201D}", "\u{201E}": return "\""
+            case "\u{2013}", "\u{2014}": return "-"
+            default: return character
+            }
+        })
     }
 }

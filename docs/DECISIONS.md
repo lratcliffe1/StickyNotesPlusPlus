@@ -6,14 +6,15 @@
 
 Liam's decisions (16.10, after forgetting to tick his evening routine on 15.10). Not provisional.
 
-- **A forgotten tick on a past day works on every list.** On a past day, tapping (or swiping) an open row on the morning, day or evening list opens "Mark Done for <day>": type the title exactly (spaces at either end ignored) and Mark Done ticks it. It's the same retype cost as the day list's past tick (from the original app), which now uses this standard sheet too. Until now the morning and evening lists were read-only on past days.
+- **A forgotten tick on a past day works on every list.** On a past day, tapping (or swiping) an open row on the morning, day or evening list opens a sheet titled with the day ("Yesterday", or its weekday) asking "Did you do “<title>”?": type the title exactly (spaces at either end ignored, curly and straight punctuation alike) and Mark Done ticks it. It's the same retype cost as the day list's past tick (from the original app), which now uses this standard sheet too. Until now the morning and evening lists were read-only on past days.
 - **When the tick is stamped** (`BackfillRules.stamp`), since its real time is lost:
   - day and evening lists: 23:59:59 that day (they count until midnight);
   - a morning row that counts: one second before **that day's** own deadline (its stored rules: the set time, or 12:00 with no set time), so the morning counts as on time. Liam trusts himself that he did it on time;
   - a morning bonus row (added after the cutoff): 23:59:59. It never counts, and a tick before it existed would be nonsense.
 - **Back-filling fills gaps; it never rewrites a real tick.** A row ticked late on the day keeps its time, so that morning stays a miss.
 - **Still not on past days:** unticking, skip, undo skip, bump and the long-press menu. Skipped, bumped and "Moved to …" rows can't be ticked there (open rows only). Future days still can't be ticked.
-- The streaks, the ring and the calendar follow at once. `habits/` follows at the next commit, which rewrites the month's days from the store.
+- The streaks, the ring and the calendar follow at once. `habits/` follows at the next commit (at most one a day, so often the next day's launch), which rewrites the month's days from the store. **Known gap:** a day in last month back-filled after this month's first commit stays as it was in last month's file (the app is right; the vault file isn't).
+- **The app's own past tick is Liam's correction**, so it can turn a past miss into done; "past days are history" (step 6) binds the vault import, not him. Known, left as they are: an imported task still in Now.md also has today's open row, which a back-fill of yesterday doesn't touch (as with the day list's past tick before); an imported morning row is stamped before the cutoff even if it synced later (imports are never bonus rows); a day nobody opened has no rows, so nothing to tick.
 
 ## 2026-10-12: fix round 2 (vault done and moves)
 
