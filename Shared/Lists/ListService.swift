@@ -416,6 +416,30 @@ enum ListService {
         return true
     }
 
+    /// A forgotten tick on a past day (fix round 3): an open row on a day before `todayKey`, any
+    /// list, stamped by `BackfillRules` with that day's own rules (and whether it's a morning bonus
+    /// row). Refused on today or later, and on rows already done, skipped or bumped.
+    @discardableResult
+    static func completePast(
+        _ occurrence: Occurrence,
+        todayKey: String,
+        history: DayRulesHistory,
+        calendar: Calendar = .current,
+        context: ModelContext
+    ) throws -> Bool {
+        guard occurrence.state == .open, occurrence.dayKey < todayKey else { return false }
+        let isBonus = try bonusRowIDs(among: [occurrence], history: history, context: context, calendar: calendar)
+            .contains(occurrence.id)
+        guard let stamp = BackfillRules.stamp(
+            list: occurrence.list,
+            dayKey: occurrence.dayKey,
+            rules: history.rules(for: occurrence.dayKey),
+            isBonus: isBonus,
+            calendar: calendar
+        ) else { return false }
+        return try complete(occurrence, at: stamp, calendar: calendar, context: context)
+    }
+
     /// `complete`'s rule without the save, for a caller that saves once at the end (the vault
     /// import ticking a task done in a Claude session).
     static func markDone(_ occurrence: Occurrence, at date: Date, calendar: Calendar = .current) -> Bool {
