@@ -47,6 +47,9 @@ mkdir -p "$OUT"
 # nothing done, today 4 of 6 so far; Home has a ticked "Must do" and a ticked "Due …". 37 is the
 # morning list at 14:00 with "Vitamins", added at 10:00 after the 09:00 cutoff and ticked: a bonus
 # row, so the morning stays done (filled, ✓).
+# 47–50 are forgotten ticks on a past day (fix round 3): yesterday's evening left two-thirds
+# unticked, then the retype sheet for it, for yesterday's missed morning (stamped before its
+# cutoff) and in dark.
 # 40–44 are the vault link (-uiVault: a fake GitHub and an in-memory token, never the network or
 # the Keychain).
 SHOTS=(
@@ -94,6 +97,10 @@ SHOTS=(
   "44-vault-link-token-not-accepted|daily|vaultLink|light||-uiVault rejected"
   "45-home-vault-session|daily|home|light||-uiVault session"
   "46-home-vault-session-dark|daily|home|dark||-uiVault session"
+  "47-home-yesterday-forgot-evening|forgotEvening|home|light|evening|-uiDay -1"
+  "48-past-complete-evening|forgotEvening|pastComplete|light|evening|-uiDay -1"
+  "49-past-complete-morning|missedYesterday|pastComplete|light|morning|-uiDay -1"
+  "50-past-complete-evening-dark|forgotEvening|pastComplete|dark|evening|-uiDay -1"
 )
 
 for shot in "${SHOTS[@]}"; do
@@ -106,7 +113,7 @@ for shot in "${SHOTS[@]}"; do
   # so clear it first. A clock that still won't set only costs the status bar: warn and go on.
   clock="2:00"  # simctl only accepts 12-hour times here; "14:00" is rejected
   case "$scenario" in
-    morning|missedYesterday) clock="08:15" ;;
+    morning|missedYesterday|forgotEvening) clock="08:15" ;;
     lateMorning|statesMorning) clock="10:30" ;;
     noon) clock="12:30" ;;
     evening) clock="9:30" ;;

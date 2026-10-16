@@ -10,9 +10,12 @@ enum HomeSheet: Identifiable, Equatable {
     case editItem(UUID)
     /// The add menu's "Deadline…".
     case deadline
+    /// A forgotten tick on a past day's row, any list (fix round 3).
+    case completePast(UUID)
 
     var id: String {
         switch self {
+        case let .completePast(id): return "complete-past-\(id.uuidString)"
         case let .bump(id): return "bump-\(id.uuidString)"
         case let .editOneOff(id): return "one-off-\(id.uuidString)"
         case let .editItem(id): return "item-\(id.uuidString)"

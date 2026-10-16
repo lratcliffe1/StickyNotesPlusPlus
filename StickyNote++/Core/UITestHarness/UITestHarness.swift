@@ -6,8 +6,8 @@ import os
 
 /// Test-only launch mode used by the screenshot workflow (`scripts/screenshots.sh`).
 ///
-/// Launch with `-uiScenario <morning|lateMorning|noon|daily|evening|empty|missedYesterday|missedTwice|states|statesMorning|fills>`,
-/// optionally `-uiScreen <home|calendar|settings|editLists|itemEditor|repeatPicker|bump|addOptions|deadline|vaultLink>`,
+/// Launch with `-uiScenario <morning|lateMorning|noon|daily|evening|empty|missedYesterday|missedTwice|states|statesMorning|fills|forgotEvening>`,
+/// optionally `-uiScreen <home|calendar|settings|editLists|itemEditor|repeatPicker|bump|addOptions|deadline|vaultLink|pastComplete>`,
 /// `-uiList <morning|day|evening>` (the list Home shows, or Edit Lists' segment),
 /// `-uiMorningEnds <setTime|doneOrSkipped>` (default setTime, 09:00) and `-uiEvening <on|off>`
 /// (default on, 21:00): the settings, which today's rules are stored from; `-uiTodayKeeps HH:MM`
@@ -55,6 +55,9 @@ enum UITestHarness {
         /// done, 2 days ago 9 of 10 (a miss, capped at 85%), yesterday nothing done, today 4 of 6
         /// so far, with a ticked "Must do" and a ticked "Due …" task.
         case fills
+        /// 08:15, like `morning`, but yesterday's evening was left two-thirds unticked (only "Tidy
+        /// the kitchen" done): Liam's forgotten evening, for ticking it now (fix round 3).
+        case forgotEvening
 
         var missesYesterday: Bool { self == .missedYesterday || self == .missedTwice }
 
@@ -63,7 +66,7 @@ enum UITestHarness {
 
         var time: (hour: Int, minute: Int) {
             switch self {
-            case .morning, .missedYesterday: return (8, 15)
+            case .morning, .missedYesterday, .forgotEvening: return (8, 15)
             case .lateMorning, .statesMorning: return (10, 30)
             case .noon: return (12, 30)
             case .daily, .empty, .missedTwice, .states, .fills: return (14, 0)
@@ -93,6 +96,9 @@ enum UITestHarness {
         case deadline
         /// Settings → Vault link (with `-uiVault`).
         case vaultLink
+        /// The retype sheet for the first open row of `-uiList` (default evening) on the day Home
+        /// shows (use with `-uiDay -1`): a forgotten tick on a past day (fix round 3).
+        case pastComplete
     }
 
     struct Configuration {
@@ -228,6 +234,14 @@ enum UITestHarness {
                 editListsLaunch = EditListsLaunch(list: list ?? .day, openItemTitle: "Gym", showsRepeat: screen == .repeatPicker)
             case .bump:
                 initialSheet = alarmClock.map { HomeSheet.bump($0.id) }
+            case .pastComplete:
+                let shown = list ?? .evening
+                viewModel.manualListFlip = .untilLeft(contextualList(for: shown))
+                let dayKey = key(viewModel.selectedDay)
+                let rows = try context.fetch(FetchDescriptor<Occurrence>())
+                    .filter { $0.dayKey == dayKey && $0.list == shown && $0.state == .open }
+                    .sorted { $0.sortOrder < $1.sortOrder }
+                initialSheet = rows.first.map { HomeSheet.completePast($0.id) }
             case .addOptions, .deadline:
                 viewModel.manualListFlip = .untilLeft(.daily)
                 viewModel.newTaskTitle = "Renew passport photos"
@@ -644,10 +658,12 @@ enum UITestHarness {
         }
         for daysAgo in 1...eveningDaysAgo {
             guard let day = calendar.date(byAdding: .day, value: -daysAgo, to: today) else { continue }
-            for item in eveningItems {
+            for (order, item) in eveningItems.enumerated() {
                 let row = ListService.makeOccurrence(for: item, scheduledOn: key(day), on: key(day), now: day, calendar: calendar)
-                row.state = .done
-                row.completedAt = at(hour: 21, minute: 40, on: day, calendar: calendar)
+                // `forgotEvening`: yesterday only the first item was ticked.
+                let forgotten = scenario == .forgotEvening && daysAgo == 1 && order > 0
+                row.state = forgotten ? .open : .done
+                row.completedAt = forgotten ? nil : at(hour: 21, minute: 40, on: day, calendar: calendar)
                 context.insert(row)
             }
         }

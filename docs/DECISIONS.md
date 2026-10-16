@@ -2,6 +2,19 @@
 
 **What this is for:** product rules Liam has decided, dated, newest first. Code and tests follow these. When a rule changes, add a new entry that names the one it replaces; never edit an old entry. **What must NOT go in here:** plans and status (→ `ROADMAP.md`).
 
+## 2026-10-16: fix round 3 (forgotten ticks on past days)
+
+Liam's decisions (16.10, after forgetting to tick his evening routine on 15.10). Not provisional.
+
+- **A forgotten tick on a past day works on every list.** On a past day, tapping (or swiping) an open row on the morning, day or evening list opens "Mark Done for <day>": type the title exactly (spaces at either end ignored) and Mark Done ticks it. It's the same retype cost as the day list's past tick (from the original app), which now uses this standard sheet too. Until now the morning and evening lists were read-only on past days.
+- **When the tick is stamped** (`BackfillRules.stamp`), since its real time is lost:
+  - day and evening lists: 23:59:59 that day (they count until midnight);
+  - a morning row that counts: one second before **that day's** own deadline (its stored rules: the set time, or 12:00 with no set time), so the morning counts as on time. Liam trusts himself that he did it on time;
+  - a morning bonus row (added after the cutoff): 23:59:59. It never counts, and a tick before it existed would be nonsense.
+- **Back-filling fills gaps; it never rewrites a real tick.** A row ticked late on the day keeps its time, so that morning stays a miss.
+- **Still not on past days:** unticking, skip, undo skip, bump and the long-press menu. Skipped, bumped and "Moved to …" rows can't be ticked there (open rows only). Future days still can't be ticked.
+- The streaks, the ring and the calendar follow at once. `habits/` follows at the next commit, which rewrites the month's days from the store.
+
 ## 2026-10-12: fix round 2 (vault done and moves)
 
 Liam's decisions, signed off for fix round 2. Not provisional. Contract and rules in `VAULT-API.md` ("`done`", "Done in a Claude session", "Moved from today to a later day").

@@ -352,6 +352,26 @@ final class HomeViewModel: ObservableObject {
         occurrence.dayKey == HomeModel.dayKey(for: now) && ListService.canBump(occurrence)
     }
 
+    /// Whether a past day's row can still be ticked (retyping its title): open rows only, any
+    /// list. Ticks there can't be undone, and skipped, bumped or moved rows stay as they are.
+    func canCompletePast(_ occurrence: Occurrence) -> Bool {
+        isReadOnly && occurrence.state == .open && HomeModel.isPastDay(selectedDay, now: now)
+    }
+
+    /// The past-tick sheet's footer: when the tick counts (`BackfillRules.stamp`).
+    func pastCompleteFooter(for occurrence: Occurrence) -> String {
+        let permanent = "A tick on a past day can't be undone."
+        guard occurrence.list == .morning else {
+            return "It counts for that day. \(permanent)"
+        }
+        if isBonus(occurrence) {
+            return "It was added after that morning's cutoff, so it doesn't count. \(permanent)"
+        }
+        let day = HomeModel.date(fromDayKey: occurrence.dayKey) ?? selectedDay
+        let cutoff = dayRulesHistory.rules(for: occurrence.dayKey).morningDeadline(on: day)
+        return "It counts as done by \(cutoff.formatted(date: .omitted, time: .shortened)), that morning's cutoff. \(permanent)"
+    }
+
     /// Whether a row gets a long-press menu: not on a past day; on a future day only one-offs
     /// (Edit… and Delete), since nothing can be done, skipped or bumped ahead of its day.
     func hasRowMenu(_ occurrence: Occurrence) -> Bool {

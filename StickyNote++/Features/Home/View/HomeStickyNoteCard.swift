@@ -7,16 +7,8 @@ struct HomeStickyNoteCard: View {
     @ObservedObject var vm: HomeViewModel
     let modelContext: ModelContext
     var onTaskRowSwipeActiveChange: (Bool) -> Void = { _ in }
-    @State private var isShowingPastCompletePopup = false
-    @State private var pendingPastCompleteTaskID: UUID?
-    @State private var pendingPastCompleteTitle: String = ""
     /// Plain values, so the dialog never reads a row after it's deleted.
     @State private var pendingDeletion: DeletionRequest?
-    @FocusState private var focusedField: SheetField?
-
-    private enum SheetField {
-        case pastComplete
-    }
 
     private struct DeletionRequest {
         let id: UUID
@@ -148,12 +140,12 @@ struct HomeStickyNoteCard: View {
             } else {
                 plannedRows
                 ForEach(entries) { entry in
-                    row(for: entry, canEdit: vm.canCompleteSelectedDay, strikeColor: listTint(vm.contextualList)) {
-                        if entry.list == .morning {
-                            vm.toggleMorningEntry(entry, context: modelContext)
-                        } else {
-                            vm.toggleDailyTask(entry, context: modelContext)
-                        }
+                    row(
+                        for: entry,
+                        canEdit: vm.canCompleteSelectedDay || vm.canCompletePast(entry),
+                        strikeColor: listTint(vm.contextualList)
+                    ) {
+                        handleToggle(entry)
                     }
                 }
             }
@@ -175,10 +167,10 @@ struct HomeStickyNoteCard: View {
                 ForEach(vm.sortedDailyTasks) { task in
                     row(
                         for: task,
-                        canEdit: vm.canCompleteSelectedDay || (vm.isReadOnly && !task.isCompleted),
+                        canEdit: vm.canCompleteSelectedDay || vm.canCompletePast(task),
                         strikeColor: listTint(vm.contextualList)
                     ) {
-                        handleDailyTaskToggle(task)
+                        handleToggle(task)
                     }
                     .draggable(task.id.uuidString)
                     .dropDestination(for: String.self) { items, _ in
@@ -194,24 +186,6 @@ struct HomeStickyNoteCard: View {
                     }
                 }
             }
-        }
-        .onChange(of: vm.dailyTasks.map(\.id)) { _, ids in
-            if let pendingPastCompleteTaskID, !ids.contains(pendingPastCompleteTaskID) {
-                clearPendingPastCompleteComposer()
-            }
-        }
-        .onChange(of: isShowingPastCompletePopup) { _, isPresented in
-            if isPresented {
-                focusedField = .pastComplete
-            }
-        }
-        .sheet(
-            isPresented: $isShowingPastCompletePopup,
-            onDismiss: clearPendingPastCompleteComposer
-        ) {
-            pastCompletePopupContent
-                .presentationDetents([.height(260)])
-                .presentationDragIndicator(.visible)
         }
     }
 
@@ -477,6 +451,20 @@ struct HomeStickyNoteCard: View {
             } else {
                 missingSheet
             }
+        case let .completePast(id):
+            // No state check here: the row is done the moment the sheet closes, and the view model
+            // refuses anything that can't be ticked.
+            if let occurrence = vm.occurrence(id: id, context: modelContext) {
+                PastCompleteSheet(
+                    occurrence: occurrence,
+                    dayLabel: vm.selectedDayRelativeLabel,
+                    footer: vm.pastCompleteFooter(for: occurrence)
+                ) { typed in
+                    vm.completePastOccurrence(occurrence, typedConfirmation: typed, context: modelContext)
+                }
+            } else {
+                missingSheet
+            }
         case .deadline:
             DeadlineSheet(
                 deadlineDayKey: vm.newTaskOptions.deadlineDayKey,
@@ -495,97 +483,18 @@ struct HomeStickyNoteCard: View {
             .presentationDetents([.medium])
     }
 
-    // MARK: - Completing a past day's task
+    // MARK: - Ticking
 
-    private var pendingPastCompleteTask: Occurrence? {
-        guard let pendingPastCompleteTaskID else { return nil }
-        return vm.dailyTasks.first { $0.id == pendingPastCompleteTaskID }
-    }
-
-    private func handleDailyTaskToggle(_ task: Occurrence) {
+    /// Today: tick or untick. A past day: an open row opens the retype sheet (fix round 3).
+    private func handleToggle(_ occurrence: Occurrence) {
         if vm.canCompleteSelectedDay {
-            vm.toggleDailyTask(task, context: modelContext)
-            return
-        }
-
-        guard vm.isReadOnly, !task.isCompleted else { return }
-        presentPastCompleteComposer(for: task)
-    }
-
-    private func presentPastCompleteComposer(for task: Occurrence) {
-        pendingPastCompleteTaskID = task.id
-        pendingPastCompleteTitle = ""
-        isShowingPastCompletePopup = true
-        focusedField = .pastComplete
-    }
-
-    private func clearPendingPastCompleteComposer() {
-        focusedField = nil
-        pendingPastCompleteTaskID = nil
-        pendingPastCompleteTitle = ""
-        isShowingPastCompletePopup = false
-    }
-
-    private func submitPendingPastComplete() {
-        guard let task = pendingPastCompleteTask else {
-            clearPendingPastCompleteComposer()
-            return
-        }
-
-        let didComplete = vm.completePastDailyTask(
-            task,
-            typedConfirmation: pendingPastCompleteTitle,
-            context: modelContext
-        )
-
-        if didComplete {
-            clearPendingPastCompleteComposer()
-        }
-    }
-
-    private var pastCompletePopupContent: some View {
-        let task = pendingPastCompleteTask
-
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("Mark as completed?")
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                Button {
-                    clearPendingPastCompleteComposer()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                        .font(.footnote)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Cancel completion confirmation")
+            if occurrence.list == .morning {
+                vm.toggleMorningEntry(occurrence, context: modelContext)
+            } else {
+                vm.toggleDailyTask(occurrence, context: modelContext)
             }
-
-            Text("Are you sure you completed this task? Type it in exactly to complete it.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-
-            Text("\"\(task?.title ?? "")\"")
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-
-            TextField("Type task exactly...", text: $pendingPastCompleteTitle)
-                .disabled(task == nil)
-                .textFieldStyle(.plain)
-                .font(.subheadline)
-                .focused($focusedField, equals: .pastComplete)
-                .submitLabel(.done)
-                .onSubmit(submitPendingPastComplete)
-                .frame(height: 22)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .glassCard(cornerRadius: 14, fill: AnyShapeStyle(AppTheme.cardSurface), shadowOpacity: 0)
-        .padding(.horizontal, 14)
-        .padding(.top, 14)
-        .onAppear {
-            focusedField = .pastComplete
+        } else if vm.canCompletePast(occurrence) {
+            vm.activeSheet = .completePast(occurrence.id)
         }
     }
 }
