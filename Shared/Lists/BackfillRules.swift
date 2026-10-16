@@ -28,7 +28,7 @@ enum BackfillRules {
 
     /// Whether the typed text confirms the tick: the title exactly, ignoring spaces at either end
     /// (the keyboard's trailing space after a word), and with curly and straight apostrophes,
-    /// quotes and dashes alike (the keyboard's smart punctuation can't be turned off per field).
+    /// quotes and dashes alike (the keyboard's smart punctuation, which SwiftUI's text field can't turn off).
     static func confirms(_ typed: String, title: String) -> Bool {
         plain(typed.trimmingCharacters(in: .whitespaces)) == plain(title)
     }

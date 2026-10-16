@@ -457,7 +457,7 @@ struct HomeStickyNoteCard: View {
             if let occurrence = vm.occurrence(id: id, context: modelContext) {
                 PastCompleteSheet(
                     occurrence: occurrence,
-                    dayLabel: vm.selectedDayRelativeLabel,
+                    dayLabel: vm.pastDayLabel,
                     footer: vm.pastCompleteFooter(for: occurrence)
                 ) { typed in
                     vm.completePastOccurrence(occurrence, typedConfirmation: typed, context: modelContext)

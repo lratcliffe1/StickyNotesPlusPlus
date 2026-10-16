@@ -358,6 +358,13 @@ final class HomeViewModel: ObservableObject {
         isReadOnly && occurrence.state == .open && HomeModel.isPastDay(selectedDay, now: now)
     }
 
+    /// The past-tick sheet's title: "Yesterday" or the weekday within the last week, otherwise
+    /// the date ("Tuesday" alone would be ambiguous three weeks back).
+    var pastDayLabel: String {
+        let weekAgo = Calendar.current.date(byAdding: .day, value: -6, to: HomeModel.normalizedDay(now)) ?? now
+        return selectedDay >= weekAgo ? selectedDayRelativeLabel : selectedDay.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+    }
+
     /// The past-tick sheet's footer: when the tick counts (`BackfillRules.stamp`).
     func pastCompleteFooter(for occurrence: Occurrence) -> String {
         let permanent = "A tick on a past day can't be undone."
@@ -372,7 +379,7 @@ final class HomeViewModel: ObservableObject {
         // A real tick after the cutoff keeps its time, so that morning is late whatever is added.
         let alreadyLate = counted(morningEntries).contains { ($0.completedAt ?? .distantPast) > cutoff }
         if alreadyLate {
-            return "Something else was ticked after that morning's cutoff, so the morning still counts as late. \(permanent)"
+            return "Something else was ticked after that morning's cutoff, so that morning stays missed. \(permanent)"
         }
         return "It counts as done by \(cutoff.formatted(date: .omitted, time: .shortened)), that morning's cutoff. \(permanent)"
     }

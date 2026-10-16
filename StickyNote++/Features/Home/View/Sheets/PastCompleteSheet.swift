@@ -5,7 +5,7 @@ import SwiftUI
 /// the tick counts (`BackfillRules`) and that it can't be undone.
 struct PastCompleteSheet: View {
     let occurrence: Occurrence
-    /// "Yesterday", or the day's date.
+    /// "Yesterday", the weekday, or (beyond the last week) the date.
     let dayLabel: String
     let footer: String
     /// Returns whether the tick happened.
